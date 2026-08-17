@@ -35,15 +35,6 @@ export default function Header({ onOpenInstallModal, onOpenJoinModal }: HeaderPr
 
         {/* DESKTOP NAVIGATION BUTTONS (RIGHT) */}
         <div className="hidden md:flex items-center gap-4">
-          {/* Instalar App Button */}
-          <button
-            onClick={onOpenInstallModal}
-            className="flex items-center gap-2 px-4 py-2 border border-[#eab308] text-[#eab308] rounded-md font-semibold text-xs tracking-widest hover:bg-[#eab30810] transition-colors active:scale-95 cursor-pointer"
-          >
-            <Download className="w-3.5 h-3.5 stroke-[3]" />
-            <span>INSTALAR APP</span>
-          </button>
-
           {/* Unirse Button */}
           <button
             onClick={onOpenJoinModal}
