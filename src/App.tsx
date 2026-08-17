@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import Header from '@/components/Header';
 import HeroSection from '@/components/HeroSection';
 import RegisteredInstitutions from '@/components/RegisteredInstitutions';
-import PopularCampus from '@/components/PopularCampus';
 import Footer from '@/components/Footer';
 import InstallAppModal from '@/components/Modals/InstallAppModal';
 import JoinModal from '@/components/Modals/JoinModal';
@@ -13,7 +12,6 @@ import { Institution, Student } from '@/lib/mockData';
 
 export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
-  const [quickFilter, setQuickFilter] = useState('all');
 
   // Modals state
   const [installModalOpen, setInstallModalOpen] = useState(false);
@@ -44,25 +42,14 @@ export default function App() {
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
           onSearchSubmit={handleSearchSubmit}
-          quickFilter={quickFilter}
-          setQuickFilter={setQuickFilter}
         />
 
         <div id="seccion-resultados">
           {/* 3. Secciones UI Inferiores */}
-          {(quickFilter === 'all' || quickFilter === 'instituciones') && (
-            <RegisteredInstitutions
-              onSelectInstitution={(inst) => setSelectedInstitution(inst)}
-              searchQuery={searchQuery}
-            />
-          )}
-
-          {(quickFilter === 'all' || quickFilter === 'alumnos' || quickFilter === 'tendencias') && (
-            <PopularCampus
-              onSelectStudent={(student) => setSelectedStudent(student)}
-              searchQuery={searchQuery}
-            />
-          )}
+          <RegisteredInstitutions
+            onSelectInstitution={(inst) => setSelectedInstitution(inst)}
+            searchQuery={searchQuery}
+          />
         </div>
       </main>
 

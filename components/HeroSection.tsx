@@ -1,14 +1,12 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Crown, Search, Building2, UserCheck, Flame, TrendingUp } from 'lucide-react';
+import { Crown, Search } from 'lucide-react';
 
 interface HeroSectionProps {
   searchQuery: string;
   setSearchQuery: (query: string) => void;
   onSearchSubmit: (e: React.FormEvent) => void;
-  quickFilter: string;
-  setQuickFilter: (category: string) => void;
   onSelectStudent?: (student: any) => void;
   onSelectInstitution?: (inst: any) => void;
 }
@@ -17,8 +15,6 @@ export default function HeroSection({
   searchQuery,
   setSearchQuery,
   onSearchSubmit,
-  quickFilter,
-  setQuickFilter,
 }: HeroSectionProps) {
   const [isFocused, setIsFocused] = useState(false);
 
@@ -75,32 +71,6 @@ export default function HeroSection({
         </form>
       </div>
 
-      {/* QUICK CATEGORY FILTER BAR */}
-      <div className="relative z-10 flex flex-wrap items-center justify-center gap-2 sm:gap-3 max-w-3xl mx-auto">
-        {[
-          { id: 'all', label: 'Todos', icon: Flame },
-          { id: 'instituciones', label: 'Instituciones', icon: Building2 },
-          { id: 'alumnos', label: 'Alumnos Populares', icon: UserCheck },
-          { id: 'tendencias', label: 'Tendencias Campus', icon: TrendingUp },
-        ].map((item) => {
-          const Icon = item.icon;
-          const isActive = quickFilter === item.id;
-          return (
-            <button
-              key={item.id}
-              onClick={() => setQuickFilter(item.id)}
-              className={`px-4 py-2 rounded-lg text-xs font-bold tracking-wider uppercase flex items-center gap-2 transition-all cursor-pointer ${
-                isActive
-                  ? 'bg-[#eab308] text-black shadow-md shadow-[#eab308]/20'
-                  : 'bg-[#0d0d0d] border border-[#ffffff10] text-zinc-400 hover:text-white hover:border-[#ffffff20]'
-              }`}
-            >
-              <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-black' : 'text-[#eab308]'}`} />
-              <span>{item.label}</span>
-            </button>
-          );
-        })}
-      </div>
     </section>
   );
 }
