@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Crown, Search, Sparkles, Building2, UserCheck, Flame, TrendingUp } from 'lucide-react';
+import { Crown, Search, Building2, UserCheck, Flame, TrendingUp } from 'lucide-react';
 
 interface HeroSectionProps {
   searchQuery: string;
@@ -73,22 +73,6 @@ export default function HeroSection({
             </button>
           </div>
         </form>
-
-        {/* POPULAR SEARCH TAGS */}
-        <div className="flex flex-wrap items-center justify-center gap-2 mt-4 text-xs">
-          <span className="text-zinc-500 font-mono text-[11px] uppercase tracking-wider flex items-center gap-1">
-            <Sparkles className="w-3.5 h-3.5 text-[#eab308]" /> Populares:
-          </span>
-          {['UNAM', 'Tec de Monterrey', 'IPN', 'Alumnos Top', 'Ingeniería'].map((tag) => (
-            <button
-              key={tag}
-              onClick={() => setSearchQuery(tag)}
-              className="px-3 py-1 rounded-full bg-[#0d0d0d] border border-[#ffffff10] hover:border-[#eab30850] text-zinc-300 hover:text-[#eab308] transition-colors cursor-pointer text-xs"
-            >
-              #{tag}
-            </button>
-          ))}
-        </div>
       </div>
 
       {/* QUICK CATEGORY FILTER BAR */}
@@ -120,4 +104,5 @@ export default function HeroSection({
     </section>
   );
 }
+
 
