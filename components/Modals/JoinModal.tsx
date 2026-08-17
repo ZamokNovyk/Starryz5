@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X, Building2, GraduationCap, CheckCircle2, Sparkles, Mail, User } from 'lucide-react';
+import { X, CheckCircle2, Sparkles, User, LogOut } from 'lucide-react';
+import { useAuth } from '@/src/context/AuthContext';
 
 interface JoinModalProps {
   isOpen: boolean;
@@ -9,45 +10,44 @@ interface JoinModalProps {
 }
 
 export default function JoinModal({ isOpen, onClose }: JoinModalProps) {
-  const [tab, setTab] = useState<'student' | 'institution'>('student');
-  const [fullName, setFullName] = useState('');
-  const [email, setEmail] = useState('');
-  const [institution, setInstitution] = useState('');
-  const [career, setCareer] = useState('');
-  const [submitted, setSubmitted] = useState(false);
+  const { user, loginWithGoogle, loginAnonymously, logout } = useAuth();
+  const [loadingGoogle, setLoadingGoogle] = useState(false);
+  const [loadingAnon, setLoadingAnon] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!fullName || !email) return;
-
+  const handleGoogleAuth = async () => {
+    setErrorMsg(null);
+    setLoadingGoogle(true);
     try {
-      console.log('Sending registration request to Supabase client...', {
-        tab,
-        fullName,
-        email,
-        institution,
-        career,
-      });
-    } catch (err) {
-      console.error('Supabase save error handled gracefully', err);
-    }
-
-    setSubmitted(true);
-    setTimeout(() => {
-      setSubmitted(false);
-      setFullName('');
-      setEmail('');
-      setInstitution('');
-      setCareer('');
+      await loginWithGoogle();
       onClose();
-    }, 2200);
+    } catch (err: any) {
+      console.error('Error al iniciar sesión con Google:', err);
+      setErrorMsg(err?.message || 'Ocurrió un error al conectar con Google.');
+    } finally {
+      setLoadingGoogle(false);
+    }
+  };
+
+  const handleAnonAuth = async () => {
+    setErrorMsg(null);
+    setLoadingAnon(true);
+    try {
+      await loginAnonymously();
+      onClose();
+    } catch (err: any) {
+      console.error('Error al iniciar sesión anónima:', err);
+      setErrorMsg(err?.message || 'Ocurrió un error al iniciar sesión anónima.');
+    } finally {
+      setLoadingAnon(false);
+    }
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="relative w-full max-w-lg bg-[#0d0d0d] border border-[#eab308] rounded-2xl p-6 sm:p-8 shadow-[0_0_40px_rgba(234,179,8,0.2)] space-y-6 overflow-hidden">
+      <div className="relative w-full max-w-md bg-[#0d0d0d] border border-[#eab308] rounded-2xl p-6 sm:p-8 shadow-[0_0_40px_rgba(234,179,8,0.2)] space-y-6 overflow-hidden">
         
         {/* Close Button */}
         <button
@@ -58,140 +58,102 @@ export default function JoinModal({ isOpen, onClose }: JoinModalProps) {
         </button>
 
         {/* Header */}
-        <div>
-          <span className="text-xs font-bold text-[#eab308] uppercase tracking-widest flex items-center gap-1">
-            <Sparkles className="w-3.5 h-3.5 text-[#eab308]" /> Únete a la comunidad
+        <div className="text-center sm:text-left pr-8">
+          <span className="text-xs font-bold text-[#eab308] uppercase tracking-widest flex items-center justify-center sm:justify-start gap-1">
+            <Sparkles className="w-3.5 h-3.5 text-[#eab308]" /> Acceso a STARRYZ 5
           </span>
           <h3 className="text-2xl font-black text-white uppercase tracking-tight mt-1">
-            REGÍSTRATE EN <span className="text-[#eab308]">STARRYZ 5</span>
+            INICIAR SESIÓN
           </h3>
+          <p className="text-xs text-zinc-400 mt-1">
+            Elige tu método preferido para ingresar y participar en la comunidad.
+          </p>
         </div>
 
-        {/* Tab switcher */}
-        <div className="flex rounded-xl bg-[#0a0a0a] p-1 border border-[#ffffff10]">
-          <button
-            onClick={() => setTab('student')}
-            className={`flex-1 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer ${
-              tab === 'student'
-                ? 'bg-[#eab308] text-black shadow-md'
-                : 'text-zinc-400 hover:text-white'
-            }`}
-          >
-            <GraduationCap className="w-4 h-4" />
-            <span>Soy Alumno</span>
-          </button>
-          <button
-            onClick={() => setTab('institution')}
-            className={`flex-1 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer ${
-              tab === 'institution'
-                ? 'bg-[#eab308] text-black shadow-md'
-                : 'text-zinc-400 hover:text-white'
-            }`}
-          >
-            <Building2 className="w-4 h-4" />
-            <span>Registrar Campus</span>
-          </button>
-        </div>
+        {errorMsg && (
+          <div className="p-3 rounded-lg bg-red-950/40 border border-red-500/40 text-red-300 text-xs text-center">
+            {errorMsg}
+          </div>
+        )}
 
-        {submitted ? (
-          <div className="py-8 text-center space-y-3 bg-[#eab30810] border border-[#eab30830] rounded-xl animate-in zoom-in-95">
+        {user ? (
+          <div className="py-2 text-center space-y-5 animate-in zoom-in-95">
             <CheckCircle2 className="w-12 h-12 text-[#eab308] mx-auto" />
-            <h4 className="text-xl font-extrabold text-white">¡Registro Exitoso!</h4>
-            <p className="text-xs text-zinc-300">
-              Hemos registrado tu solicitud en la base de datos de STARRYZ 5.
-            </p>
+            <div>
+              <h4 className="text-lg font-extrabold text-white">¡Sesión Activa!</h4>
+              <p className="text-xs text-zinc-400 mt-1">
+                {user.isAnonymous ? (
+                  <span>Ingresaste como <strong className="text-white">Usuario Anónimo</strong> (los datos se conservan localmente).</span>
+                ) : (
+                  <span>Ingresaste con la cuenta <strong className="text-white">{user.displayName || 'Usuario'}</strong></span>
+                )}
+              </p>
+              {user.email && (
+                <p className="text-[10px] text-zinc-500 mt-0.5">{user.email}</p>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-2 pt-2">
+              <button
+                onClick={onClose}
+                className="w-full py-3 rounded-lg bg-[#eab308] hover:bg-[#d9a307] text-black font-black text-xs uppercase tracking-wider transition-colors cursor-pointer"
+              >
+                CONTINUAR AL SITIO
+              </button>
+              {!user.isAnonymous && (
+                <button
+                  onClick={() => logout()}
+                  className="w-full py-2.5 rounded-lg border border-red-500/30 text-red-400 font-semibold text-xs tracking-widest uppercase bg-red-950/10 hover:bg-red-950/30 transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span>CERRAR SESIÓN</span>
+                </button>
+              )}
+            </div>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold text-zinc-300 uppercase mb-1.5">
-                {tab === 'student' ? 'Nombre Completo' : 'Nombre de la Institución'}
-              </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  required
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  placeholder={tab === 'student' ? 'Ej. Valeria Morales' : 'Ej. Universidad Central'}
-                  className="w-full bg-[#0a0a0a] border border-[#ffffff15] rounded-lg px-4 py-3 pl-10 text-sm text-white focus:outline-none focus:border-[#eab308] font-medium"
-                />
-                <User className="w-4 h-4 text-zinc-500 absolute left-3.5 top-3.5" />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-zinc-300 uppercase mb-1.5">
-                Correo Electrónico Institucional
-              </label>
-              <div className="relative">
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="ejemplo@universidad.edu"
-                  className="w-full bg-[#0a0a0a] border border-[#ffffff15] rounded-lg px-4 py-3 pl-10 text-sm text-white focus:outline-none focus:border-[#eab308] font-medium"
-                />
-                <Mail className="w-4 h-4 text-zinc-500 absolute left-3.5 top-3.5" />
-              </div>
-            </div>
-
-            {tab === 'student' ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-zinc-300 uppercase mb-1.5">
-                    Campus / Universidad
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={institution}
-                    onChange={(e) => setInstitution(e.target.value)}
-                    placeholder="UNAM / Tec / IPN"
-                    className="w-full bg-[#0a0a0a] border border-[#ffffff15] rounded-lg px-3.5 py-3 text-sm text-white focus:outline-none focus:border-[#eab308]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-zinc-300 uppercase mb-1.5">
-                    Carrera / Licenciatura
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={career}
-                    onChange={(e) => setCareer(e.target.value)}
-                    placeholder="Derecho / Medicina"
-                    className="w-full bg-[#0a0a0a] border border-[#ffffff15] rounded-lg px-3.5 py-3 text-sm text-white focus:outline-none focus:border-[#eab308]"
-                  />
-                </div>
-              </div>
-            ) : (
-              <div>
-                <label className="block text-xs font-bold text-zinc-300 uppercase mb-1.5">
-                  Ubicación / Ciudad del Campus
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={institution}
-                  onChange={(e) => setInstitution(e.target.value)}
-                  placeholder="Ciudad de México, Guadalajara, Monterrey..."
-                  className="w-full bg-[#0a0a0a] border border-[#ffffff15] rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-[#eab308]"
-                />
-              </div>
-            )}
-
+          <div className="space-y-4 py-2">
+            {/* Google Login */}
             <button
-              type="submit"
-              className="w-full py-3 rounded-lg bg-[#eab308] hover:bg-[#d9a307] text-black font-black text-xs uppercase tracking-wider transition-colors cursor-pointer"
+              type="button"
+              disabled={loadingGoogle || loadingAnon}
+              onClick={handleGoogleAuth}
+              className="w-full py-3.5 px-4 rounded-xl border border-[#ffffff15] bg-[#141414] hover:bg-[#1a1a1a] hover:border-[#eab308]/60 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-3 transition-all cursor-pointer shadow-md disabled:opacity-50"
             >
-              UNIRSE AHORA
+              <svg className="w-5 h-5" viewBox="0 0 24 24">
+                <path
+                  fill="#EA4335"
+                  d="M5.266 9.765A7.077 7.077 0 0 1 12 4.909c1.69 0 3.218.6 4.418 1.582L19.91 3C17.782 1.145 15.055 0 12 0 7.336 0 3.327 2.682 1.386 6.573L5.266 9.765z"
+                />
+                <path
+                  fill="#4285F4"
+                  d="M16.04 15.345c-1.077.737-2.43 1.146-4.04 1.146a7.067 7.067 0 0 1-6.734-4.855L1.386 14.81C3.327 18.72 7.336 21.4 12 21.4c3.136 0 5.927-1.036 7.91-2.827l-3.87-3.228z"
+                />
+                <path
+                  fill="#FBBC05"
+                  d="M5.266 12a7.1 7.1 0 0 1 0-2.235L1.386 6.573A11.967 11.967 0 0 0 0 12c0 1.927.455 3.745 1.264 5.373l4.002-3.138A7.01 7.01 0 0 1 5.266 12z"
+                />
+                <path
+                  fill="#34A853"
+                  d="M23.49 12.273c0-.818-.082-1.609-.227-2.364H12v4.51h6.445a5.51 5.51 0 0 1-2.39 3.618l3.873 3.227c2.264-2.09 3.564-5.173 3.564-8.99z"
+                />
+              </svg>
+              <span>{loadingGoogle ? 'CONECTANDO...' : 'CONTINUAR CON GOOGLE'}</span>
             </button>
-          </form>
+
+            {/* Anonymous Login */}
+            <button
+              type="button"
+              disabled={loadingGoogle || loadingAnon}
+              onClick={handleAnonAuth}
+              className="w-full py-3.5 px-4 rounded-xl border border-[#eab30840] bg-[#eab3080d] hover:bg-[#eab3081a] hover:border-[#eab30880] text-[#eab308] font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-3 transition-all cursor-pointer shadow-md disabled:opacity-50"
+            >
+              <User className="w-5 h-5 text-[#eab308]" />
+              <span>{loadingAnon ? 'INGRESANDO...' : 'ENTRAR COMO ANÓNIMO'}</span>
+            </button>
+          </div>
         )}
       </div>
     </div>
   );
 }
-

@@ -1,23 +1,99 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Building2, Users, Star, CheckCircle2, MapPin, ArrowUpRight } from 'lucide-react';
 import { Institution, MOCK_INSTITUTIONS } from '@/lib/mockData';
+import { getEducationalCenters, EducationalCenter } from '@/src/lib/centers';
 
 interface RegisteredInstitutionsProps {
   onSelectInstitution: (inst: Institution) => void;
   searchQuery: string;
+  refreshKey?: number;
+  dbCenters?: EducationalCenter[];
+  loading?: boolean;
+}
+
+function generateAcronym(name: string): string {
+  const cleanWords = name
+    .trim()
+    .split(/\s+/)
+    .filter(word => {
+      const lower = word.toLowerCase();
+      return lower.length > 2 && !['de', 'del', 'la', 'las', 'el', 'los', 'en', 'y', 'con', 'para', 'por'].includes(lower);
+    });
+
+  if (cleanWords.length === 0) return name.substring(0, 4).toUpperCase();
+  if (cleanWords.length === 1) return cleanWords[0].substring(0, 4).toUpperCase();
+  return cleanWords.map(w => w[0]).join('').toUpperCase().substring(0, 6);
 }
 
 export default function RegisteredInstitutions({
   onSelectInstitution,
   searchQuery,
+  refreshKey = 0,
+  dbCenters: propsDbCenters,
+  loading: propsLoading,
 }: RegisteredInstitutionsProps) {
   const [selectedCategory, setSelectedCategory] = useState<string>('Todas');
+  const [internalDbCenters, setInternalDbCenters] = useState<EducationalCenter[]>([]);
+  const [internalLoading, setInternalLoading] = useState(false);
+
+  // Usar props o fallback interno
+  const dbCenters = propsDbCenters !== undefined ? propsDbCenters : internalDbCenters;
+  const loading = propsLoading !== undefined ? propsLoading : internalLoading;
+
+  useEffect(() => {
+    if (propsDbCenters !== undefined) return; // Si viene por props, no hacer fetch interno
+    async function loadCenters() {
+      try {
+        setInternalLoading(true);
+        const data = await getEducationalCenters();
+        setInternalDbCenters(data);
+      } catch (err) {
+        console.error('Error al cargar centros de Supabase:', err);
+      } finally {
+        setInternalLoading(false);
+      }
+    }
+    loadCenters();
+  }, [refreshKey, propsDbCenters]);
 
   const categories = ['Todas', 'Universidad', 'Instituto', 'Colegio'];
 
-  const filteredInstitutions = MOCK_INSTITUTIONS.filter((inst) => {
+  // Mapear los centros de Supabase al tipo Institution
+  const mappedDbCenters: Institution[] = dbCenters.map(center => {
+    const category: 'Universidad' | 'Instituto' | 'Colegio' = 
+      center.type === 'colegio' 
+        ? 'Colegio' 
+        : center.type === 'instituto' 
+          ? 'Instituto' 
+          : 'Universidad';
+
+    const fallbackImages = {
+      'Colegio': 'https://images.unsplash.com/photo-1503676260728-1c00da094a0b?q=80&w=800&auto=format&fit=crop',
+      'Instituto': 'https://images.unsplash.com/photo-1562774053-701939374585?q=80&w=800&auto=format&fit=crop',
+      'Universidad': 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?q=80&w=800&auto=format&fit=crop'
+    };
+
+    return {
+      id: center.id,
+      name: center.name,
+      acronym: generateAcronym(center.name),
+      category,
+      campus: 'Sede Principal',
+      city: 'Registrado por Alumno',
+      studentsCount: 1, // Nuevo centro creado por usuario
+      popularityScore: 7.0,
+      verified: false,
+      image: center.profile_photo_url || fallbackImages[category],
+      topStudent: 'Sin líder',
+    };
+  });
+
+  // Mostrar exclusivamente los centros reales de la base de datos (no inventados/mock)
+  const combinedInstitutions = mappedDbCenters;
+
+  const filteredInstitutions = combinedInstitutions.filter((inst) => {
     const matchesCategory =
       selectedCategory === 'Todas' || inst.category === selectedCategory;
     const matchesSearch =
@@ -41,7 +117,7 @@ export default function RegisteredInstitutions({
             INSTITUCIONES <span className="text-[#eab308]">REGISTRADAS</span>
           </h2>
           <p className="text-zinc-400 text-sm mt-1 max-w-xl">
-            Descubre los campus con mayor índice de popularidad y participación estudiantil.
+            Descubre los campus reales con mayor índice de popularidad y participación estudiantil.
           </p>
         </div>
 
@@ -64,11 +140,20 @@ export default function RegisteredInstitutions({
       </div>
 
       {/* INSTITUTION CARDS GRID */}
-      {filteredInstitutions.length === 0 ? (
+      {loading ? (
+        <div className="bg-[#0d0d0d] border border-[#ffffff10] rounded-xl p-16 text-center text-zinc-400">
+          <div className="w-10 h-10 border-2 border-[#eab308] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-sm font-bold text-white uppercase tracking-wider">Cargando instituciones reales...</p>
+        </div>
+      ) : filteredInstitutions.length === 0 ? (
         <div className="bg-[#0d0d0d] border border-[#ffffff10] rounded-xl p-12 text-center text-zinc-400">
           <Building2 className="w-12 h-12 text-[#eab308]/50 mx-auto mb-3" />
-          <p className="text-lg font-bold text-white">No se encontraron instituciones</p>
-          <p className="text-sm mt-1">Intenta ajustando los términos de búsqueda o filtros.</p>
+          <p className="text-lg font-bold text-white">No se encontraron instituciones registradas</p>
+          <p className="text-sm mt-1 max-w-md mx-auto">
+            {dbCenters.length === 0 
+              ? 'Aún no se han registrado centros educativos reales en la base de datos. ¡Sé el primero en registrar uno oficial utilizando el botón "Crear Centro" del menú!' 
+              : 'Intenta ajustando los términos de búsqueda o filtros de categoría.'}
+          </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
