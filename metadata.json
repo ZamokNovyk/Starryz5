@@ -1,0 +1,6 @@
+{
+  "name": "STARRYZ 5",
+  "description": "Plataforma para medir la popularidad en el campus universitario e instituciones.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
