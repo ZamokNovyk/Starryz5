@@ -731,17 +731,13 @@ export default function ProfessorProfile({
                 </div>
 
                 {/* Biography content */}
-                <div className="space-y-3">
-                  {professor.biography ? (
+                {professor.biography && (
+                  <div className="space-y-3">
                     <p className="text-sm text-zinc-300 leading-relaxed whitespace-pre-wrap">
                       {professor.biography}
                     </p>
-                  ) : (
-                    <p className="text-sm text-zinc-400 leading-relaxed italic">
-                      {professor.nombre_completo} está registrado en nuestra red como {professor.role} del centro educativo. Por el momento, la comunidad estudiantil no ha agregado una biografía detallada para este miembro.
-                    </p>
-                  )}
-                </div>
+                  </div>
+                )}
 
                 {/* Personal Info Grid */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-zinc-800/40">
@@ -775,6 +771,24 @@ export default function ProfessorProfile({
                       })() : 'No especificada'}
                     </span>
                   </div>
+
+                  {professor.birth_date && (
+                    <div className="bg-[#050505] p-4 rounded-xl border border-zinc-800/20 space-y-1">
+                      <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider block">Edad</span>
+                      <span className="text-sm font-bold text-white block">
+                        {(() => {
+                          const birthDate = new Date(professor.birth_date + 'T00:00:00');
+                          const today = new Date();
+                          let age = today.getFullYear() - birthDate.getFullYear();
+                          const m = today.getMonth() - birthDate.getMonth();
+                          if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+                            age--;
+                          }
+                          return `${age} años`;
+                        })()}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Social Media Links if present */}
