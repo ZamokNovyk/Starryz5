@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Search, 
   UserPlus, 
@@ -11,9 +11,13 @@ import {
   GraduationCap, 
   UserCheck, 
   Building2, 
-  BookOpen
+  BookOpen,
+  Settings,
+  Sun,
+  Moon
 } from 'lucide-react';
 import { useAuth } from '@/src/context/AuthContext';
+import { useTheme } from '@/src/context/ThemeContext';
 import AutocompleteSearchBar from './AutocompleteSearchBar';
 import { SearchSuggestion } from '@/src/lib/search';
 
@@ -40,7 +44,25 @@ export default function Header({
 }: HeaderProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsRef = useRef<HTMLDivElement>(null);
   const { user, logout } = useAuth();
+  const { theme, toggleTheme } = useTheme();
+
+  // Cerrar menú de configuración al hacer clic fuera
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (settingsRef.current && !settingsRef.current.contains(event.target as Node)) {
+        setSettingsOpen(false);
+      }
+    }
+    if (settingsOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [settingsOpen]);
 
   const handleSearchSubmit = (queryText: string) => {
     if (onSearch) {
@@ -112,10 +134,29 @@ export default function Header({
               <Search className="w-5 h-5" />
             </button>
 
-            {/* BOTONES DE USUARIO (DESKTOP) */}
+            {/* BOTONES DE USUARIO Y CONFIGURACIÓN (DESKTOP) */}
             <div className="hidden md:flex items-center gap-3">
+              {/* BOTÓN RÁPIDO DE CAMBIO DE TEMA */}
+              <button
+                onClick={toggleTheme}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#141414] border border-[#ffffff15] text-xs font-bold text-zinc-300 hover:text-white hover:border-[#eab308]/40 transition-all cursor-pointer select-none"
+                title={`Cambiar a modo ${theme === 'night' ? 'Día' : 'Noche'}`}
+              >
+                {theme === 'night' ? (
+                  <>
+                    <Moon className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>Modo Noche</span>
+                  </>
+                ) : (
+                  <>
+                    <Sun className="w-3.5 h-3.5 text-amber-500" />
+                    <span>Modo Día</span>
+                  </>
+                )}
+              </button>
+
               {user ? (
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-2.5 relative" ref={settingsRef}>
                   <button
                     onClick={onGoToProfile}
                     className="flex items-center gap-2 bg-[#141414] border border-[#ffffff10] hover:border-[#eab308]/50 pl-2 pr-3 py-1.5 rounded-full hover:bg-[#1a1a1a] transition-all cursor-pointer text-left"
@@ -137,15 +178,71 @@ export default function Header({
                       {user.displayName}
                     </span>
                   </button>
-                  {!user.isAnonymous && (
+                  
+                  {/* BOTÓN TIPO CONFIGURACIÓN CON MENÚ DESPLEGABLE */}
+                  <div className="relative">
                     <button
-                      onClick={logout}
-                      className="p-2 rounded-xl bg-[#141414] border border-[#ffffff15] text-zinc-400 hover:text-white hover:border-red-500/50 transition-colors cursor-pointer"
-                      title="Cerrar Sesión"
+                      onClick={() => setSettingsOpen(!settingsOpen)}
+                      className={`p-2 rounded-xl border transition-all cursor-pointer ${
+                        settingsOpen
+                          ? 'bg-amber-500/20 border-amber-500/50 text-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.25)]'
+                          : 'bg-[#141414] border-[#ffffff15] text-zinc-400 hover:text-white hover:border-[#eab308]/40'
+                      }`}
+                      title="Configuración de la cuenta"
+                      aria-label="Abrir menú de configuración"
                     >
-                      <LogOut className="w-4 h-4" />
+                      <Settings className={`w-4 h-4 transition-transform duration-300 ${settingsOpen ? 'rotate-90 text-amber-400' : ''}`} />
                     </button>
-                  )}
+
+                    {/* POPUP / DROPDOWN DE CONFIGURACIÓN */}
+                    {settingsOpen && (
+                      <div className="absolute right-0 mt-2 w-56 bg-[#111111] border border-zinc-800 rounded-2xl shadow-[0_12px_40px_rgba(0,0,0,0.85)] p-2 z-50 animate-in fade-in zoom-in-95 duration-150 ring-1 ring-white/5 space-y-1">
+                        
+                        {/* Cabecera del Menú */}
+                        <div className="px-3 py-2 border-b border-zinc-800/80 mb-1">
+                          <div className="text-[10px] font-black uppercase tracking-widest text-zinc-400">
+                            Ajustes
+                          </div>
+                          <div className="text-xs font-bold text-white truncate">
+                            {user.displayName || 'Mi Cuenta'}
+                          </div>
+                        </div>
+
+                        {/* OPCIÓN 1: CAMBIAR TEMA DÍA / NOCHE */}
+                        <button
+                          onClick={toggleTheme}
+                          className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold text-zinc-300 hover:text-white hover:bg-zinc-800/60 transition-all cursor-pointer group text-left"
+                        >
+                          <div className="flex items-center gap-2.5">
+                            {theme === 'night' ? (
+                              <Moon className="w-4 h-4 text-indigo-400 group-hover:scale-110 transition-transform" />
+                            ) : (
+                              <Sun className="w-4 h-4 text-amber-400 group-hover:scale-110 transition-transform" />
+                            )}
+                            <span>Tema</span>
+                          </div>
+                          <span className="px-2 py-0.5 rounded-md bg-zinc-800 text-[10px] font-mono text-zinc-400 group-hover:text-amber-400 border border-zinc-700/50">
+                            {theme === 'night' ? '🌙 Noche' : '☀️ Día'}
+                          </span>
+                        </button>
+
+                        {/* OPCIÓN 2: CERRAR SESIÓN */}
+                        {!user.isAnonymous && (
+                          <button
+                            onClick={() => {
+                              setSettingsOpen(false);
+                              logout();
+                            }}
+                            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-bold text-red-400 hover:text-red-300 hover:bg-red-950/30 transition-all cursor-pointer group text-left border-t border-zinc-800/60 mt-1"
+                          >
+                            <LogOut className="w-4 h-4 text-red-400 group-hover:-translate-x-0.5 transition-transform" />
+                            <span>Cerrar Sesión</span>
+                          </button>
+                        )}
+
+                      </div>
+                    )}
+                  </div>
                 </div>
               ) : (
                 <button
@@ -202,6 +299,25 @@ export default function Header({
                     </div>
                   </div>
                 </button>
+
+                {/* BOTÓN CAMBIO DE TEMA EN MÓVIL */}
+                <button
+                  onClick={toggleTheme}
+                  className="w-full flex items-center justify-between py-2.5 px-4 rounded-xl border border-zinc-800 bg-[#141414] text-zinc-300 hover:text-white transition-all"
+                >
+                  <div className="flex items-center gap-2.5">
+                    {theme === 'night' ? (
+                      <Moon className="w-4 h-4 text-indigo-400" />
+                    ) : (
+                      <Sun className="w-4 h-4 text-amber-400" />
+                    )}
+                    <span className="text-xs font-bold">Cambiar Tema</span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-md bg-zinc-800 text-[10px] font-mono text-amber-400 border border-zinc-700/50">
+                    {theme === 'night' ? '🌙 Modo Noche' : '☀️ Modo Día'}
+                  </span>
+                </button>
+
                 {!user.isAnonymous && (
                   <button
                     onClick={() => {
