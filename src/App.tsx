@@ -141,7 +141,7 @@ export default function App() {
   // Auto-navigate to profile when user logs in if they previously clicked "Perfil"
   useEffect(() => {
     if (user && autoNavigateToProfile) {
-      navigate('/perfil');
+      navigate(`/perfil/${user.uid}`);
       setAutoNavigateToProfile(false);
     }
   }, [user, autoNavigateToProfile]);
@@ -159,7 +159,7 @@ export default function App() {
 
   const handleProfileTabClick = () => {
     if (user) {
-      navigate('/perfil');
+      navigate(`/perfil/${user.uid}`);
     } else {
       setJoinModalOpen(true);
       setAutoNavigateToProfile(true);
