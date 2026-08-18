@@ -12,6 +12,8 @@ export interface Professor {
   created_by: string;
   created_at?: string;
   knows_count?: number;
+  fans_count?: number;
+  crushes_count?: number;
   score?: number;
   total_ratings?: number;
   avatar_url?: string;
@@ -108,11 +110,11 @@ export async function getProfessorById(slug: string): Promise<Professor | null> 
 }
 
 /**
- * Obtiene los profesores asignados a un instituto / campus específico.
+ * Obtiene los profesores asignados a un instituto / campus específico con sus conteos reales.
  */
 export async function getProfessorsByInstitute(instituteId: string): Promise<Professor[]> {
   try {
-    const { data, error } = await supabase
+    const { data: profs, error } = await supabase
       .from('professors')
       .select('*')
       .eq('institute_id', instituteId);
@@ -125,7 +127,77 @@ export async function getProfessorsByInstitute(instituteId: string): Promise<Pro
       return [];
     }
 
-    return (data as Professor[]) || [];
+    if (!profs || profs.length === 0) {
+      return [];
+    }
+
+    const profIds = profs.map((p: any) => p.id);
+
+    // Obtener interacciones (knows / fan) en batch para todos los profesores del instituto
+    const interactionsMap: Record<string, { knows: number; fan: number }> = {};
+    try {
+      const { data: interactions } = await supabase
+        .from('professor_interactions')
+        .select('professor_id, interaction_type')
+        .in('professor_id', profIds);
+
+      if (interactions) {
+        interactions.forEach((item: any) => {
+          if (!interactionsMap[item.professor_id]) {
+            interactionsMap[item.professor_id] = { knows: 0, fan: 0 };
+          }
+          if (item.interaction_type === 'knows') {
+            interactionsMap[item.professor_id].knows += 1;
+          } else if (item.interaction_type === 'fan') {
+            interactionsMap[item.professor_id].fan += 1;
+          }
+        });
+      }
+    } catch (e) {
+      console.warn('Aviso al cargar interacciones de profesores:', e);
+    }
+
+    // Obtener crushes en batch
+    const crushesMap: Record<string, number> = {};
+    try {
+      const { data: crushes } = await supabase
+        .from('professor_crushes')
+        .select('professor_id')
+        .in('professor_id', profIds);
+
+      if (crushes) {
+        crushes.forEach((c: any) => {
+          crushesMap[c.professor_id] = (crushesMap[c.professor_id] || 0) + 1;
+        });
+      }
+    } catch (e) {
+      console.warn('Aviso al cargar crushes de profesores:', e);
+    }
+
+    // Mapear con datos reales
+    return profs.map((p: any) => {
+      const ints = interactionsMap[p.id] || { knows: 0, fan: 0 };
+      
+      // Fallback local storage crushes si aplica
+      let localCrushCount = 0;
+      if (typeof window !== 'undefined') {
+        try {
+          const localData = JSON.parse(localStorage.getItem(`crushes_${p.id}`) || '[]');
+          if (Array.isArray(localData)) localCrushCount = localData.length;
+        } catch (e) {}
+      }
+
+      const totalCrushes = Math.max(crushesMap[p.id] || 0, localCrushCount);
+
+      return {
+        ...p,
+        knows_count: ints.knows,
+        fans_count: ints.fan,
+        crushes_count: totalCrushes,
+        score: typeof p.score === 'number' ? Number(p.score) : 0.0,
+        total_ratings: typeof p.total_ratings === 'number' ? p.total_ratings : 0,
+      } as Professor;
+    });
   } catch (err) {
     console.warn('Excepción de red al obtener profesores por instituto:', err);
     return [];

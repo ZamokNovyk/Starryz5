@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   ArrowLeft, 
   Share2, 
@@ -8,7 +8,7 @@ import {
   Search, 
   SlidersHorizontal, 
   List, 
-  Grid, 
+  LayoutGrid, 
   Heart, 
   Users, 
   MessageSquare, 
@@ -20,7 +20,8 @@ import {
   ShieldCheck,
   CheckCircle2,
   Lock,
-  Plus
+  Plus,
+  User
 } from 'lucide-react';
 import { Institution } from '@/lib/mockData';
 import { getProfessorsByInstitute, Professor as DbProfessor } from '@/src/lib/professors';
@@ -34,16 +35,18 @@ interface EducationalCenterProfileViewProps {
 }
 
 type TabType = 'Wiki' | 'Profesores' | 'Confesiones' | 'Galeria';
+type ViewMode = 'list' | 'grid';
+type SortOption = 'alphabetical' | 'score_desc' | 'score_asc' | 'fans_desc' | 'knows_desc' | 'crushes_desc';
 
-interface Professor {
-  id?: string;
-  rank?: number;
+interface MemberItem {
+  id: string;
   name: string;
   avatar: string;
-  likes: number;
-  students: number;
-  confessions: number;
+  fans: number;
+  knows: number;
+  crushes: number;
   score: number;
+  role: 'Alumno' | 'Profesor';
 }
 
 interface Confession {
@@ -69,22 +72,31 @@ export default function EducationalCenterProfileView({
   onSelectProfessor,
 }: EducationalCenterProfileViewProps) {
   const [activeTab, setActiveTab] = useState<TabType>('Profesores');
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const [sortBy, setSortBy] = useState<SortOption>('alphabetical');
+  const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [addMemberOpen, setAddMemberOpen] = useState(false);
   const [dbProfessors, setDbProfessors] = useState<DbProfessor[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
 
-  // Helper helper slug generator
-  const getSlugFromName = (name: string) => {
-    return name
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '') // remove accents
-      .replace(/[^a-z0-9]/g, '.') // replace non-alphanumeric with dot
-      .replace(/\.+/g, '.') // collapse multiple dots
-      .replace(/^\.|\.$/g, ''); // trim dots from start/end
-  };
+  const sortMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close sort menu when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (sortMenuRef.current && !sortMenuRef.current.contains(event.target as Node)) {
+        setIsSortMenuOpen(false);
+      }
+    }
+    if (isSortMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isSortMenuOpen]);
 
   const loadMembers = async () => {
     try {
@@ -111,32 +123,59 @@ export default function EducationalCenterProfileView({
     }
   };
 
-  // Convert real database payload into Professor list UI format
-  const mappedDbProfessors: Professor[] = dbProfessors.map((dp) => ({
+  // Convert real database payload into member list UI format
+  const mappedMembers: MemberItem[] = dbProfessors.map((dp) => ({
     id: dp.id,
-    name: dp.nombre_completo || `${dp.nombre} ${dp.apellidos}`,
-    avatar: dp.role === 'Alumno' 
-      ? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=150&auto=format&fit=crop'
-      : '', // initials fallback
-    likes: dp.knows_count || 0,
-    students: dp.role === 'Alumno' ? 0 : 4,
-    confessions: 0,
-    score: dp.score || 0.0,
-  }));
-
-  // Add calculated dynamic ranks
-  const finalProfessors = mappedDbProfessors.map((p, idx) => ({
-    ...p,
-    rank: idx + 1,
+    name: dp.nombre_completo || `${dp.nombre || ''} ${dp.apellidos || ''}`.trim() || 'Miembro',
+    avatar: dp.avatar_url || '',
+    fans: typeof dp.fans_count === 'number' ? dp.fans_count : 0,
+    knows: typeof dp.knows_count === 'number' ? dp.knows_count : 0,
+    crushes: typeof dp.crushes_count === 'number' ? dp.crushes_count : 0,
+    score: typeof dp.score === 'number' ? Number(dp.score) : 0.0,
+    role: dp.role || 'Profesor',
   }));
 
   // Filter list with searchTerm
-  const filteredProfessors = finalProfessors.filter(p => 
+  const filteredMembers = mappedMembers.filter(p => 
     p.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  // Sort based on current selection
+  const sortedMembers = [...filteredMembers].sort((a, b) => {
+    switch (sortBy) {
+      case 'alphabetical':
+        return a.name.localeCompare(b.name, 'es', { sensitivity: 'base' });
+      case 'score_desc':
+        return b.score - a.score || b.fans - a.fans || a.name.localeCompare(b.name);
+      case 'score_asc':
+        return a.score - b.score || a.fans - b.fans || a.name.localeCompare(b.name);
+      case 'fans_desc':
+        return b.fans - a.fans || b.score - a.score || a.name.localeCompare(b.name);
+      case 'knows_desc':
+        return b.knows - a.knows || b.score - a.score || a.name.localeCompare(b.name);
+      case 'crushes_desc':
+        return b.crushes - a.crushes || b.score - a.score || a.name.localeCompare(b.name);
+      default:
+        return 0;
+    }
+  });
 
-  // Wiki, Confessions and Gallery are kept empty as they don't have database records yet
+  // Calculate dynamic rank for each member
+  const rankedMembers = sortedMembers.map((m, idx) => ({
+    ...m,
+    rank: idx + 1,
+  }));
+
+  const sortOptions: { id: SortOption; label: string }[] = [
+    { id: 'alphabetical', label: 'Alfabéticamente (A-Z)' },
+    { id: 'score_desc', label: 'Mejor Calificación' },
+    { id: 'score_asc', label: 'Peor Calificación' },
+    { id: 'fans_desc', label: 'Más Fans' },
+    { id: 'knows_desc', label: 'Más "Yo te conozco"' },
+    { id: 'crushes_desc', label: 'Más Crushes' },
+  ];
+
+  // Wiki, Confessions and Gallery
   const wikiArticles: WikiArticle[] = [];
   const confessionsList: Confession[] = [];
   const galleryImages: { url: string; caption: string }[] = [];
@@ -155,7 +194,7 @@ export default function EducationalCenterProfileView({
         </button>
       </div>
 
-      {/* HEADER DE LA INSTITUCIÓN (Diseño idéntico a imagen 1) */}
+      {/* HEADER DE LA INSTITUCIÓN */}
       <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 pt-2 pb-4">
         {/* Avatar circular */}
         <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-[#181818] border border-zinc-800 flex items-center justify-center text-zinc-500 text-3xl font-black shadow-lg flex-shrink-0">
@@ -193,7 +232,7 @@ export default function EducationalCenterProfileView({
         </div>
       </div>
 
-      {/* INPUT BUSCADOR (Diseño idéntico a imagen 1) */}
+      {/* INPUT BUSCADOR */}
       <div className="relative w-full">
         <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
         <input
@@ -205,7 +244,7 @@ export default function EducationalCenterProfileView({
         />
       </div>
 
-      {/* BARRA DE TABS / TAGS (Wiki, Profesores, Confesiones, Galeria - idéntico a la imagen 1 con tags solicitadas) */}
+      {/* BARRA DE TABS / TAGS */}
       <div className="bg-[#0d0d0d] border border-zinc-800/80 rounded-xl p-1 overflow-x-auto scrollbar-none">
         <div className="flex items-center gap-1.5 min-w-max">
           
@@ -264,92 +303,228 @@ export default function EducationalCenterProfileView({
         </div>
       </div>
 
-      {/* CONTROLES DE ORDEN / VISTA */}
-      <div className="flex items-center justify-end gap-3 pt-1">
-        <div className="flex items-center bg-[#0d0d0d] border border-zinc-800/80 rounded-lg p-1">
-          <button className="p-1.5 text-[#eab308] bg-[#151515] rounded-md">
+      {/* CONTROLES DE ORDEN / VISTA (Lista, Mosaico y Menú Ordenar) */}
+      <div className="flex items-center justify-end gap-3 pt-1 relative">
+        
+        {/* Toggle Lista / Mosaico */}
+        <div className="flex items-center bg-[#0d0d0d] border border-zinc-800/80 rounded-xl p-1 shadow-sm">
+          <button 
+            type="button"
+            onClick={() => setViewMode('list')}
+            title="Vista de Lista"
+            className={`p-2 rounded-lg transition-all cursor-pointer ${
+              viewMode === 'list' 
+                ? 'text-[#eab308] bg-[#1a1a1a] shadow-sm' 
+                : 'text-zinc-500 hover:text-zinc-300'
+            }`}
+          >
             <List className="w-4 h-4" />
           </button>
-          <button className="p-1.5 text-zinc-500 hover:text-zinc-300">
-            <Grid className="w-4 h-4" />
+          <button 
+            type="button"
+            onClick={() => setViewMode('grid')}
+            title="Vista de Mosaico"
+            className={`p-2 rounded-lg transition-all cursor-pointer ${
+              viewMode === 'grid' 
+                ? 'text-[#eab308] bg-[#1a1a1a] shadow-sm' 
+                : 'text-zinc-500 hover:text-zinc-300'
+            }`}
+          >
+            <LayoutGrid className="w-4 h-4" />
           </button>
         </div>
-        <button className="flex items-center gap-1.5 px-3 py-1.5 bg-[#0d0d0d] border border-zinc-800/80 rounded-lg text-[10px] font-black uppercase tracking-widest text-zinc-400 hover:text-white transition-colors">
-          <SlidersHorizontal className="w-3.5 h-3.5" />
-          <span>Ordenar</span>
-        </button>
+
+        {/* Botón Ordenar */}
+        <div className="relative" ref={sortMenuRef}>
+          <button 
+            type="button"
+            onClick={() => setIsSortMenuOpen(!isSortMenuOpen)}
+            className={`flex items-center gap-2 px-3.5 py-2 bg-[#0d0d0d] border ${
+              isSortMenuOpen ? 'border-[#eab308]/60 text-white' : 'border-zinc-800/80 text-zinc-400'
+            } rounded-xl text-xs font-bold uppercase tracking-wider hover:text-white hover:border-zinc-700 transition-all cursor-pointer shadow-sm`}
+          >
+            <SlidersHorizontal className="w-4 h-4 text-[#eab308]" />
+            <span>Ordenar</span>
+          </button>
+
+          {/* Menú Desplegable Ordenar por (Idéntico a imagen 4) */}
+          {isSortMenuOpen && (
+            <div className="absolute right-0 top-full mt-2 w-60 bg-[#0d0d0d] border border-zinc-800 rounded-2xl p-2 shadow-[0_10px_35px_rgba(0,0,0,0.85)] z-50 animate-in fade-in zoom-in-95 duration-150">
+              <div className="px-3 py-2 text-xs font-black text-white uppercase tracking-wider border-b border-zinc-800/80 mb-1">
+                Ordenar por
+              </div>
+              <div className="space-y-0.5">
+                {sortOptions.map((opt) => {
+                  const isSelected = sortBy === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => {
+                        setSortBy(opt.id);
+                        setIsSortMenuOpen(false);
+                      }}
+                      className={`w-full text-left px-3 py-2.5 rounded-xl text-xs font-medium transition-all flex items-center gap-2.5 cursor-pointer ${
+                        isSelected
+                          ? 'bg-[#1a1a1a] text-white font-bold'
+                          : 'text-zinc-400 hover:bg-[#141414] hover:text-zinc-200'
+                      }`}
+                    >
+                      <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                        isSelected ? 'bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)]' : 'bg-transparent'
+                      }`} />
+                      <span>{opt.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* RENDERIZADO DE CONTENIDOS SEGÚN LA TAB ACTIVA */}
       
-      {/* 1. PROFESORES TAB (Diseño exacto de imagen 1) */}
+      {/* 1. PROFESORES TAB */}
       {activeTab === 'Profesores' && (
-        <div className="space-y-3">
-          {filteredProfessors.length === 0 ? (
-            <div className="bg-[#0d0d0d] border border-zinc-800/40 rounded-xl p-12 text-center text-zinc-500 text-sm">
-              No se encontraron profesores con la búsqueda actual.
+        <>
+          {rankedMembers.length === 0 ? (
+            <div className="bg-[#0d0d0d] border border-zinc-800/40 rounded-2xl p-12 text-center text-zinc-500 text-sm">
+              {loadingMembers ? (
+                <div className="flex flex-col items-center gap-3">
+                  <div className="w-8 h-8 border-2 border-[#eab308] border-t-transparent rounded-full animate-spin"></div>
+                  <span>Cargando miembros...</span>
+                </div>
+              ) : (
+                'No se encontraron miembros con la búsqueda actual.'
+              )}
+            </div>
+          ) : viewMode === 'list' ? (
+            /* VISTA DE LISTA (Idéntico a imagen 2 y 3) */
+            <div className="space-y-3">
+              {rankedMembers.map((p) => (
+                <div
+                  key={p.id}
+                  onClick={() => {
+                    if (onSelectProfessor) {
+                      onSelectProfessor(p.id);
+                    }
+                  }}
+                  className="group flex items-center justify-between gap-4 bg-[#0d0d0d] border border-zinc-800/40 hover:border-[#eab308]/30 hover:bg-[#121212] rounded-2xl p-4 transition-all duration-300 cursor-pointer shadow-sm"
+                >
+                  <div className="flex items-center gap-4 min-w-0">
+                    {/* Rank circular */}
+                    <div className="w-8 h-8 rounded-full bg-[#131313] border border-zinc-800/80 flex items-center justify-center text-xs font-black text-zinc-500 group-hover:text-[#eab308] transition-colors flex-shrink-0">
+                      {p.rank}
+                    </div>
+
+                    {/* Avatar circular */}
+                    {p.avatar ? (
+                      <img
+                        src={p.avatar}
+                        alt={p.name}
+                        className="w-11 h-11 rounded-full object-cover border border-zinc-800 flex-shrink-0"
+                      />
+                    ) : (
+                      <div className="w-11 h-11 rounded-full bg-[#1e1e1e] border border-zinc-800 flex items-center justify-center text-white font-black text-sm uppercase flex-shrink-0">
+                        {p.name.charAt(0)}
+                      </div>
+                    )}
+
+                    {/* Datos del profesor */}
+                    <div className="space-y-1 min-w-0">
+                      <h3 className="text-sm sm:text-base font-extrabold text-white group-hover:text-[#eab308] transition-colors leading-snug truncate">
+                        {p.name}
+                      </h3>
+                      <div className="flex items-center gap-3.5 text-xs text-zinc-500">
+                        <span className="flex items-center gap-1.5" title={`${p.fans} Fans`}>
+                          <Heart className="w-3.5 h-3.5 text-pink-500 fill-pink-500" />
+                          <span>{p.fans}</span>
+                        </span>
+                        <span className="flex items-center gap-1.5" title={`${p.knows} Yo te conozco`}>
+                          <Users className="w-3.5 h-3.5 text-amber-500 fill-amber-500/10" />
+                          <span>{p.knows}</span>
+                        </span>
+                        <span className="flex items-center gap-1.5" title={`${p.crushes} Crushes`}>
+                          <span className="text-xs leading-none">💘</span>
+                          <span>{p.crushes}</span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Score en el extremo derecho */}
+                  <div className="flex items-center gap-1.5 text-sm sm:text-base font-black text-[#eab308] flex-shrink-0">
+                    <Star className="w-4 h-4 fill-[#eab308] text-[#eab308]" />
+                    <span>{p.score.toFixed(1)}</span>
+                  </div>
+                </div>
+              ))}
             </div>
           ) : (
-            filteredProfessors.map((p) => (
-              <div
-                key={p.rank}
-                onClick={() => {
-                  if (onSelectProfessor) {
-                    onSelectProfessor(p.id || getSlugFromName(p.name));
-                  }
-                }}
-                className="group flex items-center justify-between gap-4 bg-[#0d0d0d] border border-zinc-800/40 hover:border-[#eab308]/30 hover:bg-[#121212] rounded-xl p-4 transition-all duration-300 cursor-pointer"
-              >
-                <div className="flex items-center gap-4">
-                  {/* Rank circular */}
-                  <div className="w-8 h-8 rounded-full bg-[#131313] flex items-center justify-center text-xs font-black text-zinc-600 group-hover:text-[#eab308] transition-colors">
-                    {p.rank}
+            /* VISTA DE MOSAICO (Idéntico a imagen 5) */
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3.5 sm:gap-4">
+              {rankedMembers.map((p) => (
+                <div
+                  key={p.id}
+                  onClick={() => {
+                    if (onSelectProfessor) {
+                      onSelectProfessor(p.id);
+                    }
+                  }}
+                  className="group relative bg-[#0d0d0d] border border-zinc-800/60 hover:border-[#eab308]/50 hover:bg-[#121212] rounded-2xl overflow-hidden transition-all duration-300 cursor-pointer flex flex-col justify-between shadow-md hover:shadow-[0_8px_30px_rgba(234,179,8,0.12)] hover:-translate-y-0.5"
+                >
+                  {/* Top Badges (Rank y Score) */}
+                  <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between z-10 pointer-events-none">
+                    <span className="w-6 h-6 rounded-full bg-black/75 backdrop-blur-md border border-white/10 text-white font-black text-[11px] flex items-center justify-center shadow">
+                      {p.rank}
+                    </span>
+                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-black/75 backdrop-blur-md border border-[#eab308]/30 text-[#eab308] font-black text-[11px] shadow">
+                      <Star className="w-3 h-3 fill-[#eab308] text-[#eab308]" />
+                      <span>{p.score.toFixed(1)}</span>
+                    </span>
                   </div>
 
-                  {/* Avatar circular */}
-                  {p.avatar ? (
-                    <img
-                      src={p.avatar}
-                      alt={p.name}
-                      className="w-11 h-11 rounded-full object-cover border border-zinc-800"
-                    />
-                  ) : (
-                    <div className="w-11 h-11 rounded-full bg-[#1e1e1e] border border-zinc-800 flex items-center justify-center text-white font-black text-sm uppercase">
-                      {p.name.charAt(0)}
-                    </div>
-                  )}
+                  {/* Imagen / Avatar Header */}
+                  <div className="relative w-full aspect-square bg-[#151515] overflow-hidden flex items-center justify-center">
+                    {p.avatar ? (
+                      <img
+                        src={p.avatar}
+                        alt={p.name}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-b from-[#181818] to-[#121212]">
+                        <User className="w-14 h-14 text-zinc-700 stroke-[1.25] group-hover:text-zinc-500 transition-colors" />
+                      </div>
+                    )}
+                  </div>
 
-                  {/* Datos del profesor */}
-                  <div className="space-y-1">
-                    <h3 className="text-sm sm:text-base font-extrabold text-white group-hover:text-[#eab308] transition-colors leading-snug">
+                  {/* Info Footer */}
+                  <div className="p-3 bg-[#0d0d0d] space-y-1.5 border-t border-zinc-800/40">
+                    <h3 className="font-extrabold text-xs sm:text-sm text-white group-hover:text-[#eab308] transition-colors truncate" title={p.name}>
                       {p.name}
                     </h3>
-                    <div className="flex items-center gap-3.5 text-xs text-zinc-500">
-                      <span className="flex items-center gap-1">
-                        <Heart className="w-3.5 h-3.5 text-zinc-600" />
-                        {p.likes}
+                    <div className="flex items-center justify-between text-[11px] text-zinc-500 pt-0.5">
+                      <span className="flex items-center gap-1" title={`${p.fans} Fans`}>
+                        <Heart className="w-3 h-3 text-pink-500 fill-pink-500" />
+                        <span>{p.fans}</span>
                       </span>
-                      <span className="flex items-center gap-1">
-                        <Users className="w-3.5 h-3.5 text-zinc-600" />
-                        {p.students}
+                      <span className="flex items-center gap-1" title={`${p.knows} Yo te conozco`}>
+                        <Users className="w-3 h-3 text-amber-500 fill-amber-500/10" />
+                        <span>{p.knows}</span>
                       </span>
-                      <span className="flex items-center gap-1">
-                        <MessageCircle className="w-3.5 h-3.5 text-zinc-600" />
-                        {p.confessions}
+                      <span className="flex items-center gap-1" title={`${p.crushes} Crushes`}>
+                        <span className="text-[11px] leading-none">💘</span>
+                        <span>{p.crushes}</span>
                       </span>
                     </div>
                   </div>
                 </div>
-
-                {/* Score en el extremo derecho */}
-                <div className="flex items-center gap-1.5 text-sm sm:text-base font-black text-[#eab308]">
-                  <Star className="w-4 h-4 fill-[#eab308] text-[#eab308]" />
-                  <span>{p.score.toFixed(1)}</span>
-                </div>
-              </div>
-            ))
+              ))}
+            </div>
           )}
-        </div>
+        </>
       )}
 
       {/* 2. WIKI TAB */}
