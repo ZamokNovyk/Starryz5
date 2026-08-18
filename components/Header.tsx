@@ -14,7 +14,8 @@ import {
   BookOpen,
   Settings,
   Sun,
-  Moon
+  Moon,
+  Palette
 } from 'lucide-react';
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
@@ -47,7 +48,7 @@ export default function Header({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsRef = useRef<HTMLDivElement>(null);
   const { user, logout } = useAuth();
-  const { theme, toggleTheme } = useTheme();
+  const { theme, toggleTheme, setTheme } = useTheme();
 
   // Cerrar menú de configuración al hacer clic fuera
   useEffect(() => {
@@ -101,13 +102,15 @@ export default function Header({
               <Star className="w-5 h-5 sm:w-6 sm:h-6 fill-[#eab308] text-[#eab308]" />
             </div>
 
-            <div className="flex items-baseline gap-1">
-              <span className="text-lg sm:text-xl font-black tracking-tighter text-white font-sans">
-                STARRYZ
-              </span>
-              <span className="text-lg sm:text-xl font-black text-[#eab308]">
-                5
-              </span>
+            <div className="flex flex-col">
+              <div className="flex items-center gap-1.5 leading-none">
+                <span className="text-lg sm:text-xl font-black tracking-tighter text-white font-sans">
+                  STARRYZ
+                </span>
+                <span className="text-lg sm:text-xl font-black text-[#eab308]">
+                  5
+                </span>
+              </div>
             </div>
           </div>
 
@@ -140,17 +143,22 @@ export default function Header({
               <button
                 onClick={toggleTheme}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#141414] border border-[#ffffff15] text-xs font-bold text-zinc-300 hover:text-white hover:border-[#eab308]/40 transition-all cursor-pointer select-none"
-                title={`Cambiar a modo ${theme === 'night' ? 'Día' : 'Noche'}`}
+                title="Cambiar tema de la aplicación"
               >
                 {theme === 'night' ? (
                   <>
                     <Moon className="w-3.5 h-3.5 text-indigo-400" />
                     <span>Modo Noche</span>
                   </>
-                ) : (
+                ) : theme === 'day' ? (
                   <>
                     <Sun className="w-3.5 h-3.5 text-amber-500" />
                     <span>Modo Día</span>
+                  </>
+                ) : (
+                  <>
+                    <Star className="w-3.5 h-3.5 text-sky-400 fill-sky-400" />
+                    <span>Modo IESPPU</span>
                   </>
                 )}
               </button>
@@ -208,23 +216,45 @@ export default function Header({
                           </div>
                         </div>
 
-                        {/* OPCIÓN 1: CAMBIAR TEMA DÍA / NOCHE */}
-                        <button
-                          onClick={toggleTheme}
-                          className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold text-zinc-300 hover:text-white hover:bg-zinc-800/60 transition-all cursor-pointer group text-left"
-                        >
-                          <div className="flex items-center gap-2.5">
-                            {theme === 'night' ? (
-                              <Moon className="w-4 h-4 text-indigo-400 group-hover:scale-110 transition-transform" />
-                            ) : (
-                              <Sun className="w-4 h-4 text-amber-400 group-hover:scale-110 transition-transform" />
-                            )}
-                            <span>Tema</span>
-                          </div>
-                          <span className="px-2 py-0.5 rounded-md bg-zinc-800 text-[10px] font-mono text-zinc-400 group-hover:text-amber-400 border border-zinc-700/50">
-                            {theme === 'night' ? '🌙 Noche' : '☀️ Día'}
-                          </span>
-                        </button>
+                         {/* SELECCIÓN DE TEMA (3 OPCIONES) */}
+                         <div className="px-3 py-2 border-b border-zinc-800/80 mb-1 space-y-2">
+                           <div className="text-[10px] font-black uppercase tracking-widest text-zinc-400 flex items-center gap-1.5">
+                             <Palette className="w-3.5 h-3.5 text-zinc-400" />
+                             <span>Tema</span>
+                           </div>
+                           <div className="grid grid-cols-3 gap-1">
+                             <button
+                               onClick={() => setTheme('day')}
+                               className={`px-1 py-1.5 rounded-lg text-[9px] font-extrabold transition-all cursor-pointer text-center border ${
+                                 theme === 'day'
+                                   ? 'bg-amber-500/20 border-amber-500/40 text-amber-500'
+                                   : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                               }`}
+                             >
+                               ☀️ Día
+                             </button>
+                             <button
+                               onClick={() => setTheme('night')}
+                               className={`px-1 py-1.5 rounded-lg text-[9px] font-extrabold transition-all cursor-pointer text-center border ${
+                                 theme === 'night'
+                                   ? 'bg-indigo-500/20 border-indigo-500/40 text-indigo-400'
+                                   : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                               }`}
+                             >
+                               🌙 Noche
+                             </button>
+                             <button
+                               onClick={() => setTheme('iesppu')}
+                               className={`px-1 py-1.5 rounded-lg text-[9px] font-extrabold transition-all cursor-pointer text-center border ${
+                                 theme === 'iesppu'
+                                   ? 'bg-sky-500/20 border-sky-500/40 text-sky-400'
+                                   : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                               }`}
+                             >
+                               💙 IESPPU
+                             </button>
+                           </div>
+                         </div>
 
                         {/* OPCIÓN 2: CERRAR SESIÓN */}
                         {!user.isAnonymous && (

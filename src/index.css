@@ -274,3 +274,157 @@ body.light-theme header {
 .light-theme .bg-black\/70 {
   background-color: rgba(15, 23, 42, 0.6) !important;
 }
+
+/* =========================================================================
+   TEMA IESPPU (DEEP DARK NAVY & AZURE/CYAN BRANDING)
+   ========================================================================= */
+
+body.iesppu-theme,
+html.iesppu-theme body,
+.iesppu-theme {
+  background-color: #070b19 !important;
+  color: #ffffff !important;
+}
+
+/* Fondo punteado azul eléctrico en Modo IESPPU */
+.iesppu-theme .bg-radial-grid,
+body.iesppu-theme .bg-radial-grid {
+  background-color: #070b19 !important;
+  background-image: radial-gradient(circle, rgba(14, 165, 233, 0.12) 1.5px, transparent 1.5px) !important;
+  background-size: 24px 24px !important;
+}
+
+/* Header en Modo IESPPU */
+.iesppu-theme header,
+body.iesppu-theme header {
+  background-color: rgba(7, 11, 25, 0.95) !important;
+  border-bottom-color: rgba(14, 165, 233, 0.15) !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+/* Mapeos de Contenedores y Tarjetas a Azul Cobalto Oscuro */
+.iesppu-theme .bg-\[\#0a0a0a\],
+.iesppu-theme .bg-\[\#0d0d0d\],
+.iesppu-theme .bg-\[\#0f0f0f\],
+.iesppu-theme .bg-black,
+.iesppu-theme .bg-zinc-950 {
+  background-color: #0c122c !important;
+}
+
+.iesppu-theme .bg-\[\#141414\],
+.iesppu-theme .bg-\[\#151515\],
+.iesppu-theme .bg-\[\#171717\],
+.iesppu-theme .bg-\[\#1a1a1a\],
+.iesppu-theme .bg-\[\#121212\],
+.iesppu-theme .bg-\[\#111111\],
+.iesppu-theme .bg-\[\#050505\],
+.iesppu-theme .bg-zinc-900,
+.iesppu-theme .bg-zinc-800,
+.iesppu-theme .bg-zinc-850 {
+  background-color: #111a3e !important;
+}
+
+/* Mapeos de Bordes a Azul Eléctrico sutil */
+.iesppu-theme .border-\[\#ffffff10\],
+.iesppu-theme .border-\[\#ffffff15\],
+.iesppu-theme .border-\[\#ffffff08\],
+.iesppu-theme .border-\[\#ffffff0a\],
+.iesppu-theme .border-\[\#ffffff20\],
+.iesppu-theme .border-\[\#ffffff30\],
+.iesppu-theme .border-\[\#ffffff05\],
+.iesppu-theme .border-zinc-900,
+.iesppu-theme .border-zinc-800,
+.iesppu-theme .border-zinc-800\/80,
+.iesppu-theme .border-zinc-800\/60,
+.iesppu-theme .border-zinc-800\/20,
+.iesppu-theme .border-zinc-800\/40,
+.iesppu-theme .border-zinc-700,
+.iesppu-theme .border-zinc-700\/50 {
+  border-color: rgba(14, 165, 233, 0.2) !important;
+}
+
+/* Cambio de color primario (Amarillo -> Azul Eléctrico / Celeste) */
+.iesppu-theme .text-\[\#eab308\],
+.iesppu-theme .text-yellow-400,
+.iesppu-theme .text-amber-400,
+.iesppu-theme .text-amber-500 {
+  color: #38bdf8 !important;
+}
+
+.iesppu-theme .bg-\[\#eab308\],
+.iesppu-theme .bg-yellow-400,
+.iesppu-theme .bg-amber-400,
+.iesppu-theme .bg-amber-500 {
+  background-color: #0ea5e9 !important;
+  color: #ffffff !important;
+}
+
+.iesppu-theme .border-\[\#eab308\],
+.iesppu-theme .border-yellow-400,
+.iesppu-theme .border-amber-400,
+.iesppu-theme .border-amber-500 {
+  border-color: #0ea5e9 !important;
+}
+
+.iesppu-theme .fill-\[\#eab308\],
+.iesppu-theme .fill-yellow-400 {
+  fill: #38bdf8 !important;
+  stroke: #38bdf8 !important;
+}
+
+/* Menú inferior flotante (Home / Mi Perfil) en IESPPU */
+.iesppu-theme .fixed.bottom-6 {
+  background-color: rgba(12, 18, 44, 0.95) !important;
+  border-color: rgba(14, 165, 233, 0.25) !important;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6) !important;
+}
+
+.iesppu-theme .fixed.bottom-6 button {
+  color: #94a3b8 !important;
+}
+
+.iesppu-theme .fixed.bottom-6 button.bg-\[\#eab308\],
+.iesppu-theme .fixed.bottom-6 .bg-\[\#eab308\] {
+  background-color: #0ea5e9 !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 15px rgba(14, 165, 233, 0.4) !important;
+}
+
+/* Botón flotante de añadir (+) */
+.iesppu-theme .fixed.bottom-24.right-6 {
+  background-color: #0ea5e9 !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 25px rgba(14, 165, 233, 0.45) !important;
+}
+
+/* Badge de Estado Supabase */
+.iesppu-theme .fixed.bottom-4 .bg-\[\#0d0d10\]\/95,
+.iesppu-theme .fixed.bottom-4 .bg-\[\#0d0d10\] {
+  background-color: rgba(12, 18, 44, 0.95) !important;
+  border-color: rgba(14, 165, 233, 0.3) !important;
+}
+
+.iesppu-theme .fixed.bottom-4 span {
+  color: #ffffff !important;
+}
+
+/* Inputs, Buscadores y placeholders en IESPPU */
+.iesppu-theme input {
+  color: #ffffff !important;
+}
+
+.iesppu-theme input::placeholder {
+  color: #64748b !important;
+}
+
+.iesppu-theme focus-within\:border-\[\#eab308\]:focus-within {
+  border-color: #0ea5e9 !important;
+}
+
+/* Modales y Popovers */
+.iesppu-theme .bg-black\/80,
+.iesppu-theme .bg-black\/85,
+.iesppu-theme .bg-black\/70 {
+  background-color: rgba(5, 8, 22, 0.8) !important;
+}
+

@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 
-export type AppTheme = 'night' | 'day';
+export type AppTheme = 'night' | 'day' | 'iesppu';
 
 interface ThemeContextType {
   theme: AppTheme;
@@ -14,7 +14,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [theme, setThemeState] = useState<AppTheme>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('starryz_theme') as AppTheme | null;
-      if (saved === 'day' || saved === 'night') return saved;
+      if (saved === 'day' || saved === 'night' || saved === 'iesppu') return saved;
     }
     return 'night';
   });
@@ -22,14 +22,18 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const applyTheme = (currentTheme: AppTheme) => {
     const root = document.documentElement;
     const body = document.body;
+    
+    // Limpiar todas las clases primero
+    root.classList.remove('light-theme', 'iesppu-theme', 'dark-theme');
+    body.classList.remove('light-theme', 'iesppu-theme', 'dark-theme');
+    
     if (currentTheme === 'day') {
       root.classList.add('light-theme');
       body.classList.add('light-theme');
-      root.classList.remove('dark-theme');
-      body.classList.remove('dark-theme');
+    } else if (currentTheme === 'iesppu') {
+      root.classList.add('iesppu-theme');
+      body.classList.add('iesppu-theme');
     } else {
-      root.classList.remove('light-theme');
-      body.classList.remove('light-theme');
       root.classList.add('dark-theme');
       body.classList.add('dark-theme');
     }
@@ -40,7 +44,14 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [theme]);
 
   const toggleTheme = () => {
-    const nextTheme: AppTheme = theme === 'night' ? 'day' : 'night';
+    let nextTheme: AppTheme = 'night';
+    if (theme === 'night') {
+      nextTheme = 'day';
+    } else if (theme === 'day') {
+      nextTheme = 'iesppu';
+    } else {
+      nextTheme = 'night';
+    }
     setThemeState(nextTheme);
     localStorage.setItem('starryz_theme', nextTheme);
     applyTheme(nextTheme);

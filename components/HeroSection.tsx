@@ -4,6 +4,7 @@ import React from 'react';
 import { Crown } from 'lucide-react';
 import AutocompleteSearchBar from './AutocompleteSearchBar';
 import { SearchSuggestion } from '@/src/lib/search';
+import { useTheme } from '@/src/context/ThemeContext';
 
 interface HeroSectionProps {
   searchQuery: string;
@@ -20,6 +21,8 @@ export default function HeroSection({
   onSearchSubmit,
   onNavigate,
 }: HeroSectionProps) {
+  const { theme } = useTheme();
+
   const handleSearch = (q: string) => {
     setSearchQuery(q);
     const syntheticEvent = { preventDefault: () => {} } as React.FormEvent;
@@ -68,29 +71,6 @@ export default function HeroSection({
           onSelectSuggestion={handleSelectSuggestion}
           inputClassName="px-6 py-4 sm:py-5 text-base sm:text-lg border border-zinc-800 focus-within:border-[#eab308]"
         />
-      </div>
-
-      {/* QUICK POPULAR PILLS */}
-      <div className="relative z-20 flex flex-wrap items-center justify-center gap-2 text-xs font-semibold select-none">
-        <span className="text-zinc-500 font-medium">Populares:</span>
-        <button
-          onClick={() => handleSearch('Profesores de Sistemas')}
-          className="px-3 py-1 rounded-full bg-[#141414] border border-zinc-800 text-zinc-400 hover:text-white hover:border-[#eab308]/50 transition-all cursor-pointer text-xs"
-        >
-          Profesores de Sistemas
-        </button>
-        <button
-          onClick={() => handleSearch('Campus Central')}
-          className="px-3 py-1 rounded-full bg-[#141414] border border-zinc-800 text-zinc-400 hover:text-white hover:border-[#eab308]/50 transition-all cursor-pointer text-xs"
-        >
-          Campus Central
-        </button>
-        <button
-          onClick={() => handleSearch('Top Alumnos 2026')}
-          className="px-3 py-1 rounded-full bg-[#141414] border border-zinc-800 text-zinc-400 hover:text-white hover:border-[#eab308]/50 transition-all cursor-pointer text-xs"
-        >
-          Top Alumnos 2026
-        </button>
       </div>
 
     </section>
