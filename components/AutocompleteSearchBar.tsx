@@ -9,7 +9,8 @@ import {
   GraduationCap, 
   Sparkles, 
   CornerDownLeft, 
-  AlertCircle
+  AlertCircle,
+  HelpCircle
 } from 'lucide-react';
 import { searchWithAutocomplete, SearchSuggestion } from '@/src/lib/search';
 
@@ -38,6 +39,7 @@ export default function AutocompleteSearchBar({
   const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -66,22 +68,26 @@ export default function AutocompleteSearchBar({
     };
   }, []);
 
-  // Función de consulta con Debounce (300ms)
+  // Función de consulta a Supabase con Debounce (300ms)
   const fetchSuggestions = useCallback(async (searchTerm: string) => {
-    if (!searchTerm || searchTerm.trim().length < 1) {
+    const cleanTerm = searchTerm.trim();
+    if (!cleanTerm) {
       setSuggestions([]);
       setIsLoading(false);
+      setHasSearched(false);
       return;
     }
 
     setIsLoading(true);
+    setHasSearched(true);
+
     try {
-      const results = await searchWithAutocomplete(searchTerm, 0.25);
+      const results = await searchWithAutocomplete(cleanTerm, 0.25);
       setSuggestions(results);
-      setIsOpen(results.length > 0);
+      setIsOpen(true);
       setSelectedIndex(-1);
     } catch (err) {
-      console.warn('Error al obtener sugerencias:', err);
+      console.warn('Error en la búsqueda con Supabase:', err);
       setSuggestions([]);
     } finally {
       setIsLoading(false);
@@ -101,6 +107,7 @@ export default function AutocompleteSearchBar({
       setSuggestions([]);
       setIsOpen(false);
       setIsLoading(false);
+      setHasSearched(false);
       return;
     }
 
@@ -160,6 +167,7 @@ export default function AutocompleteSearchBar({
     setSuggestions([]);
     setIsOpen(false);
     setSelectedIndex(-1);
+    setHasSearched(false);
     inputRef.current?.focus();
   };
 
@@ -211,7 +219,7 @@ export default function AutocompleteSearchBar({
             value={query}
             onChange={handleInputChange}
             onFocus={() => {
-              if (suggestions.length > 0) setIsOpen(true);
+              if (query.trim()) setIsOpen(true);
             }}
             onKeyDown={handleKeyDown}
             placeholder={placeholder}
@@ -243,86 +251,103 @@ export default function AutocompleteSearchBar({
       </form>
 
       {/* MENÚ DESPLEGABLE DE SUGERENCIAS */}
-      {isOpen && (
+      {isOpen && query.trim().length > 0 && (
         <div className="absolute left-0 right-0 top-full mt-2 bg-[#0d0d0d] border border-zinc-800 rounded-2xl shadow-[0_15px_40px_rgba(0,0,0,0.85)] z-50 overflow-hidden backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150">
           
-          {/* Cabecera / Estado de carga */}
+          {/* Cabecera de Estado de carga */}
           {isLoading && (
-            <div className="px-4 py-2 text-[11px] font-semibold text-zinc-400 border-b border-zinc-800/80 flex items-center gap-2 bg-[#141414]/50">
+            <div className="px-4 py-2.5 text-[11px] font-semibold text-zinc-400 border-b border-zinc-800/80 flex items-center gap-2 bg-[#141414]/50">
               <Loader2 className="w-3.5 h-3.5 text-[#eab308] animate-spin" />
-              <span>Buscando coincidencias y sugerencias inteligentes...</span>
+              <span>Consultando base de datos Supabase...</span>
             </div>
           )}
 
-          {/* Lista de Sugerencias */}
-          <div className="max-h-[340px] overflow-y-auto divide-y divide-zinc-900/80 p-1.5 custom-scrollbar">
-            {suggestions.map((item, index) => {
-              const isSelected = index === selectedIndex;
-              return (
-                <div
-                  key={`${item.type}-${item.id}-${index}`}
-                  onClick={() => handleSelect(item)}
-                  onMouseEnter={() => setSelectedIndex(index)}
-                  className={`flex items-center justify-between gap-3 p-2.5 rounded-xl cursor-pointer transition-all ${
-                    isSelected 
-                      ? 'bg-[#eab308]/15 border border-[#eab308]/40' 
-                      : 'hover:bg-[#161616] border border-transparent'
-                  }`}
-                >
-                  {/* Izquierda: Avatar e Info */}
-                  <div className="flex items-center gap-3 min-w-0 flex-1">
-                    {item.avatarUrl ? (
-                      <img
-                        src={item.avatarUrl}
-                        alt={item.title}
-                        className="w-9 h-9 rounded-full object-cover border border-zinc-800 flex-shrink-0"
-                        referrerPolicy="no-referrer"
-                      />
-                    ) : (
-                      <div className="w-9 h-9 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-300 font-bold text-xs flex-shrink-0">
-                        {item.type === 'professor' ? (
-                          <UserCheck className="w-4 h-4 text-[#eab308]" />
-                        ) : item.type === 'center' ? (
-                          <GraduationCap className="w-4 h-4 text-blue-400" />
-                        ) : (
-                          <Sparkles className="w-4 h-4 text-purple-400" />
-                        )}
-                      </div>
-                    )}
-
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className={`text-xs sm:text-sm font-bold truncate ${
-                          isSelected ? 'text-[#eab308]' : 'text-white'
-                        }`}>
-                          {item.title}
-                        </span>
-
-                        {/* Indicador de tolerancia a errores */}
-                        {item.isFuzzy && (
-                          <span className="hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-300 border border-amber-500/20">
-                            <AlertCircle className="w-2.5 h-2.5" />
-                            Quizás quisiste decir
-                          </span>
-                        )}
-                      </div>
-
-                      {item.subtitle && (
-                        <p className="text-[11px] text-zinc-400 truncate">
-                          {item.subtitle}
-                        </p>
+          {/* ESTADO 1: LISTA DE RESULTADOS DEVUELTOS POR SUPABASE */}
+          {!isLoading && suggestions.length > 0 && (
+            <div className="max-h-[340px] overflow-y-auto divide-y divide-zinc-900/80 p-1.5 custom-scrollbar">
+              {suggestions.map((item, index) => {
+                const isSelected = index === selectedIndex;
+                return (
+                  <div
+                    key={`${item.type}-${item.id}-${index}`}
+                    onClick={() => handleSelect(item)}
+                    onMouseEnter={() => setSelectedIndex(index)}
+                    className={`flex items-center justify-between gap-3 p-2.5 rounded-xl cursor-pointer transition-all ${
+                      isSelected 
+                        ? 'bg-[#eab308]/15 border border-[#eab308]/40' 
+                        : 'hover:bg-[#161616] border border-transparent'
+                    }`}
+                  >
+                    {/* Izquierda: Avatar e Info */}
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      {item.avatarUrl ? (
+                        <img
+                          src={item.avatarUrl}
+                          alt={item.title}
+                          className="w-9 h-9 rounded-full object-cover border border-zinc-800 flex-shrink-0"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <div className="w-9 h-9 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-300 font-bold text-xs flex-shrink-0">
+                          {item.type === 'professor' ? (
+                            <UserCheck className="w-4 h-4 text-[#eab308]" />
+                          ) : item.type === 'center' ? (
+                            <GraduationCap className="w-4 h-4 text-blue-400" />
+                          ) : (
+                            <Sparkles className="w-4 h-4 text-purple-400" />
+                          )}
+                        </div>
                       )}
+
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xs sm:text-sm font-bold truncate ${
+                            isSelected ? 'text-[#eab308]' : 'text-white'
+                          }`}>
+                            {item.title}
+                          </span>
+
+                          {/* Indicador de tolerancia a errores (Fuzzy) */}
+                          {item.isFuzzy && (
+                            <span className="hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                              <AlertCircle className="w-2.5 h-2.5" />
+                              Quizás quisiste decir
+                            </span>
+                          )}
+                        </div>
+
+                        {item.subtitle && (
+                          <p className="text-[11px] text-zinc-400 truncate">
+                            {item.subtitle}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Derecha: Badge de Tipo */}
+                    <div className="flex-shrink-0">
+                      {renderBadge(item.type)}
                     </div>
                   </div>
+                );
+              })}
+            </div>
+          )}
 
-                  {/* Derecha: Badge de Tipo */}
-                  <div className="flex-shrink-0">
-                    {renderBadge(item.type)}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          {/* ESTADO 2: ESTADO VACÍO LIMPIO SI SUPABASE NO TIENE COINCIDENCIAS */}
+          {!isLoading && hasSearched && suggestions.length === 0 && (
+            <div className="px-5 py-6 text-center select-none">
+              <div className="w-10 h-10 mx-auto mb-2.5 rounded-full bg-[#141414] border border-zinc-800 flex items-center justify-center text-zinc-500">
+                <HelpCircle className="w-5 h-5 text-zinc-400" />
+              </div>
+              <p className="text-xs sm:text-sm font-bold text-zinc-200">
+                No se encontraron resultados para &quot;<span className="text-[#eab308]">{query}</span>&quot;
+              </p>
+              <p className="text-[11px] text-zinc-500 mt-1">
+                Verifica la ortografía o intenta buscar con otro nombre registrado en la base de datos.
+              </p>
+            </div>
+          )}
 
           {/* Pie del menú desplegable */}
           <div 

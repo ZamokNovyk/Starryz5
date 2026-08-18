@@ -1,5 +1,4 @@
 import { supabase } from './supabase';
-import { MOCK_INSTITUTIONS, MOCK_STUDENTS } from '@/lib/mockData';
 
 export function toSlug(name: string): string {
   if (!name) return '';
@@ -20,46 +19,15 @@ export interface SearchSuggestion {
   avatarUrl?: string;
   url: string;
   similarity?: number;
-  isFuzzy?: boolean; // Indica si proviene de tolerancia a errores ("¿Quizás quisiste decir...?")
-}
-
-/**
- * Algoritmo de similitud trigramática en cliente para respaldo resiliente
- */
-function calculateTrigramSimilarity(str1: string, str2: string): number {
-  if (!str1 || !str2) return 0;
-  const s1 = str1.toLowerCase().trim();
-  const s2 = str2.toLowerCase().trim();
-  
-  if (s1 === s2) return 1.0;
-  if (s1.includes(s2) || s2.includes(s1)) return 0.85;
-
-  const getTrigrams = (str: string) => {
-    const padded = `  ${str} `;
-    const trigrams = new Set<string>();
-    for (let i = 0; i < padded.length - 2; i++) {
-      trigrams.add(padded.slice(i, i + 3));
-    }
-    return trigrams;
-  };
-
-  const trigrams1 = getTrigrams(s1);
-  const trigrams2 = getTrigrams(s2);
-
-  let intersection = 0;
-  trigrams1.forEach((tg) => {
-    if (trigrams2.has(tg)) intersection++;
-  });
-
-  const union = trigrams1.size + trigrams2.size - intersection;
-  return union === 0 ? 0 : intersection / union;
+  isFuzzy?: boolean;
 }
 
 /**
  * Consulta de autocompletado y búsqueda inteligente con tolerancia a errores tipográficos.
- * 1. Intenta búsqueda directa con .ilike()
- * 2. Si no hay suficientes resultados, ejecuta la RPC 'buscar_con_tolerancia' de Supabase
- * 3. Incorpora respaldo de similitud local para garantizar siempre resultados en milisegundos
+ * Depende al 100% de Supabase:
+ * 1. Invoca la función RPC 'buscar_con_tolerancia' en Supabase.
+ * 2. Si la RPC aún no estuviese creada en la base de datos, ejecuta consulta directa con .ilike() sobre las tablas de Supabase.
+ * 3. NO contiene datos falsos ni arrays hardcodeados. Si no hay coincidencias, devuelve un array vacío [].
  */
 export async function searchWithAutocomplete(
   rawQuery: string,
@@ -71,7 +39,6 @@ export async function searchWithAutocomplete(
   const results: SearchSuggestion[] = [];
   const seenIds = new Set<string>();
 
-  // Helper para agregar elementos sin duplicados
   const addResult = (item: SearchSuggestion) => {
     const key = `${item.type}-${item.id}`;
     if (!seenIds.has(key)) {
@@ -81,30 +48,75 @@ export async function searchWithAutocomplete(
   };
 
   // --------------------------------------------------------------------------
-  // PASO 1: Búsqueda Directa con .ilike() en Supabase (Profesores y Centros)
+  // 1. Invocar la función RPC 'buscar_con_tolerancia' en Supabase
+  // --------------------------------------------------------------------------
+  try {
+    const { data: rpcData, error: rpcError } = await supabase.rpc('buscar_con_tolerancia', {
+      busqueda: query,
+      umbral: threshold
+    });
+
+    if (!rpcError && Array.isArray(rpcData) && rpcData.length > 0) {
+      rpcData.forEach((item: any) => {
+        const isFuzzy = Number(item.similarity_score || 1) < 0.85;
+        const type: 'professor' | 'center' | 'student' = 
+          item.type === 'professor' ? 'professor' : 
+          item.type === 'student' ? 'student' : 'center';
+
+        const url = type === 'professor' 
+          ? `/profesores/${item.id}` 
+          : type === 'student'
+            ? `/perfil/${item.id}`
+            : `/educational_centers/${toSlug(item.name)}`;
+
+        addResult({
+          id: String(item.id),
+          title: item.name || 'Sin nombre',
+          subtitle: item.subtitle || undefined,
+          type,
+          avatarUrl: item.avatar_url || undefined,
+          url,
+          similarity: Number(item.similarity_score || 1),
+          isFuzzy
+        });
+      });
+
+      if (results.length > 0) {
+        return results.slice(0, 8);
+      }
+    }
+  } catch (rpcErr) {
+    console.warn('Aviso: RPC buscar_con_tolerancia no disponible o con latencia:', rpcErr);
+  }
+
+  // --------------------------------------------------------------------------
+  // 2. Consulta Directa a Supabase (.ilike) como respaldo si la RPC no devolvió datos
   // --------------------------------------------------------------------------
   try {
     const [profResponse, centerResponse] = await Promise.all([
       supabase
         .from('professors')
-        .select('id, name, institute_name, avatar_url')
-        .or(`name.ilike.%${query}%,institute_name.ilike.%${query}%`)
-        .limit(5),
+        .select('id, nombre, apellidos, nombre_completo, role, institute_id, avatar_url')
+        .or(`nombre_completo.ilike.%${query}%,nombre.ilike.%${query}%,apellidos.ilike.%${query}%,id.ilike.%${query}%`)
+        .limit(6),
       supabase
         .from('educational_centers')
-        .select('id, name, acronym, category, city, image')
-        .or(`name.ilike.%${query}%,acronym.ilike.%${query}%,city.ilike.%${query}%`)
-        .limit(5)
+        .select('id, name, type, profile_photo_url')
+        .ilike('name', `%${query}%`)
+        .limit(6)
     ]);
 
-    if (profResponse.data) {
+    if (profResponse.data && Array.isArray(profResponse.data)) {
       profResponse.data.forEach((p: any) => {
+        const isStudent = p.role === 'Alumno';
+        const fullName = p.nombre_completo || `${p.nombre || ''} ${p.apellidos || ''}`.trim() || p.id;
+        
         addResult({
           id: p.id,
-          title: p.name,
-          subtitle: p.institute_name || 'Docente Académico',
-          type: 'professor',
-          avatarUrl: p.avatar_url,
+          title: fullName,
+          subtitle: isStudent ? 'Estudiante de la comunidad' : (p.institute_id || 'Docente Académico'),
+          type: isStudent ? 'student' : 'professor',
+          avatarUrl: p.avatar_url || undefined,
           url: `/profesores/${p.id}`,
           isFuzzy: false,
           similarity: 1.0
@@ -112,14 +124,15 @@ export async function searchWithAutocomplete(
       });
     }
 
-    if (centerResponse.data) {
+    if (centerResponse.data && Array.isArray(centerResponse.data)) {
       centerResponse.data.forEach((c: any) => {
+        const typeLabel = c.type ? (c.type.charAt(0).toUpperCase() + c.type.slice(1)) : 'Centro Educativo';
         addResult({
-          id: c.id || toSlug(c.name),
+          id: c.id,
           title: c.name,
-          subtitle: `${c.city || ''} • ${c.category || 'Centro Educativo'}`,
+          subtitle: typeLabel,
           type: 'center',
-          avatarUrl: c.image,
+          avatarUrl: c.profile_photo_url || undefined,
           url: `/educational_centers/${toSlug(c.name)}`,
           isFuzzy: false,
           similarity: 1.0
@@ -127,123 +140,9 @@ export async function searchWithAutocomplete(
       });
     }
   } catch (err) {
-    console.warn('Aviso al ejecutar búsqueda directa .ilike():', err);
+    console.warn('Aviso en consulta directa a Supabase:', err);
   }
 
-  // Búsqueda directa en datos locales (Instituciones y Alumnos)
-  MOCK_INSTITUTIONS.forEach((inst) => {
-    if (
-      inst.name.toLowerCase().includes(query.toLowerCase()) ||
-      inst.acronym.toLowerCase().includes(query.toLowerCase()) ||
-      inst.city.toLowerCase().includes(query.toLowerCase())
-    ) {
-      addResult({
-        id: inst.id || toSlug(inst.name),
-        title: inst.name,
-        subtitle: `${inst.acronym} • ${inst.category} • ${inst.city}`,
-        type: 'center',
-        avatarUrl: inst.image,
-        url: `/educational_centers/${toSlug(inst.name)}`,
-        isFuzzy: false,
-        similarity: 1.0
-      });
-    }
-  });
-
-  MOCK_STUDENTS.forEach((st) => {
-    if (
-      st.name.toLowerCase().includes(query.toLowerCase()) ||
-      st.career.toLowerCase().includes(query.toLowerCase()) ||
-      st.institution.toLowerCase().includes(query.toLowerCase())
-    ) {
-      addResult({
-        id: st.id,
-        title: st.name,
-        subtitle: `${st.career} • ${st.institution}`,
-        type: 'student',
-        avatarUrl: st.avatar,
-        url: `/search?q=${encodeURIComponent(st.name)}`,
-        isFuzzy: false,
-        similarity: 1.0
-      });
-    }
-  });
-
-  // --------------------------------------------------------------------------
-  // PASO 2: Si hay pocos o ningún resultado directo, activar RPC 'buscar_con_tolerancia'
-  // --------------------------------------------------------------------------
-  if (results.length < 3) {
-    try {
-      const { data: rpcData, error: rpcError } = await supabase.rpc('buscar_con_tolerancia', {
-        busqueda: query,
-        umbral: threshold
-      });
-
-      if (!rpcError && Array.isArray(rpcData) && rpcData.length > 0) {
-        rpcData.forEach((item: any) => {
-          const isFuzzy = item.similarity_score < 0.9;
-          const url = item.type === 'professor' 
-            ? `/profesores/${item.id}` 
-            : `/educational_centers/${toSlug(item.name)}`;
-
-          addResult({
-            id: item.id,
-            title: item.name,
-            subtitle: item.subtitle,
-            type: item.type === 'professor' ? 'professor' : 'center',
-            avatarUrl: item.avatar_url,
-            url,
-            similarity: item.similarity_score,
-            isFuzzy
-          });
-        });
-      }
-    } catch (rpcErr) {
-      console.warn('RPC buscar_con_tolerancia no disponible o con latencia:', rpcErr);
-    }
-  }
-
-  // --------------------------------------------------------------------------
-  // PASO 3: Respaldo Difuso en Cliente (Tolerancia a errores tipográficos offline/instantáneo)
-  // --------------------------------------------------------------------------
-  if (results.length < 3 && query.length >= 3) {
-    const allLocalItems: SearchSuggestion[] = [
-      ...MOCK_INSTITUTIONS.map(inst => ({
-        id: inst.id || toSlug(inst.name),
-        title: inst.name,
-        subtitle: `${inst.acronym} • ${inst.category} • ${inst.city}`,
-        type: 'center' as const,
-        avatarUrl: inst.image,
-        url: `/educational_centers/${toSlug(inst.name)}`,
-      })),
-      ...MOCK_STUDENTS.map(st => ({
-        id: st.id,
-        title: st.name,
-        subtitle: `${st.career} • ${st.institution}`,
-        type: 'student' as const,
-        avatarUrl: st.avatar,
-        url: `/search?q=${encodeURIComponent(st.name)}`,
-      }))
-    ];
-
-    const fuzzyMatches = allLocalItems
-      .map(item => {
-        const scoreName = calculateTrigramSimilarity(item.title, query);
-        const scoreSub = item.subtitle ? calculateTrigramSimilarity(item.subtitle, query) * 0.7 : 0;
-        const bestScore = Math.max(scoreName, scoreSub);
-        return { item, score: bestScore };
-      })
-      .filter(m => m.score >= 0.22)
-      .sort((a, b) => b.score - a.score);
-
-    fuzzyMatches.slice(0, 4).forEach(({ item, score }) => {
-      addResult({
-        ...item,
-        isFuzzy: true,
-        similarity: score
-      });
-    });
-  }
-
+  // Retorna únicamente los resultados encontrados en Supabase (o [] si no hay)
   return results.slice(0, 8);
 }

@@ -7,21 +7,21 @@
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 -- 2. Índices GiST / GIN para acelerar las búsquedas difusas (Fuzzy Search)
-CREATE INDEX IF NOT EXISTS idx_professors_name_trgm 
-ON public.professors USING gin (name gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_professors_nombre_completo_trgm 
+ON public.professors USING gin (nombre_completo gin_trgm_ops);
 
-CREATE INDEX IF NOT EXISTS idx_professors_institute_trgm 
-ON public.professors USING gin (institute_name gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_professors_nombre_trgm 
+ON public.professors USING gin (nombre gin_trgm_ops);
+
+CREATE INDEX IF NOT EXISTS idx_professors_apellidos_trgm 
+ON public.professors USING gin (apellidos gin_trgm_ops);
 
 CREATE INDEX IF NOT EXISTS idx_educational_centers_name_trgm 
 ON public.educational_centers USING gin (name gin_trgm_ops);
 
-CREATE INDEX IF NOT EXISTS idx_educational_centers_acronym_trgm 
-ON public.educational_centers USING gin (acronym gin_trgm_ops);
-
 -- 3. Función RPC: buscar_con_tolerancia
 -- Recibe el término buscado y un umbral opcional (por defecto 0.25)
--- Devuelve los resultados de profesores y centros educativos más parecidos, ordenados por similitud.
+-- Devuelve los resultados de profesores, alumnos y centros educativos registrados en Supabase.
 CREATE OR REPLACE FUNCTION public.buscar_con_tolerancia(
   busqueda text,
   umbral double precision DEFAULT 0.25
@@ -38,48 +38,55 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 BEGIN
-  -- Establecer el límite de similitud para la sesión actual
+  -- Establecer el límite de similitud trigramática
   PERFORM set_limit(umbral::real);
 
   RETURN QUERY
   WITH matches AS (
-    -- Búsqueda difusa en Profesores
+    -- Búsqueda en Profesores y Alumnos (tabla 'professors')
     SELECT 
       p.id::text AS id,
-      p.name::text AS name,
-      'professor'::text AS type,
-      COALESCE(p.institute_name, 'Docente Académico')::text AS subtitle,
-      p.avatar_url::text AS avatar_url,
+      COALESCE(p.nombre_completo, TRIM(COALESCE(p.nombre, '') || ' ' || COALESCE(p.apellidos, '')), p.id)::text AS name,
+      CASE 
+        WHEN p.role = 'Alumno' THEN 'student'::text 
+        ELSE 'professor'::text 
+      END AS type,
+      CASE 
+        WHEN p.role = 'Alumno' THEN 'Estudiante de la comunidad'::text
+        ELSE COALESCE(p.institute_id, 'Docente Académico')::text
+      END AS subtitle,
+      COALESCE(p.avatar_url, '')::text AS avatar_url,
       GREATEST(
-        similarity(p.name, busqueda),
-        similarity(COALESCE(p.institute_name, ''), busqueda)
+        similarity(COALESCE(p.nombre_completo, TRIM(COALESCE(p.nombre, '') || ' ' || COALESCE(p.apellidos, ''))), busqueda),
+        similarity(COALESCE(p.nombre, ''), busqueda),
+        similarity(COALESCE(p.apellidos, ''), busqueda),
+        similarity(COALESCE(p.id, ''), busqueda)
       )::double precision AS similarity_score
     FROM public.professors p
     WHERE 
-      similarity(p.name, busqueda) > umbral
-      OR similarity(COALESCE(p.institute_name, ''), busqueda) > umbral
-      OR p.name ILIKE '%' || busqueda || '%'
-      OR p.institute_name ILIKE '%' || busqueda || '%'
+      similarity(COALESCE(p.nombre_completo, TRIM(COALESCE(p.nombre, '') || ' ' || COALESCE(p.apellidos, ''))), busqueda) > umbral
+      OR similarity(COALESCE(p.nombre, ''), busqueda) > umbral
+      OR similarity(COALESCE(p.apellidos, ''), busqueda) > umbral
+      OR similarity(COALESCE(p.id, ''), busqueda) > umbral
+      OR COALESCE(p.nombre_completo, '') ILIKE '%' || busqueda || '%'
+      OR COALESCE(p.nombre, '') ILIKE '%' || busqueda || '%'
+      OR COALESCE(p.apellidos, '') ILIKE '%' || busqueda || '%'
+      OR COALESCE(p.id, '') ILIKE '%' || busqueda || '%'
 
     UNION ALL
 
-    -- Búsqueda difusa en Centros Educativos
+    -- Búsqueda en Centros Educativos (tabla 'educational_centers')
     SELECT 
       c.id::text AS id,
       c.name::text AS name,
       'center'::text AS type,
-      COALESCE(c.city || ' • ' || c.category, c.category, 'Centro Educativo')::text AS subtitle,
-      c.image::text AS avatar_url,
-      GREATEST(
-        similarity(c.name, busqueda),
-        similarity(COALESCE(c.acronym, ''), busqueda)
-      )::double precision AS similarity_score
+      UPPER(COALESCE(c.type, 'Centro Educativo'))::text AS subtitle,
+      COALESCE(c.profile_photo_url, '')::text AS avatar_url,
+      similarity(c.name, busqueda)::double precision AS similarity_score
     FROM public.educational_centers c
     WHERE 
       similarity(c.name, busqueda) > umbral
-      OR similarity(COALESCE(c.acronym, ''), busqueda) > umbral
       OR c.name ILIKE '%' || busqueda || '%'
-      OR c.acronym ILIKE '%' || busqueda || '%'
   )
   SELECT 
     m.id,

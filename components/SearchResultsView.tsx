@@ -15,7 +15,7 @@ import {
   ChevronRight,
   Search
 } from 'lucide-react';
-import { Institution, Student, MOCK_STUDENTS } from '@/lib/mockData';
+import { Institution, Student } from '@/lib/mockData';
 import { Professor as DbProfessor, getAllProfessors } from '@/src/lib/professors';
 import { supabase } from '@/src/lib/supabase';
 
@@ -148,20 +148,8 @@ export default function SearchResultsView({
           console.warn('No se pudieron obtener usuarios para la búsqueda:', e);
         }
 
-        // Mock Students si no hay suficientes
-        const mockStudentsData: UnifiedSearchResult[] = MOCK_STUDENTS.map((s) => ({
-          id: `mock-stud-${s.id}`,
-          name: s.name,
-          category: 'Estudiante' as SearchCategory,
-          typeKey: 'estudiantes' as FilterType,
-          subtitle: `${s.institution} • ${s.career}`,
-          image: s.avatar,
-          slug: s.id,
-          rawItem: s,
-        }));
-
-        // Consolidar eliminando duplicados por ID
-        const combined = [...institutionsData, ...professorsData, ...studentsData, ...mockStudentsData];
+        // Consolidar eliminando duplicados por ID (únicamente datos reales de Supabase)
+        const combined = [...institutionsData, ...professorsData, ...studentsData];
         const unique = Array.from(new Map(combined.map(item => [item.id, item])).values());
         setAllData(unique);
       } catch (err) {
