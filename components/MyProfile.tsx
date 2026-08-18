@@ -1019,7 +1019,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                   {/* Botón de Acceso Exclusivo al Panel de Administración */}
                   {isOwnProfile && dbUser?.role === 'admin' && (
                     <div className="pt-6 border-t border-amber-500/20">
-                      <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-[0_0_25px_rgba(245,158,11,0.08)]">
+                      <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/30 flex flex-col gap-4 shadow-[0_0_25px_rgba(245,158,11,0.08)]">
                         <div className="space-y-1">
                           <div className="flex items-center gap-2">
                             <ShieldCheck className="w-4 h-4 text-amber-400 stroke-[2.5]" />
@@ -1045,7 +1045,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                               window.dispatchEvent(new PopStateEvent('popstate'));
                             }
                           }}
-                          className="w-full sm:w-auto px-5 py-3 rounded-xl bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 hover:from-amber-300 hover:to-yellow-400 text-black font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2.5 transition-all shadow-[0_4px_20px_rgba(245,158,11,0.35)] hover:shadow-[0_4px_25px_rgba(245,158,11,0.5)] cursor-pointer active:scale-98 flex-shrink-0"
+                          className="w-full px-5 py-3 rounded-xl bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 hover:from-amber-300 hover:to-yellow-400 text-black font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2.5 transition-all shadow-[0_4px_20px_rgba(245,158,11,0.35)] hover:shadow-[0_4px_25px_rgba(245,158,11,0.5)] cursor-pointer active:scale-98 flex-shrink-0"
                         >
                           <ShieldCheck className="w-4 h-4 text-black stroke-[3]" />
                           <span>🛡️ PANEL DE CONTROL ADMIN</span>
