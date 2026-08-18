@@ -16,8 +16,6 @@ export default function Footer() {
           <span className="font-black text-white text-sm tracking-wider">
             STARRYZ <span className="text-[#eab308]">5</span>
           </span>
-          <span className="text-zinc-700">|</span>
-          <span className="text-zinc-500 text-xs">Plataforma de Popularidad Universitaria</span>
         </div>
 
         {/* Links */}
