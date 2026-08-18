@@ -15,7 +15,8 @@ import {
   ThumbsUp, 
   Plus, 
   CheckCircle2,
-  Calendar
+  Calendar,
+  Loader2
 } from 'lucide-react';
 import { 
   getProfessorById, 
@@ -26,7 +27,9 @@ import {
   getTodayProfessorVotes,
   getProfessorRatingBreakdown,
   submitProfessorVote,
-  updateProfessorWiki
+  updateProfessorWiki,
+  getProfessorCrushStatus,
+  toggleProfessorCrush
 } from '@/src/lib/professors';
 import { useAuth } from '@/src/context/AuthContext';
 import BookmarkButton from '@/components/BookmarkButton';
@@ -63,6 +66,11 @@ export default function ProfessorProfile({
   const [todayVotes, setTodayVotes] = useState<number[]>([]);
   const [ratingBreakdown, setRatingBreakdown] = useState<{ [key: number]: number }>({ 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 });
   const [votingInProgress, setVotingInProgress] = useState(false);
+
+  // Crush States
+  const [crushCount, setCrushCount] = useState(0);
+  const [hasCrushed, setHasCrushed] = useState(false);
+  const [loadingCrush, setLoadingCrush] = useState(false);
 
   // Wiki Editing States
   const [isEditingWiki, setIsEditingWiki] = useState(false);
@@ -105,6 +113,11 @@ export default function ProfessorProfile({
           const breakdown = await getProfessorRatingBreakdown(data.id || slug);
           setRatingBreakdown(breakdown);
 
+          // Cargar estado inicial de crushes
+          const crushStatus = await getProfessorCrushStatus(data.id || slug, user?.uid);
+          setCrushCount(crushStatus.count);
+          setHasCrushed(crushStatus.hasCrushed);
+
           // Cargar interacciones y votos del usuario si está logueado
           if (user) {
             const todayV = await getTodayProfessorVotes(data.id || slug, user.uid);
@@ -134,6 +147,39 @@ export default function ProfessorProfile({
     }
     loadProfessorAndInteractions();
   }, [slug, user]);
+
+  const handleToggleCrush = async () => {
+    if (!user) {
+      if (onRequireAuth) onRequireAuth();
+      return;
+    }
+
+    if (!professor) return;
+
+    const profId = professor.id || slug;
+    const previousHasCrushed = hasCrushed;
+    const previousCount = crushCount;
+
+    // Actualización optimista en la UI (sumar/restar 1 al instante)
+    const nextHasCrushed = !previousHasCrushed;
+    const nextCount = nextHasCrushed ? previousCount + 1 : Math.max(0, previousCount - 1);
+
+    setHasCrushed(nextHasCrushed);
+    setCrushCount(nextCount);
+    setLoadingCrush(true);
+
+    try {
+      const result = await toggleProfessorCrush(profId, user.uid);
+      setHasCrushed(result.hasCrushed);
+    } catch (err) {
+      console.error('Error al alternar voto de crush:', err);
+      // Revertir optimismo en caso de fallo
+      setHasCrushed(previousHasCrushed);
+      setCrushCount(previousCount);
+    } finally {
+      setLoadingCrush(false);
+    }
+  };
 
   const handleShare = () => {
     if (typeof window !== 'undefined') {
@@ -545,8 +591,15 @@ export default function ProfessorProfile({
                 : 'text-zinc-400 hover:text-white hover:bg-[#151515]'
             }`}
           >
-            <Heart className="w-4 h-4" />
+            <Heart className={`w-4 h-4 ${hasCrushed ? 'fill-pink-500 text-pink-500' : ''}`} />
             <span>Crushes</span>
+            {crushCount > 0 && (
+              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${
+                activeTab === 'Crushes' ? 'bg-black/20 text-black' : 'bg-pink-500/20 text-pink-400 border border-pink-500/30'
+              }`}>
+                {crushCount}
+              </span>
+            )}
           </button>
 
           {/* Ship */}
@@ -1164,12 +1217,70 @@ export default function ProfessorProfile({
 
       {/* 3. CRUSHES TAB */}
       {activeTab === 'Crushes' && (
-        <div className="bg-[#0d0d0d] border border-zinc-800/40 rounded-2xl p-8 text-center text-zinc-500 space-y-3">
-          <Heart className="w-10 h-10 text-pink-500 mx-auto animate-pulse" />
-          <h3 className="text-base font-bold text-white uppercase">Sección de Crushes</h3>
-          <p className="text-xs max-w-sm mx-auto">
-            ¿Sientes algo por este miembro? Los flechazos estudiantiles y declaraciones anónimas se listarán en esta sección para darles visibilidad sin revelar identidades.
-          </p>
+        <div className="bg-[#0d0d0d] border border-zinc-800/80 rounded-2xl p-6 sm:p-8 space-y-6 animate-in fade-in duration-300">
+          <div className="text-center max-w-md mx-auto space-y-2">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-pink-500/10 border border-pink-500/20 text-pink-400 text-[10px] font-black uppercase tracking-widest">
+              <Sparkles className="w-3 h-3" />
+              <span>Flechazos del Campus</span>
+            </div>
+            <h3 className="text-xl sm:text-2xl font-black text-white uppercase tracking-tight">
+              ¿Es tu Crush en el Campus?
+            </h3>
+            <p className="text-xs text-zinc-400 leading-relaxed">
+              Los flechazos son 100% confidenciales y anónimos. Nadie sabrá tu identidad, pero sumarás popularidad al perfil.
+            </p>
+          </div>
+
+          {/* Botón Destacado de Flechazo / Crush */}
+          <div className="flex flex-col items-center justify-center py-4 space-y-4">
+            <button
+              type="button"
+              onClick={handleToggleCrush}
+              disabled={loadingCrush}
+              className={`group relative p-6 sm:p-8 rounded-full border-2 transition-all duration-300 cursor-pointer flex flex-col items-center justify-center shadow-2xl active:scale-95 ${
+                hasCrushed
+                  ? 'bg-gradient-to-b from-pink-500/20 to-rose-600/30 border-pink-500 text-pink-400 shadow-[0_0_40px_rgba(236,72,153,0.45)] ring-4 ring-pink-500/20 scale-105'
+                  : 'bg-[#141414] hover:bg-[#1c1c1c] border-zinc-800 hover:border-pink-500/50 text-zinc-400 hover:text-pink-400 hover:shadow-[0_0_25px_rgba(236,72,153,0.2)]'
+              }`}
+              title={hasCrushed ? 'Retirar flechazo' : 'Dar flechazo'}
+            >
+              {loadingCrush ? (
+                <Loader2 className="w-16 h-16 sm:w-20 sm:h-20 animate-spin text-pink-500" />
+              ) : (
+                <Heart
+                  className={`w-16 h-16 sm:w-20 sm:h-20 transition-transform duration-300 group-hover:scale-110 ${
+                    hasCrushed ? 'fill-pink-500 text-pink-500 animate-pulse' : 'stroke-[1.5]'
+                  }`}
+                />
+              )}
+            </button>
+
+            {/* Contador de Flechazos */}
+            <div className="text-center space-y-1">
+              <div className="flex items-center justify-center gap-2">
+                <span className={`text-4xl sm:text-5xl font-black tracking-tight ${hasCrushed ? 'text-pink-400' : 'text-white'}`}>
+                  {crushCount}
+                </span>
+              </div>
+              <span className="block text-xs font-black uppercase tracking-widest text-zinc-500">
+                {crushCount === 1 ? 'Flechazo Recibido' : 'Flechazos Recibidos'}
+              </span>
+            </div>
+
+            {/* Estado o Feedback */}
+            <div className="text-center max-w-xs">
+              {hasCrushed ? (
+                <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-pink-950/40 border border-pink-800/40 text-pink-300 text-xs font-bold animate-in fade-in">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-pink-400" />
+                  <span>¡Ya diste tu flechazo anónimo!</span>
+                </div>
+              ) : (
+                <span className="text-[11px] text-zinc-500 font-medium">
+                  Toca el corazón para enviar tu flechazo anónimo
+                </span>
+              )}
+            </div>
+          </div>
         </div>
       )}
 

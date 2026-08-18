@@ -366,3 +366,308 @@ export async function getAllProfessors(): Promise<Professor[]> {
   }
 }
 
+/**
+ * Obtiene el estado inicial de flechazos (Crushes) para un profesor:
+ * - Total de votos (count)
+ * - Si el usuario actual (firebase_uid) ya dio crush
+ */
+export async function getProfessorCrushStatus(
+  professorId: string,
+  userUid?: string
+): Promise<{ count: number; hasCrushed: boolean }> {
+  try {
+    // 1. Obtener conteo total
+    const { count, error: countError } = await supabase
+      .from('professor_crushes')
+      .select('*', { count: 'exact', head: true })
+      .eq('professor_id', professorId);
+
+    if (countError) {
+      // Fallback a almacenamiento local si la tabla aún no existe
+      const localData = JSON.parse(localStorage.getItem(`crushes_${professorId}`) || '[]');
+      return {
+        count: Array.isArray(localData) ? localData.length : 0,
+        hasCrushed: userUid && Array.isArray(localData) ? localData.includes(userUid) : false,
+      };
+    }
+
+    // 2. Verificar si el usuario actual ya votó
+    let hasCrushed = false;
+    if (userUid) {
+      const { data: userCrush, error: userError } = await supabase
+        .from('professor_crushes')
+        .select('id')
+        .eq('professor_id', professorId)
+        .eq('firebase_uid', userUid)
+        .maybeSingle();
+
+      if (!userError && userCrush) {
+        hasCrushed = true;
+      }
+    }
+
+    return {
+      count: typeof count === 'number' ? count : 0,
+      hasCrushed,
+    };
+  } catch (err) {
+    console.warn('Excepción al consultar crushes del profesor:', err);
+    const localData = JSON.parse(localStorage.getItem(`crushes_${professorId}`) || '[]');
+    return {
+      count: Array.isArray(localData) ? localData.length : 0,
+      hasCrushed: userUid && Array.isArray(localData) ? localData.includes(userUid) : false,
+    };
+  }
+}
+
+/**
+ * Alterna el voto de Crush para un profesor:
+ * Si el usuario ya votó, elimina el voto. Si no ha votado, inserta la fila.
+ */
+export async function toggleProfessorCrush(
+  professorId: string,
+  userUid: string
+): Promise<{ hasCrushed: boolean }> {
+  try {
+    // Verificar si ya existe el voto
+    const { data: existing, error: checkError } = await supabase
+      .from('professor_crushes')
+      .select('id')
+      .eq('professor_id', professorId)
+      .eq('firebase_uid', userUid)
+      .maybeSingle();
+
+    if (checkError && checkError.code !== 'PGRST116' && !checkError.message?.includes('does not exist')) {
+      throw checkError;
+    }
+
+    if (existing) {
+      // Ya votó: Eliminar el voto
+      const { error: deleteError } = await supabase
+        .from('professor_crushes')
+        .delete()
+        .eq('professor_id', professorId)
+        .eq('firebase_uid', userUid);
+
+      if (deleteError) throw deleteError;
+
+      // Actualizar fallback local
+      const localData: string[] = JSON.parse(localStorage.getItem(`crushes_${professorId}`) || '[]');
+      const filtered = localData.filter(uid => uid !== userUid);
+      localStorage.setItem(`crushes_${professorId}`, JSON.stringify(filtered));
+
+      return { hasCrushed: false };
+    } else {
+      // No ha votado: Insertar el nuevo crush
+      const { error: insertError } = await supabase
+        .from('professor_crushes')
+        .insert([{ professor_id: professorId, firebase_uid: userUid }]);
+
+      if (insertError) throw insertError;
+
+      // Actualizar fallback local
+      const localData: string[] = JSON.parse(localStorage.getItem(`crushes_${professorId}`) || '[]');
+      if (!localData.includes(userUid)) {
+        localData.push(userUid);
+        localStorage.setItem(`crushes_${professorId}`, JSON.stringify(localData));
+      }
+
+      return { hasCrushed: true };
+    }
+  } catch (err: any) {
+    console.warn('Fallback a almacenamiento local para alternar crush:', err?.message || err);
+    // Fallback local
+    const localData: string[] = JSON.parse(localStorage.getItem(`crushes_${professorId}`) || '[]');
+    let nowCrushed = false;
+    if (localData.includes(userUid)) {
+      const filtered = localData.filter(uid => uid !== userUid);
+      localStorage.setItem(`crushes_${professorId}`, JSON.stringify(filtered));
+      nowCrushed = false;
+    } else {
+      localData.push(userUid);
+      localStorage.setItem(`crushes_${professorId}`, JSON.stringify(localData));
+      nowCrushed = true;
+    }
+    return { hasCrushed: nowCrushed };
+  }
+}
+
+export interface UserInteractionItem {
+  id: string;
+  type: 'crush' | 'fan' | 'knows';
+  typeLabel: 'CRUSH' | 'FAN' | 'YO TE CONOZCO';
+  professorId: string;
+  professorName: string;
+  professorRole: string;
+  professorAvatar?: string | null;
+  createdAt?: string;
+}
+
+function formatSlugToName(slug: string): string {
+  return slug
+    .split('.')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
+/**
+ * Obtiene todas las interacciones realizadas por el usuario:
+ * - Crushes (Flechazos en professor_crushes)
+ * - Votos / Interacciones (Fan y Yo te conozco en professor_interactions)
+ */
+export async function getUserInteractions(userUid: string): Promise<UserInteractionItem[]> {
+  const items: UserInteractionItem[] = [];
+  const professorIds = new Set<string>();
+
+  try {
+    // 1. Obtener Crushes de Supabase
+    try {
+      const { data: crushes, error: crushErr } = await supabase
+        .from('professor_crushes')
+        .select('*')
+        .eq('firebase_uid', userUid)
+        .order('created_at', { ascending: false });
+
+      if (!crushErr && crushes) {
+        crushes.forEach((c: any) => {
+          professorIds.add(c.professor_id);
+          items.push({
+            id: `crush_${c.professor_id}`,
+            type: 'crush',
+            typeLabel: 'CRUSH',
+            professorId: c.professor_id,
+            professorName: formatSlugToName(c.professor_id),
+            professorRole: 'Profesor',
+            createdAt: c.created_at,
+          });
+        });
+      }
+    } catch (e) {
+      console.warn('Aviso al consultar crushes del usuario:', e);
+    }
+
+    // 2. Obtener Interacciones (Fan / Yo te conozco) de Supabase
+    try {
+      const { data: interactions, error: intErr } = await supabase
+        .from('professor_interactions')
+        .select('*')
+        .eq('user_uid', userUid);
+
+      if (!intErr && interactions) {
+        interactions.forEach((i: any) => {
+          professorIds.add(i.professor_id);
+          const isFan = i.interaction_type === 'fan';
+          items.push({
+            id: `${i.interaction_type}_${i.professor_id}`,
+            type: isFan ? 'fan' : 'knows',
+            typeLabel: isFan ? 'FAN' : 'YO TE CONOZCO',
+            professorId: i.professor_id,
+            professorName: formatSlugToName(i.professor_id),
+            professorRole: 'Profesor',
+            createdAt: i.created_at,
+          });
+        });
+      }
+    } catch (e) {
+      console.warn('Aviso al consultar interacciones del usuario:', e);
+    }
+
+    // 3. Fallback a LocalStorage para crushes locales
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('crushes_')) {
+          const profId = key.replace('crushes_', '');
+          const localCrushes: string[] = JSON.parse(localStorage.getItem(key) || '[]');
+          if (localCrushes.includes(userUid)) {
+            if (!items.some(item => item.id === `crush_${profId}`)) {
+              professorIds.add(profId);
+              items.push({
+                id: `crush_${profId}`,
+                type: 'crush',
+                typeLabel: 'CRUSH',
+                professorId: profId,
+                professorName: formatSlugToName(profId),
+                professorRole: 'Profesor',
+              });
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Error reading local storage interactions:', e);
+    }
+
+    // 4. Enriquecer con los nombres y fotos reales de la tabla 'professors'
+    if (professorIds.size > 0) {
+      try {
+        const idsArray = Array.from(professorIds);
+        const { data: profs, error: profsErr } = await supabase
+          .from('professors')
+          .select('id, nombre, apellidos, nombre_completo, avatar_url, role')
+          .in('id', idsArray);
+
+        if (!profsErr && profs) {
+          const profMap = new Map<string, any>();
+          profs.forEach((p: any) => profMap.set(p.id.toLowerCase(), p));
+
+          items.forEach(item => {
+            const p = profMap.get(item.professorId.toLowerCase());
+            if (p) {
+              item.professorName = p.nombre_completo || `${p.nombre} ${p.apellidos}`.trim() || item.professorName;
+              item.professorRole = p.role || item.professorRole;
+              item.professorAvatar = p.avatar_url || null;
+            }
+          });
+        }
+      } catch (e) {
+        console.warn('Aviso al enriquecer datos de profesores:', e);
+      }
+    }
+
+    return items;
+  } catch (err) {
+    console.error('Error al obtener interacciones completas del usuario:', err);
+    return items;
+  }
+}
+
+/**
+ * Elimina una interacción (Crush, Fan o Yo te conozco) directamente desde el perfil
+ */
+export async function removeUserInteraction(
+  userUid: string,
+  professorId: string,
+  type: 'crush' | 'fan' | 'knows'
+): Promise<boolean> {
+  try {
+    if (type === 'crush') {
+      // Eliminar de professor_crushes
+      await supabase
+        .from('professor_crushes')
+        .delete()
+        .eq('professor_id', professorId)
+        .eq('firebase_uid', userUid);
+
+      // Limpiar fallback local
+      const localData: string[] = JSON.parse(localStorage.getItem(`crushes_${professorId}`) || '[]');
+      const filtered = localData.filter(uid => uid !== userUid);
+      localStorage.setItem(`crushes_${professorId}`, JSON.stringify(filtered));
+      return true;
+    } else {
+      // Eliminar de professor_interactions
+      await supabase
+        .from('professor_interactions')
+        .delete()
+        .eq('professor_id', professorId)
+        .eq('user_uid', userUid);
+
+      return true;
+    }
+  } catch (err) {
+    console.error('Error al eliminar interacción del usuario:', err);
+    return false;
+  }
+}
+
+

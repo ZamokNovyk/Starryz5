@@ -23,8 +23,17 @@ import {
   Trash2,
   Folder,
   Plus,
-  ChevronRight
+  ChevronRight,
+  Heart,
+  HeartCrack,
+  Star,
+  UserCheck
 } from 'lucide-react';
+import { 
+  getUserInteractions, 
+  removeUserInteraction, 
+  UserInteractionItem 
+} from '@/src/lib/professors';
 
 interface SupabaseUser {
   id: string;
@@ -57,7 +66,7 @@ export default function MyProfile({ uid, onBackToHome }: MyProfileProps) {
   }>({ status: 'idle', message: '' });
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [profileTab, setProfileTab] = useState<'info' | 'collections'>('info');
+  const [profileTab, setProfileTab] = useState<'info' | 'collections' | 'interactions'>('info');
 
   // Colecciones State
   const [collections, setCollections] = useState<any[]>([]);
@@ -67,6 +76,12 @@ export default function MyProfile({ uid, onBackToHome }: MyProfileProps) {
   const [newColInputName, setNewColInputName] = useState('');
   const [creatingColProfile, setCreatingColProfile] = useState(false);
   const [collectionsError, setCollectionsError] = useState('');
+
+  // Interacciones State
+  const [interactions, setInteractions] = useState<UserInteractionItem[]>([]);
+  const [loadingInteractions, setLoadingInteractions] = useState(false);
+  const [interactionFilter, setInteractionFilter] = useState<'crush' | 'fan' | 'knows'>('crush');
+  const [interactionsError, setInteractionsError] = useState('');
 
   const isOwnProfile = !uid || (user && user.uid === uid);
 
@@ -314,6 +329,49 @@ export default function MyProfile({ uid, onBackToHome }: MyProfileProps) {
     }
   };
 
+  // Cargar interacciones en la pestaña 'interactions' o al iniciar
+  const loadInteractions = async () => {
+    const targetUid = uid || user?.uid;
+    if (!targetUid) return;
+
+    try {
+      setLoadingInteractions(true);
+      setInteractionsError('');
+      const items = await getUserInteractions(targetUid);
+      setInteractions(items);
+    } catch (err: any) {
+      console.error('Error al cargar interacciones:', err);
+      setInteractionsError('No se pudieron cargar tus interacciones de Supabase.');
+    } finally {
+      setLoadingInteractions(false);
+    }
+  };
+
+  useEffect(() => {
+    if (profileTab === 'interactions') {
+      loadInteractions();
+    }
+  }, [profileTab, uid, user?.uid]);
+
+  const handleRemoveInteraction = async (item: UserInteractionItem) => {
+    const targetUid = uid || user?.uid;
+    if (!targetUid) return;
+
+    // Actualización optimista inmediata
+    setInteractions(prev => prev.filter(i => i.id !== item.id));
+
+    try {
+      const ok = await removeUserInteraction(targetUid, item.professorId, item.type);
+      if (!ok) {
+        // Recargar en caso de error
+        loadInteractions();
+      }
+    } catch (err) {
+      console.error('Error al retirar interacción:', err);
+      loadInteractions();
+    }
+  };
+
   const navigateTo = (url: string) => {
     window.history.pushState(null, '', url);
     window.dispatchEvent(new Event('popstate'));
@@ -554,11 +612,11 @@ export default function MyProfile({ uid, onBackToHome }: MyProfileProps) {
         <div className="md:col-span-2 bg-[#0d0d0d] border border-[#ffffff10] rounded-2xl p-6 sm:p-8 space-y-6">
           
           {/* Tabs Navigation */}
-          <div className="flex items-center gap-1.5 bg-[#050505] p-1.5 rounded-xl border border-zinc-800/40 w-fit">
+          <div className="flex items-center gap-1.5 bg-[#050505] p-1.5 rounded-xl border border-zinc-800/40 max-w-full overflow-x-auto no-scrollbar">
             <button
               type="button"
               onClick={() => setProfileTab('info')}
-              className={`px-4.5 py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+              className={`px-4 py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
                 profileTab === 'info'
                   ? 'bg-[#eab308] text-black font-extrabold shadow-sm'
                   : 'text-zinc-400 hover:text-white hover:bg-[#151515]'
@@ -571,7 +629,7 @@ export default function MyProfile({ uid, onBackToHome }: MyProfileProps) {
             <button
               type="button"
               onClick={() => setProfileTab('collections')}
-              className={`px-4.5 py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+              className={`px-4 py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
                 profileTab === 'collections'
                   ? 'bg-[#eab308] text-black font-extrabold shadow-sm'
                   : 'text-zinc-400 hover:text-white hover:bg-[#151515]'
@@ -579,6 +637,26 @@ export default function MyProfile({ uid, onBackToHome }: MyProfileProps) {
             >
               <Bookmark className="w-3.5 h-3.5 text-current" />
               <span>Colecciones</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setProfileTab('interactions')}
+              className={`px-4 py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+                profileTab === 'interactions'
+                  ? 'bg-[#eab308] text-black font-extrabold shadow-sm'
+                  : 'text-zinc-400 hover:text-white hover:bg-[#151515]'
+              }`}
+            >
+              <Heart className={`w-3.5 h-3.5 ${profileTab === 'interactions' ? 'fill-black text-black' : 'text-pink-500 fill-pink-500/20'}`} />
+              <span>Mis Interacciones</span>
+              {interactions.length > 0 && (
+                <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-black ${
+                  profileTab === 'interactions' ? 'bg-black/20 text-black' : 'bg-pink-500/20 text-pink-400 border border-pink-500/30'
+                }`}>
+                  {interactions.length}
+                </span>
+              )}
             </button>
           </div>
 
@@ -856,7 +934,7 @@ export default function MyProfile({ uid, onBackToHome }: MyProfileProps) {
                 </form>
               )}
             </div>
-          ) : (
+          ) : profileTab === 'collections' ? (
             // PESTAÑA COLECCIONES
             <div className="space-y-6 animate-in fade-in duration-300">
               {collectionsError && (
@@ -1062,6 +1140,224 @@ export default function MyProfile({ uid, onBackToHome }: MyProfileProps) {
                       </div>
                     )}
                   </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            // PESTAÑA MIS INTERACCIONES
+            <div className="space-y-6 animate-in fade-in duration-300">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-xl font-black text-white uppercase tracking-tight flex items-center gap-2">
+                    <Heart className="w-5 h-5 text-pink-500 fill-pink-500/30" /> {isOwnProfile ? 'Mis Votos e Interacciones' : 'Interacciones del Usuario'}
+                  </h3>
+                  <p className="text-xs text-zinc-400 mt-1">
+                    {isOwnProfile 
+                      ? 'Administra tus flechazos confidenciales (Crushes), votos de Fan y reconocimientos de la comunidad.'
+                      : 'Interacciones y votos comunitarios registrados por este usuario en Supabase.'}
+                  </p>
+                </div>
+              </div>
+
+              {interactionsError && (
+                <div className="flex items-center gap-2 text-xs text-red-400 bg-red-950/20 border border-red-900/30 p-3 rounded-xl">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>{interactionsError}</span>
+                </div>
+              )}
+
+              {/* Subtags / Filtros por Categoría */}
+              {interactions.length > 0 && (
+                <div className="flex items-center gap-2 overflow-x-auto no-scrollbar max-w-full pb-1">
+                  <button
+                    type="button"
+                    onClick={() => setInteractionFilter('crush')}
+                    className={`px-3.5 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+                      interactionFilter === 'crush'
+                        ? 'bg-pink-500 text-white font-extrabold shadow-[0_0_15px_rgba(236,72,153,0.35)]'
+                        : 'bg-[#121212] text-pink-400 hover:text-pink-300 border border-pink-500/20 hover:bg-pink-950/20'
+                    }`}
+                  >
+                    <Heart className="w-3 h-3 fill-current" />
+                    <span>Crushes ({interactions.filter(i => i.type === 'crush').length})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInteractionFilter('fan')}
+                    className={`px-3.5 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+                      interactionFilter === 'fan'
+                        ? 'bg-amber-500 text-black font-extrabold shadow-[0_0_15px_rgba(245,158,11,0.35)]'
+                        : 'bg-[#121212] text-amber-400 hover:text-amber-300 border border-amber-500/20 hover:bg-amber-950/20'
+                    }`}
+                  >
+                    <Star className="w-3 h-3 fill-current" />
+                    <span>Fans ({interactions.filter(i => i.type === 'fan').length})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInteractionFilter('knows')}
+                    className={`px-3.5 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+                      interactionFilter === 'knows'
+                        ? 'bg-blue-500 text-white font-extrabold shadow-[0_0_15px_rgba(59,130,246,0.35)]'
+                        : 'bg-[#121212] text-blue-400 hover:text-blue-300 border border-blue-500/20 hover:bg-blue-950/20'
+                    }`}
+                  >
+                    <UserCheck className="w-3 h-3" />
+                    <span>Yo te conozco ({interactions.filter(i => i.type === 'knows').length})</span>
+                  </button>
+                </div>
+              )}
+
+              {loadingInteractions ? (
+                <div className="py-12 flex flex-col items-center justify-center space-y-3">
+                  <Loader2 className="w-8 h-8 animate-spin text-[#eab308]" />
+                  <p className="text-xs text-zinc-500 font-medium">Cargando tus interacciones de Supabase...</p>
+                </div>
+              ) : interactions.length === 0 ? (
+                <div className="p-8 rounded-2xl border border-dashed border-zinc-800 text-center space-y-3 bg-[#050505]">
+                  <div className="inline-flex p-3.5 rounded-full bg-pink-500/10 border border-pink-500/20 text-pink-400 mb-1">
+                    <Heart className="w-7 h-7 fill-pink-500/30 animate-pulse" />
+                  </div>
+                  <h4 className="text-sm font-black text-white uppercase tracking-wider">Sin interacciones registradas</h4>
+                  <p className="text-xs text-zinc-500 max-w-sm mx-auto leading-relaxed">
+                    Aún no has marcado a ningún profesor como tu Crush o Fan. ¡Visita los perfiles del campus para interactuar y enviar tus flechazos confidenciales!
+                  </p>
+                  <button
+                    type="button"
+                    onClick={onBackToHome}
+                    className="mt-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#eab308] hover:bg-[#d9a307] text-black font-black text-[11px] uppercase tracking-wider transition-all cursor-pointer"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Explorar Profesores</span>
+                  </button>
+                </div>
+              ) : interactions.filter(i => i.type === interactionFilter).length === 0 ? (
+                <div className="p-8 rounded-2xl border border-dashed border-zinc-800/80 text-center space-y-2 bg-[#080808]">
+                  <p className="text-xs text-zinc-400 font-bold uppercase tracking-wider">
+                    {interactionFilter === 'crush' 
+                      ? 'Sin flechazos (Crushes) registrados' 
+                      : interactionFilter === 'fan'
+                      ? 'Sin votos de Fan registrados'
+                      : 'Sin registros de "Yo te conozco"'}
+                  </p>
+                  <p className="text-[11px] text-zinc-500">
+                    {interactionFilter === 'crush'
+                      ? 'No has enviado ningún flechazo a profesores todavía.'
+                      : interactionFilter === 'fan'
+                      ? 'No has votado como Fan de ningún profesor todavía.'
+                      : 'No has marcado a ningún profesor con "Yo te conozco" todavía.'}
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  {interactions
+                    .filter(item => item.type === interactionFilter)
+                    .map((item) => {
+                      const isCrush = item.type === 'crush';
+                      const isFan = item.type === 'fan';
+                      const isKnows = item.type === 'knows';
+
+                      return (
+                        <div
+                          key={item.id}
+                          className="group relative flex flex-col justify-between p-4 rounded-2xl border border-zinc-800/80 bg-[#0c0c0c] hover:bg-[#121212] hover:border-zinc-700 transition-all duration-200 shadow-md"
+                        >
+                          <div className="flex items-start gap-3.5">
+                            {/* Avatar */}
+                            <div 
+                              onClick={() => navigateTo(`/profesores/${item.professorId}`)}
+                              className={`w-12 h-12 rounded-xl flex items-center justify-center font-black text-sm uppercase flex-shrink-0 cursor-pointer overflow-hidden transition-all ${
+                                isCrush 
+                                  ? 'bg-pink-950/30 border border-pink-500/40 text-pink-400 group-hover:border-pink-500 shadow-[0_0_15px_rgba(236,72,153,0.15)]' 
+                                  : isFan
+                                  ? 'bg-amber-950/30 border border-amber-500/40 text-amber-400 group-hover:border-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.15)]'
+                                  : 'bg-blue-950/30 border border-blue-500/40 text-blue-400 group-hover:border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.15)]'
+                              }`}
+                            >
+                              {item.professorAvatar ? (
+                                <img
+                                  src={item.professorAvatar}
+                                  alt={item.professorName}
+                                  className="w-full h-full object-cover"
+                                  referrerPolicy="no-referrer"
+                                />
+                              ) : (
+                                item.professorName.charAt(0)
+                              )}
+                            </div>
+
+                            {/* Nombre y Cargo */}
+                            <div 
+                              onClick={() => navigateTo(`/profesores/${item.professorId}`)}
+                              className="min-w-0 flex-1 cursor-pointer"
+                            >
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {isCrush && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-pink-500/15 border border-pink-500/30 text-pink-400 text-[9px] font-black uppercase tracking-wider">
+                                    <Heart className="w-2.5 h-2.5 fill-pink-500 text-pink-500" />
+                                    CRUSH
+                                  </span>
+                                )}
+                                {isFan && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/30 text-amber-400 text-[9px] font-black uppercase tracking-wider">
+                                    <Star className="w-2.5 h-2.5 fill-amber-500 text-amber-500" />
+                                    FAN
+                                  </span>
+                                )}
+                                {isKnows && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-500/15 border border-blue-500/30 text-blue-400 text-[9px] font-black uppercase tracking-wider">
+                                    <UserCheck className="w-2.5 h-2.5 text-blue-400" />
+                                    YO TE CONOZCO
+                                  </span>
+                                )}
+                              </div>
+
+                              <h4 className="text-xs sm:text-sm font-black text-white truncate group-hover:text-[#eab308] transition-colors uppercase tracking-tight mt-1.5">
+                                {item.professorName}
+                              </h4>
+                              <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">
+                                {item.professorRole || 'Profesor'}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Footer con Acciones */}
+                          <div className="flex items-center justify-between pt-3 mt-3 border-t border-zinc-800/60">
+                            <button
+                              type="button"
+                              onClick={() => navigateTo(`/profesores/${item.professorId}`)}
+                              className="inline-flex items-center gap-1 text-[11px] font-black text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                            >
+                              <span>Ver Perfil</span>
+                              <ChevronRight className="w-3.5 h-3.5" />
+                            </button>
+
+                            {isOwnProfile && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRemoveInteraction(item);
+                                }}
+                                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase tracking-wider transition-all cursor-pointer border ${
+                                  isCrush
+                                    ? 'bg-rose-950/20 hover:bg-rose-950/60 text-zinc-400 hover:text-rose-300 border-rose-900/30 hover:border-rose-700/50'
+                                    : 'bg-red-950/20 hover:bg-red-950/60 text-zinc-400 hover:text-red-300 border-red-900/30 hover:border-red-700/50'
+                                }`}
+                                title={isCrush ? 'Retirar flechazo' : 'Quitar voto de interacción'}
+                              >
+                                {isCrush ? (
+                                  <HeartCrack className="w-3 h-3 text-pink-400" />
+                                ) : (
+                                  <Trash2 className="w-3 h-3 text-red-400" />
+                                )}
+                                <span>Quitar</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
                 </div>
               )}
             </div>
