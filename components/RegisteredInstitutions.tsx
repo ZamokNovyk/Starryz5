@@ -111,7 +111,7 @@ export default function RegisteredInstitutions({
         <div>
           <div className="flex items-center gap-2 text-[#eab308] text-xs font-bold uppercase tracking-[0.2em] mb-2">
             <Building2 className="w-4 h-4 text-[#eab308]" />
-            <span>RED EDUCATIVA STARRYZ</span>
+            <span>RED EDUCATIVA STARRYZ5</span>
           </div>
           <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight uppercase font-sans">
             INSTITUCIONES <span className="text-[#eab308]">REGISTRADAS</span>
@@ -173,23 +173,14 @@ export default function RegisteredInstitutions({
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-[#0d0d0d] via-[#0d0d0d]/40 to-transparent"></div>
 
-                  {/* Badge Acronym & Verified */}
-                  <div className="absolute top-3 left-3 flex items-center gap-2">
-                    <span className="px-3 py-1 rounded-md bg-black/80 backdrop-blur-md border border-[#eab308]/40 text-[#eab308] font-black text-xs tracking-wider">
-                      {inst.acronym}
-                    </span>
-                    {inst.verified && (
+                  {/* Badge Verified */}
+                  {inst.verified && (
+                    <div className="absolute top-3 left-3 flex items-center gap-2">
                       <span className="p-1 rounded-full bg-[#eab308] text-black shadow-md">
                         <CheckCircle2 className="w-3.5 h-3.5" />
                       </span>
-                    )}
-                  </div>
-
-                  {/* Score badge */}
-                  <div className="absolute top-3 right-3 bg-black/80 backdrop-blur-md border border-[#ffffff20] px-2.5 py-1 rounded-md flex items-center gap-1.5 text-xs font-bold text-[#eab308]">
-                    <Star className="w-3.5 h-3.5 fill-[#eab308] text-[#eab308]" />
-                    <span>{inst.popularityScore} / 10</span>
-                  </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Content Details */}
