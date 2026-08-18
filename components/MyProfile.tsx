@@ -41,6 +41,7 @@ interface SupabaseUser {
   email: string | null;
   display_name: string | null;
   username?: string | null;
+  role?: string | null;
   photo_url: string | null;
   created_at: string;
   is_anonymous: boolean;
@@ -553,28 +554,53 @@ export default function MyProfile({ uid, onBackToHome }: MyProfileProps) {
               <img
                 src={dbUser.photo_url}
                 alt={dbUser.display_name || 'Usuario'}
-                className="w-24 h-24 rounded-full object-cover ring-3 ring-[#eab308] shadow-[0_0_20px_rgba(234,179,8,0.2)]"
+                className={`w-24 h-24 rounded-full object-cover ring-3 transition-all ${
+                  dbUser?.role === 'admin'
+                    ? 'ring-amber-400 shadow-[0_0_25px_rgba(245,158,11,0.45)]'
+                    : 'ring-[#eab308] shadow-[0_0_20px_rgba(234,179,8,0.2)]'
+                }`}
                 referrerPolicy="no-referrer"
               />
             ) : (
-              <div className="w-24 h-24 rounded-full bg-[#151515] border border-[#eab308]/40 flex items-center justify-center text-3xl font-black text-[#eab308] ring-3 ring-[#eab308]/20 shadow-lg">
+              <div className={`w-24 h-24 rounded-full bg-[#151515] border flex items-center justify-center text-3xl font-black ring-3 shadow-lg transition-all ${
+                dbUser?.role === 'admin'
+                  ? 'border-amber-400/80 text-amber-400 ring-amber-400/40 shadow-[0_0_25px_rgba(245,158,11,0.4)]'
+                  : 'border-[#eab308]/40 text-[#eab308] ring-[#eab308]/20'
+              }`}>
                 {(dbUser?.display_name || 'U').charAt(0).toUpperCase()}
               </div>
             )}
             
-            <span className={`absolute bottom-0 right-0 px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider ${
-              dbUser?.is_anonymous 
-                ? 'bg-[#151515] border border-[#eab308]/30 text-[#eab308]' 
-                : 'bg-[#eab308] text-black'
-            }`}>
-              {dbUser?.is_anonymous ? 'Anónimo' : 'Google'}
-            </span>
+            {dbUser?.role === 'admin' ? (
+              <div 
+                title="Administrador Verificado"
+                className="absolute bottom-0 right-0 p-1.5 rounded-full bg-gradient-to-tr from-amber-400 via-yellow-300 to-amber-500 text-black shadow-[0_0_16px_rgba(245,158,11,0.7)] ring-3 ring-[#0d0d0d] flex items-center justify-center animate-in zoom-in duration-300"
+              >
+                <CheckCircle2 className="w-4 h-4 text-black stroke-[3]" />
+              </div>
+            ) : (
+              <span className={`absolute bottom-0 right-0 px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider ${
+                dbUser?.is_anonymous 
+                  ? 'bg-[#151515] border border-[#eab308]/30 text-[#eab308]' 
+                  : 'bg-[#eab308] text-black'
+              }`}>
+                {dbUser?.is_anonymous ? 'Anónimo' : 'Google'}
+              </span>
+            )}
           </div>
 
-          <div className="space-y-1 w-full">
-            <h3 className="text-lg font-black text-white truncate max-w-full">
-              {dbUser?.display_name || 'Cargando...'}
-            </h3>
+          <div className="space-y-1.5 w-full">
+            <div className="flex items-center justify-center gap-1.5 flex-wrap">
+              <h3 className="text-lg font-black text-white truncate max-w-full">
+                {dbUser?.display_name || 'Cargando...'}
+              </h3>
+              {dbUser?.role === 'admin' && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/40 text-amber-400 text-[10px] font-black tracking-wider uppercase shadow-[0_0_12px_rgba(245,158,11,0.25)]">
+                  <ShieldCheck className="w-3.5 h-3.5 text-amber-400 stroke-[2.5]" />
+                  ADMIN
+                </span>
+              )}
+            </div>
             {isOwnProfile && (
               <p className="text-xs text-zinc-400 truncate max-w-full">
                 {dbUser?.email || 'Sesión Local Sin Correo'}
@@ -583,6 +609,19 @@ export default function MyProfile({ uid, onBackToHome }: MyProfileProps) {
           </div>
 
           <div className="w-full border-t border-[#ffffff10] pt-4 space-y-3 text-left">
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-zinc-500 font-medium">Rol de Cuenta</span>
+              {dbUser?.role === 'admin' ? (
+                <span className="inline-flex items-center gap-1 font-black text-amber-400 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-md text-[10px] tracking-wider uppercase shadow-[0_0_10px_rgba(245,158,11,0.2)]">
+                  <ShieldCheck className="w-3 h-3 text-amber-400" /> ADMIN VERIFICADO
+                </span>
+              ) : (
+                <span className="font-bold text-zinc-400 uppercase font-mono text-[10px] bg-[#141414] px-1.5 py-0.5 rounded border border-[#ffffff05]">
+                  {dbUser?.role === 'student' ? 'Estudiante' : (dbUser?.role || 'Estudiante')}
+                </span>
+              )}
+            </div>
+
             <div className="flex items-center justify-between text-[11px]">
               <span className="text-zinc-500 font-medium">Proveedor Auth</span>
               <span className="font-bold text-zinc-300 uppercase font-mono">
@@ -663,13 +702,26 @@ export default function MyProfile({ uid, onBackToHome }: MyProfileProps) {
           {profileTab === 'info' ? (
             <div className="space-y-6 animate-in fade-in duration-300">
               <div>
-                <h3 className="text-xl font-black text-white uppercase tracking-tight flex items-center gap-2">
-                  <ShieldCheck className="w-5 h-5 text-[#eab308]" /> {isOwnProfile ? 'Datos del Alumno en la DB' : 'Datos Públicos del Alumno'}
-                </h3>
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <h3 className="text-xl font-black text-white uppercase tracking-tight flex items-center gap-2">
+                    <ShieldCheck className={`w-5 h-5 ${dbUser?.role === 'admin' ? 'text-amber-400' : 'text-[#eab308]'}`} /> 
+                    {dbUser?.role === 'admin' 
+                      ? (isOwnProfile ? 'Panel de Perfil Administrador' : 'Perfil Administrador de Starryz')
+                      : (isOwnProfile ? 'Datos del Alumno en la DB' : 'Datos Públicos del Alumno')}
+                  </h3>
+
+                  {dbUser?.role === 'admin' && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500 text-black text-[10px] font-black uppercase tracking-wider shadow-[0_0_15px_rgba(245,158,11,0.4)]">
+                      <ShieldCheck className="w-3.5 h-3.5 text-black stroke-[3]" /> ADMIN VERIFICADO
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs text-zinc-400 mt-1">
-                  {isOwnProfile 
-                    ? 'Consulta en tiempo real los campos guardados en Supabase asociados a tu credencial de Firebase. Puedes modificar tu nombre público a continuación.'
-                    : 'Esta es la información comunitaria que el estudiante comparte públicamente en Starryz 5 de forma sincronizada con Supabase.'}
+                  {dbUser?.role === 'admin'
+                    ? 'Esta cuenta cuenta con privilegios administrativos autenticados en la plataforma Starryz.'
+                    : (isOwnProfile 
+                      ? 'Consulta en tiempo real los campos guardados en Supabase asociados a tu credencial de Firebase. Puedes modificar tu nombre público a continuación.'
+                      : 'Esta es la información comunitaria que el estudiante comparte públicamente en Starryz 5 de forma sincronizada con Supabase.')}
                 </p>
               </div>
 
@@ -793,8 +845,38 @@ export default function MyProfile({ uid, onBackToHome }: MyProfileProps) {
                       </div>
                     )}
 
+                    {/* Rol en el Sistema */}
+                    <div className="space-y-2">
+                      <label className={`block text-[10px] font-extrabold uppercase tracking-widest flex items-center gap-1.5 ${
+                        dbUser?.role === 'admin' ? 'text-amber-400' : 'text-zinc-400'
+                      }`}>
+                        <ShieldCheck className={`w-3.5 h-3.5 ${dbUser?.role === 'admin' ? 'text-amber-400' : 'text-zinc-400'}`} /> 
+                        Rol en el Sistema
+                      </label>
+                      <div className="relative">
+                        {dbUser?.role === 'admin' ? (
+                          <div className="w-full bg-[#121212] border border-amber-500/30 text-amber-300 rounded-xl px-4 py-3 text-sm flex items-center justify-between font-bold">
+                            <span className="flex items-center gap-2">
+                              <ShieldCheck className="w-4 h-4 text-amber-400 stroke-[2.5]" />
+                              Administrador
+                            </span>
+                            <span className="px-2 py-0.5 rounded text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/40 uppercase font-black">
+                              ADMIN
+                            </span>
+                          </div>
+                        ) : (
+                          <input
+                            type="text"
+                            value={dbUser?.role === 'student' ? 'Estudiante (Estándar)' : (dbUser?.role || 'Estudiante (Estándar)')}
+                            disabled
+                            className="w-full bg-[#121212] border border-[#ffffff0a] text-zinc-400 rounded-xl px-4 py-3 text-sm outline-none cursor-not-allowed font-medium"
+                          />
+                        )}
+                      </div>
+                    </div>
+
                     {/* Creado el */}
-                    <div className={isOwnProfile ? "space-y-2" : "sm:col-span-2 space-y-2"}>
+                    <div className="space-y-2">
                       <label className="block text-[10px] font-extrabold uppercase tracking-widest text-zinc-400 flex items-center gap-1.5">
                         <Calendar className="w-3.5 h-3.5" /> Fecha de Registro
                       </label>
