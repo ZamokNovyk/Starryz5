@@ -8,6 +8,7 @@ interface HeaderProps {
   onOpenInstallModal: () => void;
   onOpenJoinModal: () => void;
   onGoToProfile?: () => void;
+  onGoToHome?: () => void;
   onOpenCreateCenterModal?: () => void;
 }
 
@@ -15,6 +16,7 @@ export default function Header({
   onOpenInstallModal, 
   onOpenJoinModal, 
   onGoToProfile,
+  onGoToHome,
   onOpenCreateCenterModal
 }: HeaderProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -25,7 +27,10 @@ export default function Header({
       <div className="max-w-7xl mx-auto px-6 lg:px-8 h-16 flex items-center justify-between">
         
         {/* LOGO (LEFT) */}
-        <div className="flex items-center gap-2.5 cursor-pointer group select-none">
+        <div 
+          onClick={onGoToHome}
+          className="flex items-center gap-2.5 cursor-pointer group select-none"
+        >
           {/* Logo Star Icon */}
           <div className="text-[#eab308] flex items-center justify-center transition-transform group-hover:scale-110">
             <Star className="w-6 h-6 fill-[#eab308] text-[#eab308]" />

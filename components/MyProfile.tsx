@@ -33,10 +33,11 @@ interface SupabaseUser {
 }
 
 interface MyProfileProps {
+  uid?: string;
   onBackToHome: () => void;
 }
 
-export default function MyProfile({ onBackToHome }: MyProfileProps) {
+export default function MyProfile({ uid, onBackToHome }: MyProfileProps) {
   const { user, linkWithGoogle } = useAuth();
   const [dbUser, setDbUser] = useState<SupabaseUser | null>(null);
   const [loading, setLoading] = useState(true);
@@ -46,6 +47,8 @@ export default function MyProfile({ onBackToHome }: MyProfileProps) {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [profileTab, setProfileTab] = useState<'info' | 'followed'>('info');
+
+  const isOwnProfile = !uid || (user && user.uid === uid);
 
   const handleLinkWithGoogleClick = async () => {
     if (!user) return;
@@ -80,7 +83,8 @@ export default function MyProfile({ onBackToHome }: MyProfileProps) {
 
   useEffect(() => {
     async function fetchUserData() {
-      if (!user) {
+      const targetUid = uid || user?.uid;
+      if (!targetUid) {
         setLoading(false);
         return;
       }
@@ -93,7 +97,7 @@ export default function MyProfile({ onBackToHome }: MyProfileProps) {
         const { data, error } = await supabase
           .from('users')
           .select('*')
-          .eq('firebase_uid', user.uid)
+          .eq('firebase_uid', targetUid)
           .single();
 
         if (error) {
@@ -106,18 +110,18 @@ export default function MyProfile({ onBackToHome }: MyProfileProps) {
         }
       } catch (err: any) {
         console.error('Error al obtener datos de Supabase:', err);
-        setErrorMsg('No se pudieron obtener tus datos de la base de datos de Supabase. Revisa la conexión.');
+        setErrorMsg('No se pudieron obtener los datos de la base de datos de Supabase. El perfil podría no existir.');
       } finally {
         setLoading(false);
       }
     }
 
     fetchUserData();
-  }, [user]);
+  }, [user, uid]);
 
   const handleSaveChanges = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !dbUser) return;
+    if (!user || !dbUser || !isOwnProfile) return;
 
     if (!displayNameInput.trim()) {
       setErrorMsg('El nombre de usuario no puede estar vacío.');
@@ -167,7 +171,7 @@ export default function MyProfile({ onBackToHome }: MyProfileProps) {
     }
   };
 
-  if (!user) {
+  if (!user && isOwnProfile) {
     return (
       <div className="max-w-2xl mx-auto px-4 py-12 text-center space-y-6">
         <div className="inline-flex p-4 rounded-full bg-yellow-500/10 border border-yellow-500/20 text-[#eab308]">
@@ -220,11 +224,11 @@ export default function MyProfile({ onBackToHome }: MyProfileProps) {
             )}
             
             <span className={`absolute bottom-0 right-0 px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider ${
-              user.isAnonymous 
+              dbUser?.is_anonymous 
                 ? 'bg-[#151515] border border-[#eab308]/30 text-[#eab308]' 
                 : 'bg-[#eab308] text-black'
             }`}>
-              {user.isAnonymous ? 'Anónimo' : 'Google'}
+              {dbUser?.is_anonymous ? 'Anónimo' : 'Google'}
             </span>
           </div>
 
@@ -232,25 +236,29 @@ export default function MyProfile({ onBackToHome }: MyProfileProps) {
             <h3 className="text-lg font-black text-white truncate max-w-full">
               {dbUser?.display_name || 'Cargando...'}
             </h3>
-            <p className="text-xs text-zinc-400 truncate max-w-full">
-              {dbUser?.email || 'Sesión Local Sin Correo'}
-            </p>
+            {isOwnProfile && (
+              <p className="text-xs text-zinc-400 truncate max-w-full">
+                {dbUser?.email || 'Sesión Local Sin Correo'}
+              </p>
+            )}
           </div>
 
           <div className="w-full border-t border-[#ffffff10] pt-4 space-y-3 text-left">
             <div className="flex items-center justify-between text-[11px]">
               <span className="text-zinc-500 font-medium">Proveedor Auth</span>
               <span className="font-bold text-zinc-300 uppercase font-mono">
-                {user.isAnonymous ? 'Firebase Anon' : 'Google OAuth'}
+                {dbUser?.is_anonymous ? 'Firebase Anon' : 'Google OAuth'}
               </span>
             </div>
             
-            <div className="flex items-center justify-between text-[11px]">
-              <span className="text-zinc-500 font-medium">ID en Supabase</span>
-              <span className="font-mono text-zinc-400 text-[10px] bg-[#141414] px-1.5 py-0.5 rounded border border-[#ffffff05] truncate max-w-[110px]" title={dbUser?.id}>
-                {dbUser?.id ? `${dbUser.id.substring(0, 8)}...` : '...'}
-              </span>
-            </div>
+            {isOwnProfile && (
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-zinc-500 font-medium">ID en Supabase</span>
+                <span className="font-mono text-zinc-400 text-[10px] bg-[#141414] px-1.5 py-0.5 rounded border border-[#ffffff05] truncate max-w-[110px]" title={dbUser?.id}>
+                  {dbUser?.id ? `${dbUser.id.substring(0, 8)}...` : '...'}
+                </span>
+              </div>
+            )}
 
             <div className="flex items-center justify-between text-[11px]">
               <span className="text-zinc-500 font-medium">Sincronización</span>
@@ -297,10 +305,12 @@ export default function MyProfile({ onBackToHome }: MyProfileProps) {
             <div className="space-y-6 animate-in fade-in duration-300">
               <div>
                 <h3 className="text-xl font-black text-white uppercase tracking-tight flex items-center gap-2">
-                  <ShieldCheck className="w-5 h-5 text-[#eab308]" /> Datos del Alumno en la DB
+                  <ShieldCheck className="w-5 h-5 text-[#eab308]" /> {isOwnProfile ? 'Datos del Alumno en la DB' : 'Datos Públicos del Alumno'}
                 </h3>
                 <p className="text-xs text-zinc-400 mt-1">
-                  Consulta en tiempo real los campos guardados en Supabase asociados a tu credencial de Firebase. Puedes modificar tu nombre público a continuación.
+                  {isOwnProfile 
+                    ? 'Consulta en tiempo real los campos guardados en Supabase asociados a tu credencial de Firebase. Puedes modificar tu nombre público a continuación.'
+                    : 'Esta es la información comunitaria que el estudiante comparte públicamente en Starryz 5 de forma sincronizada con Supabase.'}
                 </p>
               </div>
 
@@ -330,7 +340,7 @@ export default function MyProfile({ onBackToHome }: MyProfileProps) {
                   {/* Grid Formulario */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     
-                    {/* Nombre de Usuario (Editable) */}
+                    {/* Nombre de Usuario */}
                     <div className="sm:col-span-2 space-y-2">
                       <label className="block text-[10px] font-extrabold uppercase tracking-widest text-[#eab308] flex items-center gap-1.5">
                         <User className="w-3.5 h-3.5" /> Nombre de Usuario / Apodo Público
@@ -340,32 +350,41 @@ export default function MyProfile({ onBackToHome }: MyProfileProps) {
                           type="text"
                           value={displayNameInput}
                           onChange={(e) => setDisplayNameInput(e.target.value)}
+                          disabled={!isOwnProfile}
                           placeholder="Ej. Valeria Morales"
-                          className="w-full bg-[#151515] border border-[#ffffff15] focus:border-[#eab308] focus:ring-1 focus:ring-[#eab308] rounded-xl px-4 py-3 text-sm text-white placeholder-zinc-600 outline-none transition-all"
+                          className={`w-full rounded-xl px-4 py-3 text-sm text-white outline-none transition-all ${
+                            isOwnProfile 
+                              ? 'bg-[#151515] border border-[#ffffff15] focus:border-[#eab308] focus:ring-1 focus:ring-[#eab308]' 
+                              : 'bg-[#121212] border border-[#ffffff0a] text-zinc-300 cursor-not-allowed font-semibold'
+                          }`}
                         />
                       </div>
-                      <p className="text-[10px] text-zinc-500">
-                        Este nombre es el que verán los demás alumnos en las votaciones y rankings del campus.
-                      </p>
+                      {isOwnProfile && (
+                        <p className="text-[10px] text-zinc-500">
+                          Este nombre es el que verán los demás alumnos en las votaciones y rankings del campus.
+                        </p>
+                      )}
                     </div>
 
-                    {/* Email (Solo lectura) */}
-                    <div className="space-y-2">
-                      <label className="block text-[10px] font-extrabold uppercase tracking-widest text-zinc-400 flex items-center gap-1.5">
-                        <Mail className="w-3.5 h-3.5" /> Correo Asociado
-                      </label>
-                      <div className="relative">
-                        <input
-                          type="email"
-                          value={dbUser?.email || 'Sin correo (Anónimo)'}
-                          disabled
-                          className="w-full bg-[#121212] border border-[#ffffff0a] text-zinc-500 rounded-xl px-4 py-3 text-sm outline-none cursor-not-allowed font-medium"
-                        />
+                    {/* Email (Solo se muestra a uno mismo) */}
+                    {isOwnProfile && (
+                      <div className="space-y-2">
+                        <label className="block text-[10px] font-extrabold uppercase tracking-widest text-zinc-400 flex items-center gap-1.5">
+                          <Mail className="w-3.5 h-3.5" /> Correo Asociado
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="email"
+                            value={dbUser?.email || 'Sin correo (Anónimo)'}
+                            disabled
+                            className="w-full bg-[#121212] border border-[#ffffff0a] text-zinc-500 rounded-xl px-4 py-3 text-sm outline-none cursor-not-allowed font-medium"
+                          />
+                        </div>
                       </div>
-                    </div>
+                    )}
 
-                    {/* Creado el (Solo lectura) */}
-                    <div className="space-y-2">
+                    {/* Creado el */}
+                    <div className={isOwnProfile ? "space-y-2" : "sm:col-span-2 space-y-2"}>
                       <label className="block text-[10px] font-extrabold uppercase tracking-widest text-zinc-400 flex items-center gap-1.5">
                         <Calendar className="w-3.5 h-3.5" /> Fecha de Registro
                       </label>
@@ -383,8 +402,8 @@ export default function MyProfile({ onBackToHome }: MyProfileProps) {
                       </div>
                     </div>
 
-                    {/* Fecha de Vinculación con Google (Solo lectura, si aplica) */}
-                    {dbUser?.linked_google_at && (
+                    {/* Fecha de Vinculación con Google (Solo se muestra a uno mismo) */}
+                    {isOwnProfile && dbUser?.linked_google_at && (
                       <div className="space-y-2 animate-in fade-in duration-300">
                         <label className="block text-[10px] font-extrabold uppercase tracking-widest text-[#eab308] flex items-center gap-1.5">
                           <Calendar className="w-3.5 h-3.5 text-[#eab308]" /> Vinculación con Google
@@ -404,25 +423,27 @@ export default function MyProfile({ onBackToHome }: MyProfileProps) {
                       </div>
                     )}
 
-                    {/* UID de Firebase (Solo lectura, informativo) */}
-                    <div className="sm:col-span-2 space-y-2">
-                      <label className="block text-[10px] font-extrabold uppercase tracking-widest text-zinc-400 flex items-center gap-1.5">
-                        <Sparkles className="w-3.5 h-3.5" /> UID Único de Firebase
-                      </label>
-                      <div className="relative">
-                        <input
-                          type="text"
-                          value={dbUser?.firebase_uid || ''}
-                          disabled
-                          className="w-full bg-[#121212] border border-[#ffffff0a] text-zinc-500 rounded-xl px-4 py-3 text-xs outline-none cursor-not-allowed font-mono"
-                        />
+                    {/* UID de Firebase (Solo se muestra a uno mismo) */}
+                    {isOwnProfile && (
+                      <div className="sm:col-span-2 space-y-2">
+                        <label className="block text-[10px] font-extrabold uppercase tracking-widest text-zinc-400 flex items-center gap-1.5">
+                          <Sparkles className="w-3.5 h-3.5" /> UID Único de Firebase
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="text"
+                            value={dbUser?.firebase_uid || ''}
+                            disabled
+                            className="w-full bg-[#121212] border border-[#ffffff0a] text-zinc-500 rounded-xl px-4 py-3 text-xs outline-none cursor-not-allowed font-mono"
+                          />
+                        </div>
                       </div>
-                    </div>
+                    )}
 
                   </div>
 
-                  {/* Opción de vinculación para usuarios anónimos */}
-                  {user.isAnonymous && !dbUser?.linked_google_at && (
+                  {/* Opción de vinculación para usuarios anónimos (Solo para uno mismo) */}
+                  {isOwnProfile && user?.isAnonymous && !dbUser?.linked_google_at && (
                     <div className="p-5 rounded-2xl bg-[#eab30805] border border-[#eab30820] space-y-4 animate-in fade-in duration-300">
                       <div className="flex items-start gap-3">
                         <div className="p-2 rounded-xl bg-[#eab30810] text-[#eab308] flex-shrink-0">
@@ -455,26 +476,28 @@ export default function MyProfile({ onBackToHome }: MyProfileProps) {
                     </div>
                   )}
 
-                  {/* Botones de acción */}
-                  <div className="pt-4 border-t border-[#ffffff10] flex justify-end">
-                    <button
-                      type="submit"
-                      disabled={saving}
-                      className="px-6 py-3 rounded-xl bg-[#eab308] hover:bg-[#d9a307] text-black font-black text-xs uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer shadow-[0_4px_20px_rgba(234,179,8,0.25)] disabled:opacity-50"
-                    >
-                      {saving ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin text-black" />
-                          <span>GUARDANDO...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Save className="w-4 h-4 text-black" />
-                          <span>GUARDAR CAMBIOS</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
+                  {/* Botones de acción (Solo si es tu propio perfil) */}
+                  {isOwnProfile && (
+                    <div className="pt-4 border-t border-[#ffffff10] flex justify-end">
+                      <button
+                        type="submit"
+                        disabled={saving}
+                        className="px-6 py-3 rounded-xl bg-[#eab308] hover:bg-[#d9a307] text-black font-black text-xs uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer shadow-[0_4px_20px_rgba(234,179,8,0.25)] disabled:opacity-50"
+                      >
+                        {saving ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin text-black" />
+                            <span>GUARDANDO...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Save className="w-4 h-4 text-black" />
+                            <span>GUARDAR CAMBIOS</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  )}
 
                 </form>
               )}

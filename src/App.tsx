@@ -52,7 +52,6 @@ function matchSlug(name: string, targetSlug: string): boolean {
 export default function App() {
   const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'home' | 'profile'>('home');
   const [autoNavigateToProfile, setAutoNavigateToProfile] = useState(false);
 
   // Router state
@@ -142,7 +141,7 @@ export default function App() {
   // Auto-navigate to profile when user logs in if they previously clicked "Perfil"
   useEffect(() => {
     if (user && autoNavigateToProfile) {
-      setActiveTab('profile');
+      navigate('/perfil');
       setAutoNavigateToProfile(false);
     }
   }, [user, autoNavigateToProfile]);
@@ -160,7 +159,7 @@ export default function App() {
 
   const handleProfileTabClick = () => {
     if (user) {
-      setActiveTab('profile');
+      navigate('/perfil');
     } else {
       setJoinModalOpen(true);
       setAutoNavigateToProfile(true);
@@ -193,6 +192,9 @@ export default function App() {
   const isProfessorRoute = route.pathname.startsWith('/profesores/');
   const professorSlug = isProfessorRoute ? route.pathname.replace('/profesores/', '') : '';
 
+  const isUserProfileRoute = route.pathname.startsWith('/perfil/');
+  const userProfileUid = isUserProfileRoute ? route.pathname.replace('/perfil/', '') : '';
+
   const isSearchRoute = route.pathname === '/search' || (route.pathname === '/' && new URLSearchParams(route.search).has('q'));
   const currentQuery = new URLSearchParams(route.search).get('q') || searchQuery;
 
@@ -212,6 +214,7 @@ export default function App() {
         onOpenInstallModal={() => setInstallModalOpen(true)}
         onOpenJoinModal={() => setJoinModalOpen(true)}
         onGoToProfile={handleProfileTabClick}
+        onGoToHome={() => navigate('/')}
         onOpenCreateCenterModal={() => setCreateCenterModalOpen(true)}
       />
 
@@ -248,6 +251,8 @@ export default function App() {
               </button>
             </div>
           )
+        ) : route.pathname === '/perfil' || isUserProfileRoute ? (
+          <MyProfile uid={userProfileUid} onBackToHome={() => navigate('/')} />
         ) : isSearchRoute ? (
           <SearchResultsView
             query={currentQuery}
@@ -255,7 +260,7 @@ export default function App() {
             onSelectInstitution={handleSelectInstitution}
             onBack={() => navigate('/')}
           />
-        ) : activeTab === 'home' ? (
+        ) : (
           <>
             <HeroSection
               searchQuery={searchQuery}
@@ -274,8 +279,6 @@ export default function App() {
               />
             </div>
           </>
-        ) : (
-          <MyProfile onBackToHome={() => setActiveTab('home')} />
         )}
       </main>
 
@@ -286,11 +289,10 @@ export default function App() {
       <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-[#0d0d0d]/95 backdrop-blur-md border border-[#ffffff15] rounded-full p-2 flex items-center gap-1.5 shadow-[0_12px_45px_rgba(0,0,0,0.85)] ring-1 ring-white/5">
         <button
           onClick={() => {
-            setActiveTab('home');
             navigate('/');
           }}
           className={`px-6 py-2.5 rounded-full flex items-center gap-2.5 text-xs font-black transition-all duration-300 cursor-pointer ${
-            activeTab === 'home' && !isProfileRoute && !isSearchRoute
+            route.pathname === '/' || isSearchRoute || isProfileRoute || isProfessorRoute
               ? 'bg-[#eab308] text-black shadow-[0_0_15px_rgba(234,179,8,0.3)]'
               : 'text-zinc-400 hover:text-white'
           }`}
@@ -302,7 +304,7 @@ export default function App() {
         <button
           onClick={handleProfileTabClick}
           className={`px-6 py-2.5 rounded-full flex items-center gap-2.5 text-xs font-black transition-all duration-300 cursor-pointer ${
-            activeTab === 'profile'
+            route.pathname === '/perfil' || isUserProfileRoute
               ? 'bg-[#eab308] text-black shadow-[0_0_15px_rgba(234,179,8,0.3)]'
               : 'text-zinc-400 hover:text-white'
           }`}
@@ -313,7 +315,7 @@ export default function App() {
       </div>
 
       {/* Botón flotante para crear centro (Exclusivo de la pantalla principal) */}
-      {route.pathname === '/' && activeTab === 'home' && (
+      {route.pathname === '/' && (
         <button
           onClick={() => setCreateCenterModalOpen(true)}
           className="fixed bottom-24 right-6 sm:right-8 z-40 w-14 h-14 bg-[#eab308] text-black rounded-2xl flex items-center justify-center shadow-[0_4px_25px_rgba(234,179,8,0.45)] hover:scale-105 active:scale-95 transition-all cursor-pointer border-none"
