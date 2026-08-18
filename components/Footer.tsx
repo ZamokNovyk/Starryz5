@@ -18,17 +18,6 @@ export default function Footer() {
           </span>
         </div>
 
-        {/* Links */}
-        <div className="flex flex-wrap items-center justify-center gap-6 text-zinc-400 text-xs">
-          <a href="#ranking" className="hover:text-[#eab308] transition-colors">Ranking Campus</a>
-          <a href="#instituciones" className="hover:text-[#eab308] transition-colors">Instituciones</a>
-          <a href="#alumnos" className="hover:text-[#eab308] transition-colors">Alumnos Populares</a>
-          <span className="text-zinc-700">•</span>
-          <span className="text-zinc-500 flex items-center gap-1">
-            Optimizado para Cloudflare Pages & Supabase
-          </span>
-        </div>
-
         {/* Copyright */}
         <div className="text-zinc-600 text-[10px] font-mono tracking-widest uppercase">
           © {new Date().getFullYear()} STARRYZ 5. Todos los derechos reservados.

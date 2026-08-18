@@ -25,6 +25,7 @@ import {
 import { Institution } from '@/lib/mockData';
 import { getProfessorsByInstitute, Professor as DbProfessor } from '@/src/lib/professors';
 import AddMemberModal from '@/components/Modals/AddMemberModal';
+import BookmarkButton from '@/components/BookmarkButton';
 
 interface EducationalCenterProfileViewProps {
   institution: Institution;
@@ -167,13 +168,22 @@ export default function EducationalCenterProfileView({
             <h1 className="text-2xl sm:text-3.5xl font-black text-white leading-tight uppercase tracking-tight">
               {institution.name}
             </h1>
-            <button
-              onClick={handleShare}
-              className="p-3 rounded-full bg-[#151515] hover:bg-[#202020] border border-zinc-800 text-zinc-400 hover:text-[#eab308] transition-all cursor-pointer flex-shrink-0 self-center sm:self-start shadow-md"
-              title="Compartir link"
-            >
-              <Share2 className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-2 flex-shrink-0 self-center sm:self-start">
+              <BookmarkButton
+                itemId={institution.id || institution.slug || ''}
+                itemType="center"
+                itemName={institution.name}
+                itemImage={null}
+                itemSubtitle={institution.acronym || 'Centro Educativo'}
+              />
+              <button
+                onClick={handleShare}
+                className="p-3 rounded-full bg-[#151515] hover:bg-[#202020] border border-zinc-800 text-zinc-400 hover:text-[#eab308] transition-all cursor-pointer shadow-md"
+                title="Compartir link"
+              >
+                <Share2 className="w-4 h-4" />
+              </button>
+            </div>
           </div>
           {copied && (
             <p className="text-xs text-[#eab308] font-bold tracking-wide animate-pulse">

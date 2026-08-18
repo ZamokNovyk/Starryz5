@@ -314,7 +314,7 @@ export default function App() {
           }`}
         >
           <LayoutGrid className="w-4 h-4" />
-          <span>EXPLORAR</span>
+          <span>Home</span>
         </button>
         
         <button
@@ -326,7 +326,7 @@ export default function App() {
           }`}
         >
           <User className="w-4 h-4" />
-          <span>PERFIL DB</span>
+          <span>Mi Perfil</span>
         </button>
       </div>
 

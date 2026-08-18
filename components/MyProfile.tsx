@@ -19,7 +19,11 @@ import {
   Database,
   ArrowLeft,
   Sparkles,
-  Heart
+  Bookmark,
+  Trash2,
+  Folder,
+  Plus,
+  ChevronRight
 } from 'lucide-react';
 
 interface SupabaseUser {
@@ -53,7 +57,16 @@ export default function MyProfile({ uid, onBackToHome }: MyProfileProps) {
   }>({ status: 'idle', message: '' });
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [profileTab, setProfileTab] = useState<'info' | 'followed'>('info');
+  const [profileTab, setProfileTab] = useState<'info' | 'collections'>('info');
+
+  // Colecciones State
+  const [collections, setCollections] = useState<any[]>([]);
+  const [collectionItems, setCollectionItems] = useState<any[]>([]);
+  const [selectedColId, setSelectedColId] = useState<string | null>(null);
+  const [loadingCollections, setLoadingCollections] = useState(false);
+  const [newColInputName, setNewColInputName] = useState('');
+  const [creatingColProfile, setCreatingColProfile] = useState(false);
+  const [collectionsError, setCollectionsError] = useState('');
 
   const isOwnProfile = !uid || (user && user.uid === uid);
 
@@ -199,6 +212,112 @@ export default function MyProfile({ uid, onBackToHome }: MyProfileProps) {
 
     return () => clearTimeout(timer);
   }, [displayNameInput, initialDisplayName, isOwnProfile, loading, dbUser?.id, user?.uid]);
+
+  // Cargar colecciones en la pestaña 'collections'
+  useEffect(() => {
+    async function loadCollectionsAndItems() {
+      const targetUid = uid || user?.uid;
+      if (!targetUid) return;
+
+      try {
+        setLoadingCollections(true);
+        setCollectionsError('');
+        const { getUserCollections, getAllCollectionItems } = await import('@/src/lib/collections');
+        const cols = await getUserCollections(targetUid);
+        setCollections(cols);
+
+        const items = await getAllCollectionItems(targetUid);
+        setCollectionItems(items);
+
+        if (cols.length > 0 && !selectedColId) {
+          const defaultCol = cols.find(c => c.name.toLowerCase() === 'guardados') || cols[0];
+          setSelectedColId(defaultCol.id);
+        }
+      } catch (err: any) {
+        console.error('Error al cargar colecciones:', err);
+        setCollectionsError('Error al conectar con las colecciones.');
+      } finally {
+        setLoadingCollections(false);
+      }
+    }
+
+    if (profileTab === 'collections') {
+      loadCollectionsAndItems();
+    }
+  }, [profileTab, uid, user?.uid]);
+
+  const handleCreateCollectionInProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const targetUid = uid || user?.uid;
+    if (!targetUid || !newColInputName.trim()) return;
+
+    setCreatingColProfile(true);
+    setCollectionsError('');
+    try {
+      const { createNewCollection } = await import('@/src/lib/collections');
+      const name = newColInputName.trim();
+      if (collections.some(c => c.name.toLowerCase() === name.toLowerCase())) {
+        setCollectionsError('Ya existe una colección con ese nombre.');
+        setCreatingColProfile(false);
+        return;
+      }
+
+      const newCol = await createNewCollection(targetUid, name);
+      setCollections(prev => [...prev, newCol]);
+      setSelectedColId(newCol.id);
+      setNewColInputName('');
+    } catch (err: any) {
+      console.error('Error al crear colección:', err);
+      setCollectionsError(err?.message || 'Error al crear la colección.');
+    } finally {
+      setCreatingColProfile(false);
+    }
+  };
+
+  const handleDeleteCollectionInProfile = async (colId: string) => {
+    const targetUid = uid || user?.uid;
+    if (!targetUid || !colId) return;
+
+    // Actualizar estado optimistamente
+    const updatedCols = collections.filter(c => c.id !== colId);
+    setCollections(updatedCols);
+    setCollectionItems(prev => prev.filter(i => i.collection_id !== colId));
+
+    if (selectedColId === colId) {
+      setSelectedColId(updatedCols.length > 0 ? updatedCols[0].id : null);
+    }
+
+    try {
+      const { deleteCollection } = await import('@/src/lib/collections');
+      await deleteCollection(targetUid, colId);
+    } catch (err) {
+      console.error('Error al eliminar colección:', err);
+    }
+  };
+
+  const handleRemoveItemFromCollectionInProfile = async (colId: string, itemId: string) => {
+    const targetUid = uid || user?.uid;
+    if (!targetUid || !colId || !itemId) return;
+
+    try {
+      const { toggleItemInCollection } = await import('@/src/lib/collections');
+      await toggleItemInCollection(targetUid, colId, itemId, {
+        item_type: 'professor', // Dummy payload since we are only removing
+        item_name: '',
+        item_image: null,
+        item_subtitle: null
+      });
+
+      setCollectionItems(prev => prev.filter(i => !(i.collection_id === colId && i.item_id === itemId)));
+    } catch (err) {
+      console.error('Error al quitar elemento de colección:', err);
+    }
+  };
+
+  const navigateTo = (url: string) => {
+    window.history.pushState(null, '', url);
+    window.dispatchEvent(new Event('popstate'));
+  };
 
   const handleSaveChanges = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -451,15 +570,15 @@ export default function MyProfile({ uid, onBackToHome }: MyProfileProps) {
 
             <button
               type="button"
-              onClick={() => setProfileTab('followed')}
+              onClick={() => setProfileTab('collections')}
               className={`px-4.5 py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
-                profileTab === 'followed'
+                profileTab === 'collections'
                   ? 'bg-[#eab308] text-black font-extrabold shadow-sm'
                   : 'text-zinc-400 hover:text-white hover:bg-[#151515]'
               }`}
             >
-              <Heart className="w-3.5 h-3.5" />
-              <span>Seguidos</span>
+              <Bookmark className="w-3.5 h-3.5 text-current" />
+              <span>Colecciones</span>
             </button>
           </div>
 
@@ -738,26 +857,213 @@ export default function MyProfile({ uid, onBackToHome }: MyProfileProps) {
               )}
             </div>
           ) : (
-            // PESTAÑA SEGUIDOS
+            // PESTAÑA COLECCIONES
             <div className="space-y-6 animate-in fade-in duration-300">
-              <div>
-                <h3 className="text-xl font-black text-white uppercase tracking-tight flex items-center gap-2">
-                  <Heart className="w-5 h-5 text-pink-500 fill-current" /> Miembros Seguidos
-                </h3>
-                <p className="text-xs text-zinc-400 mt-1">
-                  Administra las cuentas de profesores, alumnos o centros educativos que sigues para estar al tanto de sus publicaciones.
-                </p>
-              </div>
-
-              <div className="p-8 rounded-2xl border border-dashed border-zinc-800 text-center space-y-3 bg-[#050505]">
-                <div className="inline-flex p-3 rounded-full bg-pink-500/10 border border-pink-500/20 text-pink-500 mb-1">
-                  <Heart className="w-6 h-6 animate-pulse" />
+              {collectionsError && (
+                <div className="flex items-center gap-2 text-xs text-red-400 bg-red-950/20 border border-red-900/30 p-3 rounded-xl">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>{collectionsError}</span>
                 </div>
-                <h4 className="text-sm font-black text-white uppercase tracking-wider">Sin seguidos todavía</h4>
-                <p className="text-xs text-zinc-500 max-w-sm mx-auto leading-relaxed">
-                  Aún no sigues a ningún miembro de la comunidad estudiantil. ¡Explora profesores o centros educativos y haz clic en "Seguir" para verlos aquí!
-                </p>
-              </div>
+              )}
+
+              {/* Crear nueva colección */}
+              {isOwnProfile && (
+                <form onSubmit={handleCreateCollectionInProfile} className="flex gap-2 bg-[#0d0d0d] border border-zinc-800/80 p-3 rounded-xl items-center animate-in fade-in slide-in-from-top-2 duration-300">
+                  <input
+                    type="text"
+                    value={newColInputName}
+                    onChange={(e) => {
+                      setNewColInputName(e.target.value);
+                      setCollectionsError('');
+                    }}
+                    placeholder="Crear nueva colección... (ej. Parciales 2026)"
+                    className="flex-1 bg-transparent text-xs text-white placeholder-zinc-600 outline-none px-2"
+                    maxLength={30}
+                    disabled={creatingColProfile}
+                  />
+                  <button
+                    type="submit"
+                    disabled={creatingColProfile || !newColInputName.trim()}
+                    className="bg-[#eab308] hover:bg-[#eab308]/95 text-black px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all disabled:opacity-40 cursor-pointer"
+                  >
+                    {creatingColProfile ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <Plus className="w-3.5 h-3.5" />
+                    )}
+                    <span>Crear</span>
+                  </button>
+                </form>
+              )}
+
+              {loadingCollections ? (
+                <div className="py-12 flex flex-col items-center justify-center space-y-3">
+                  <Loader2 className="w-8 h-8 animate-spin text-[#eab308]" />
+                  <p className="text-xs text-zinc-500">Cargando tus colecciones de Supabase...</p>
+                </div>
+              ) : collections.length === 0 ? (
+                <div className="p-8 rounded-2xl border border-dashed border-zinc-800 text-center space-y-3 bg-[#050505]">
+                  <div className="inline-flex p-3 rounded-full bg-[#eab308]/10 border border-[#eab308]/20 text-[#eab308] mb-1">
+                    <Bookmark className="w-6 h-6 animate-pulse" />
+                  </div>
+                  <h4 className="text-sm font-black text-white uppercase tracking-wider">Sin colecciones guardadas</h4>
+                  <p className="text-xs text-zinc-500 max-w-sm mx-auto leading-relaxed">
+                    Aún no tienes elementos en tus colecciones de la comunidad estudiantil. ¡Explora profesores o centros educativos y añádelos a tus favoritos!
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Lista de Carpetas (Colecciones) - HORIZONTAL Y DESLIZABLE */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between px-1">
+                      <span className="text-[10px] font-extrabold text-zinc-500 uppercase tracking-wider">
+                        MIS CARPETAS
+                      </span>
+                      <span className="text-[9px] text-zinc-500 font-bold uppercase">
+                        {collections.length} {collections.length === 1 ? 'carpeta' : 'carpetas'}
+                      </span>
+                    </div>
+
+                    {/* Contenedor horizontal deslizable */}
+                    <div className="flex gap-3 overflow-x-auto pb-2 pt-1 scrollbar-none snap-x -mx-1 px-1">
+                      {collections.map((col) => {
+                        const count = collectionItems.filter(item => item.collection_id === col.id).length;
+                        const isSelected = selectedColId === col.id;
+                        const isDefault = col.name.toLowerCase() === 'guardados';
+
+                        return (
+                          <div
+                            key={col.id}
+                            onClick={() => setSelectedColId(col.id)}
+                            className={`min-w-[150px] sm:min-w-[170px] max-w-[210px] flex-shrink-0 snap-start p-3.5 rounded-2xl border cursor-pointer transition-all flex flex-col justify-between relative group ${
+                              isSelected
+                                ? 'bg-[#141414] border-[#eab308] text-white shadow-xl ring-1 ring-[#eab308]/20'
+                                : 'bg-[#0d0d0d] border-zinc-850 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between mb-3">
+                              <div className={`p-2 rounded-xl ${isSelected ? 'bg-[#eab308]/15 text-[#eab308]' : 'bg-[#181818] text-zinc-500'}`}>
+                                <Folder className="w-4 h-4 fill-current" />
+                              </div>
+
+                              {isOwnProfile && !isDefault && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteCollectionInProfile(col.id);
+                                  }}
+                                  className="p-1.5 rounded-lg bg-zinc-900 hover:bg-red-950/40 text-zinc-500 hover:text-red-400 transition-all border border-zinc-800 hover:border-red-900/30"
+                                  title="Eliminar Colección"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+
+                            <div>
+                              <p className="text-xs font-black truncate uppercase tracking-tight text-white">{col.name}</p>
+                              <p className="text-[10px] text-zinc-500 font-medium mt-0.5">{count} {count === 1 ? 'elemento' : 'elementos'}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Elementos de la Colección Seleccionada */}
+                  <div className="space-y-3 pt-1 animate-in fade-in duration-300">
+                    <div className="text-[10px] font-extrabold text-zinc-500 uppercase tracking-wider px-1 flex items-center justify-between">
+                      <span>CONTENIDO DE {collections.find(c => c.id === selectedColId)?.name || 'COLECCIÓN'}</span>
+                      <span className="bg-zinc-850 px-2 py-0.5 rounded text-[9px] text-zinc-400 font-bold uppercase">
+                        {collectionItems.filter(item => item.collection_id === selectedColId).length} Elementos
+                      </span>
+                    </div>
+
+                    {collectionItems.filter(item => item.collection_id === selectedColId).length === 0 ? (
+                      <div className="p-8 rounded-2xl border border-dashed border-zinc-850 bg-[#070707] text-center space-y-2 animate-in fade-in duration-250">
+                        <Bookmark className="w-5 h-5 text-zinc-700 mx-auto" />
+                        <p className="text-xs text-zinc-500 font-bold uppercase tracking-wider">Carpeta Vacía</p>
+                        <p className="text-[11px] text-zinc-600 max-w-xs mx-auto">
+                          No has guardado ningún profesor o centro en esta lista todavía. ¡Vuelve al campus para agregar elementos!
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 gap-2">
+                        {collectionItems
+                          .filter(item => item.collection_id === selectedColId)
+                          .map((item) => {
+                            const isProfessor = item.item_type === 'professor';
+                            return (
+                              <div
+                                key={item.id}
+                                className="flex items-center justify-between p-3.5 rounded-2xl border border-zinc-850/80 bg-[#0c0c0c] hover:bg-[#121212] transition-colors gap-3 animate-in fade-in duration-150"
+                              >
+                                <div
+                                  onClick={() => {
+                                    const path = isProfessor
+                                      ? `/profesores/${item.item_id}`
+                                      : `/educational_centers/${item.item_id}`;
+                                    navigateTo(path);
+                                  }}
+                                  className="flex items-center gap-3 cursor-pointer min-w-0 flex-1 group"
+                                >
+                                  {/* Avatar circle / initials fallback */}
+                                  <div className="w-10 h-10 rounded-xl bg-[#161616] border border-zinc-800 flex items-center justify-center text-zinc-400 font-bold text-sm uppercase flex-shrink-0 group-hover:border-[#eab308]/30 transition-colors">
+                                    {item.item_image ? (
+                                      <img
+                                        src={item.item_image}
+                                        alt={item.item_name}
+                                        className="w-full h-full object-cover rounded-xl"
+                                        referrerPolicy="no-referrer"
+                                      />
+                                    ) : (
+                                      item.item_name.substring(0, 1)
+                                    )}
+                                  </div>
+
+                                  <div className="min-w-0">
+                                    <h4 className="text-xs font-black text-white truncate group-hover:text-[#eab308] transition-colors uppercase tracking-tight">
+                                      {item.item_name}
+                                    </h4>
+                                    <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mt-0.5">
+                                      {item.item_subtitle || (isProfessor ? 'Profesor' : 'Centro Educativo')}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-1.5 flex-shrink-0">
+                                  <button
+                                    onClick={() => {
+                                      const path = isProfessor
+                                        ? `/profesores/${item.item_id}`
+                                        : `/educational_centers/${item.item_id}`;
+                                      navigateTo(path);
+                                    }}
+                                    className="p-2 rounded-xl bg-zinc-900/50 hover:bg-zinc-800 text-zinc-400 hover:text-white transition-all cursor-pointer"
+                                    title="Ver Perfil"
+                                  >
+                                    <ChevronRight className="w-4 h-4" />
+                                  </button>
+
+                                  {isOwnProfile && (
+                                    <button
+                                      onClick={() => handleRemoveItemFromCollectionInProfile(selectedColId!, item.item_id)}
+                                      className="p-2 rounded-xl bg-red-950/10 hover:bg-red-950/40 text-zinc-600 hover:text-red-400 transition-all border border-transparent hover:border-red-900/20 cursor-pointer"
+                                      title="Quitar de la colección"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

@@ -29,6 +29,7 @@ import {
   updateProfessorWiki
 } from '@/src/lib/professors';
 import { useAuth } from '@/src/context/AuthContext';
+import BookmarkButton from '@/components/BookmarkButton';
 
 interface ProfessorProfileProps {
   slug: string;
@@ -403,12 +404,25 @@ export default function ProfessorProfile({
           <span>Volver al Centro</span>
         </button>
 
-        <button
-          onClick={handleShare}
-          className="p-3 rounded-full bg-[#151515] hover:bg-[#202020] border border-zinc-800 text-zinc-400 hover:text-[#eab308] transition-all cursor-pointer shadow-md"
-        >
-          <Share2 className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-2">
+          {professor && (
+            <BookmarkButton
+              itemId={professor.id || slug}
+              itemType="professor"
+              itemName={professor.nombre_completo || `${professor.nombre} ${professor.apellidos}`}
+              itemImage={professor.avatar_url || null}
+              itemSubtitle={professor.role}
+              onRequireAuth={onRequireAuth}
+            />
+          )}
+
+          <button
+            onClick={handleShare}
+            className="p-3 rounded-full bg-[#151515] hover:bg-[#202020] border border-zinc-800 text-zinc-400 hover:text-[#eab308] transition-all cursor-pointer shadow-md"
+          >
+            <Share2 className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       {copied && (
