@@ -149,3 +149,73 @@ export async function linkAnonymousWithGoogle(): Promise<AuthUser> {
     throw error;
   }
 }
+
+/**
+ * Comprueba si un nombre de usuario / apodo está disponible en Supabase llamando al RPC 'check_username_available'.
+ * Si el RPC no está disponible o da error, ejecuta una consulta de comprobación directa en Supabase.
+ */
+export async function checkUsernameAvailable(
+  username: string,
+  currentUserId?: string,
+  currentFirebaseUid?: string
+): Promise<{ available: boolean; message: string }> {
+  const clean = username.trim();
+  if (!clean) {
+    return { available: false, message: 'El nombre de usuario no puede estar vacío.' };
+  }
+
+  if (clean.length < 2) {
+    return { available: false, message: 'El nombre debe tener al menos 2 caracteres.' };
+  }
+
+  if (clean.length > 35) {
+    return { available: false, message: 'El nombre no puede superar los 35 caracteres.' };
+  }
+
+  // 1. Invocar la función RPC 'check_username_available' en Supabase
+  try {
+    const { data, error } = await supabase.rpc('check_username_available', {
+      p_username: clean,
+      p_user_id: currentUserId || null,
+      p_firebase_uid: currentFirebaseUid || null,
+    });
+
+    if (!error && typeof data === 'boolean') {
+      return {
+        available: data,
+        message: data ? 'Nombre disponible' : 'Este nombre ya está en uso',
+      };
+    }
+  } catch (rpcErr) {
+    console.warn('Aviso: RPC check_username_available:', rpcErr);
+  }
+
+  // 2. Consulta de respaldo directo en la tabla 'users' de Supabase
+  try {
+    let query = supabase
+      .from('users')
+      .select('id, firebase_uid, display_name');
+
+    if (currentFirebaseUid) {
+      query = query.neq('firebase_uid', currentFirebaseUid);
+    } else if (currentUserId) {
+      query = query.neq('id', currentUserId);
+    }
+
+    const { data: existing, error } = await query.ilike('display_name', clean);
+    if (error) {
+      console.warn('Error al verificar disponibilidad:', error.message);
+      return { available: true, message: 'Nombre disponible' };
+    }
+
+    const isTaken = existing && existing.length > 0;
+    return {
+      available: !isTaken,
+      message: !isTaken ? 'Nombre disponible' : 'Este nombre ya está en uso',
+    };
+  } catch (err) {
+    console.warn('Excepción al comprobar username:', err);
+    return { available: true, message: 'Nombre disponible' };
+  }
+}
+

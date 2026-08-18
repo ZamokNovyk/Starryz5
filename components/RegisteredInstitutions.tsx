@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Building2, Users, Star, CheckCircle2, MapPin, ArrowUpRight } from 'lucide-react';
-import { Institution, MOCK_INSTITUTIONS } from '@/lib/mockData';
+import { Building2, Star, CheckCircle2 } from 'lucide-react';
+import { Institution } from '@/lib/mockData';
 import { getEducationalCenters, EducationalCenter } from '@/src/lib/centers';
 
 interface RegisteredInstitutionsProps {
@@ -193,43 +193,11 @@ export default function RegisteredInstitutions({
                 </div>
 
                 {/* Content Details */}
-                <div className="p-5 space-y-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <h3 className="text-lg font-bold text-white group-hover:text-[#eab308] transition-colors leading-snug">
-                      {inst.name}
-                    </h3>
-                  </div>
-
-                  <div className="flex items-center gap-1.5 text-xs text-zinc-400">
-                    <MapPin className="w-3.5 h-3.5 text-[#eab308]" />
-                    <span>{inst.campus}</span>
-                  </div>
-
-                  {/* Popularity Bar */}
-                  <div className="space-y-1.5 pt-1">
-                    <div className="flex justify-between text-xs text-zinc-400 font-medium">
-                      <span>Índice de Popularidad</span>
-                      <span className="text-[#eab308] font-bold">{inst.popularityScore * 10}%</span>
-                    </div>
-                    <div className="w-full bg-[#151515] rounded-full h-2 overflow-hidden border border-[#ffffff10]">
-                      <div
-                        className="bg-[#eab308] h-full rounded-full transition-all duration-500"
-                        style={{ width: `${inst.popularityScore * 10}%` }}
-                      ></div>
-                    </div>
-                  </div>
+                <div className="p-5">
+                  <h3 className="text-lg font-bold text-white group-hover:text-[#eab308] transition-colors leading-snug">
+                    {inst.name}
+                  </h3>
                 </div>
-              </div>
-
-              {/* Bottom Card Footer */}
-              <div className="px-5 py-3.5 border-t border-[#ffffff10] bg-[#0a0a0a] flex items-center justify-between text-xs text-zinc-400">
-                <div className="flex items-center gap-1.5">
-                  <Users className="w-3.5 h-3.5 text-zinc-400" />
-                  <span>{inst.studentsCount.toLocaleString()} Alumnos</span>
-                </div>
-                <span className="text-[#eab308] group-hover:translate-x-1 transition-transform font-bold flex items-center gap-1">
-                  Ver Campus <ArrowUpRight className="w-3.5 h-3.5" />
-                </span>
               </div>
             </div>
           ))}

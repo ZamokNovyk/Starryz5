@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '@/src/lib/supabase';
 import { useAuth } from '@/src/context/AuthContext';
 import { auth } from '@/src/lib/firebase';
+import { checkUsernameAvailable } from '@/src/lib/auth';
 import { updateProfile } from 'firebase/auth';
 import { motion } from 'motion/react';
 import { 
@@ -26,6 +27,7 @@ interface SupabaseUser {
   firebase_uid: string;
   email: string | null;
   display_name: string | null;
+  username?: string | null;
   photo_url: string | null;
   created_at: string;
   is_anonymous: boolean;
@@ -44,6 +46,11 @@ export default function MyProfile({ uid, onBackToHome }: MyProfileProps) {
   const [saving, setSaving] = useState(false);
   const [linkingGoogle, setLinkingGoogle] = useState(false);
   const [displayNameInput, setDisplayNameInput] = useState('');
+  const [initialDisplayName, setInitialDisplayName] = useState('');
+  const [usernameAvailability, setUsernameAvailability] = useState<{
+    status: 'idle' | 'checking' | 'available' | 'taken' | 'error';
+    message: string;
+  }>({ status: 'idle', message: '' });
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [profileTab, setProfileTab] = useState<'info' | 'followed'>('info');
@@ -69,7 +76,10 @@ export default function MyProfile({ uid, onBackToHome }: MyProfileProps) {
 
       if (data) {
         setDbUser(data as SupabaseUser);
-        setDisplayNameInput(data.display_name || '');
+        const name = data.display_name || data.username || '';
+        setDisplayNameInput(name);
+        setInitialDisplayName(name);
+        setUsernameAvailability({ status: 'available', message: 'Nombre actual verificado' });
       }
 
       setSuccessMsg('¡Excelente! Tu cuenta ha sido vinculada con Google de forma segura. Se ha conservado tu nombre de usuario anterior.');
@@ -106,7 +116,10 @@ export default function MyProfile({ uid, onBackToHome }: MyProfileProps) {
 
         if (data) {
           setDbUser(data as SupabaseUser);
-          setDisplayNameInput(data.display_name || '');
+          const name = data.display_name || data.username || '';
+          setDisplayNameInput(name);
+          setInitialDisplayName(name);
+          setUsernameAvailability({ status: 'available', message: 'Nombre actual asignado' });
         }
       } catch (err: any) {
         console.error('Error al obtener datos de Supabase:', err);
@@ -119,17 +132,92 @@ export default function MyProfile({ uid, onBackToHome }: MyProfileProps) {
     fetchUserData();
   }, [user, uid]);
 
+  // Validación con debounce (300ms) mediante RPC 'check_username_available'
+  useEffect(() => {
+    if (!isOwnProfile || loading) return;
+
+    const cleanInput = displayNameInput.trim();
+
+    // Si el nombre no ha cambiado respecto al actual del usuario
+    if (cleanInput.toLowerCase() === initialDisplayName.trim().toLowerCase() && cleanInput !== '') {
+      setUsernameAvailability({
+        status: 'available',
+        message: 'Nombre disponible (tu nombre actual)'
+      });
+      return;
+    }
+
+    if (!cleanInput) {
+      setUsernameAvailability({
+        status: 'idle',
+        message: ''
+      });
+      return;
+    }
+
+    if (cleanInput.length < 2) {
+      setUsernameAvailability({
+        status: 'error',
+        message: 'El nombre debe tener al menos 2 caracteres'
+      });
+      return;
+    }
+
+    if (cleanInput.length > 35) {
+      setUsernameAvailability({
+        status: 'error',
+        message: 'El nombre no puede superar los 35 caracteres'
+      });
+      return;
+    }
+
+    setUsernameAvailability({
+      status: 'checking',
+      message: 'Verificando disponibilidad...'
+    });
+
+    const timer = setTimeout(async () => {
+      try {
+        const result = await checkUsernameAvailable(
+          cleanInput,
+          dbUser?.id,
+          user?.uid
+        );
+
+        setUsernameAvailability({
+          status: result.available ? 'available' : 'taken',
+          message: result.message
+        });
+      } catch (err) {
+        console.error('Error al verificar disponibilidad:', err);
+        setUsernameAvailability({
+          status: 'available',
+          message: 'Nombre disponible'
+        });
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [displayNameInput, initialDisplayName, isOwnProfile, loading, dbUser?.id, user?.uid]);
+
   const handleSaveChanges = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !dbUser || !isOwnProfile) return;
 
-    if (!displayNameInput.trim()) {
+    const cleanUsername = displayNameInput.trim();
+
+    if (!cleanUsername) {
       setErrorMsg('El nombre de usuario no puede estar vacío.');
       return;
     }
 
-    if (displayNameInput.length < 2 || displayNameInput.length > 35) {
+    if (cleanUsername.length < 2 || cleanUsername.length > 35) {
       setErrorMsg('El nombre de usuario debe tener entre 2 y 35 caracteres.');
+      return;
+    }
+
+    if (usernameAvailability.status === 'taken') {
+      setErrorMsg('Este nombre ya está en uso. Por favor, elige un nombre de usuario diferente.');
       return;
     }
 
@@ -138,25 +226,86 @@ export default function MyProfile({ uid, onBackToHome }: MyProfileProps) {
     setErrorMsg(null);
 
     try {
-      // 1. Actualizar en Supabase
-      const { error: dbError } = await supabase
+      // 1. Actualizar en Supabase con .update({ username: nuevoNombre, display_name: nuevoNombre })
+      let updateError = null;
+
+      const { error: fullUpdateErr } = await supabase
         .from('users')
-        .update({ display_name: displayNameInput.trim() })
+        .update({ 
+          username: cleanUsername,
+          display_name: cleanUsername 
+        })
         .eq('firebase_uid', user.uid);
 
-      if (dbError) throw dbError;
+      if (fullUpdateErr) {
+        // Capturar error 23505 (duplicate key / unique constraint)
+        if (
+          fullUpdateErr.code === '23505' || 
+          fullUpdateErr.message?.includes('duplicate key') || 
+          fullUpdateErr.message?.includes('23505') ||
+          fullUpdateErr.message?.includes('unique constraint')
+        ) {
+          setUsernameAvailability({
+            status: 'taken',
+            message: 'Este nombre ya está en uso'
+          });
+          setErrorMsg('Este nombre acaba de ser tomado por otro usuario. Por favor elige otro.');
+          setSaving(false);
+          return;
+        }
+
+        // Si la columna 'username' no existe aún en la tabla, actualizamos 'display_name'
+        if (fullUpdateErr.message?.includes('username') && (fullUpdateErr.message?.includes('column') || fullUpdateErr.message?.includes('schema'))) {
+          const { error: displayErr } = await supabase
+            .from('users')
+            .update({ display_name: cleanUsername })
+            .eq('firebase_uid', user.uid);
+          
+          if (displayErr) updateError = displayErr;
+        } else {
+          updateError = fullUpdateErr;
+        }
+      }
+
+      if (updateError) {
+        // Capturar error 23505 en caso de conflicto
+        if (
+          updateError.code === '23505' || 
+          updateError.message?.includes('duplicate key') || 
+          updateError.message?.includes('23505') ||
+          updateError.message?.includes('unique constraint')
+        ) {
+          setUsernameAvailability({
+            status: 'taken',
+            message: 'Este nombre ya está en uso'
+          });
+          setErrorMsg('Este nombre acaba de ser tomado por otro usuario. Por favor elige otro.');
+          setSaving(false);
+          return;
+        }
+        throw updateError;
+      }
 
       // 2. Actualizar en Firebase Auth si el usuario de Firebase está disponible
       if (auth.currentUser) {
-        await updateProfile(auth.currentUser, {
-          displayName: displayNameInput.trim()
-        });
+        try {
+          await updateProfile(auth.currentUser, {
+            displayName: cleanUsername
+          });
+        } catch (fbErr) {
+          console.warn('No se pudo actualizar displayName en Firebase Auth:', fbErr);
+        }
       }
 
       // Actualizar estado local
-      setDbUser(prev => prev ? { ...prev, display_name: displayNameInput.trim() } : null);
+      setDbUser(prev => prev ? { ...prev, display_name: cleanUsername, username: cleanUsername } : null);
+      setInitialDisplayName(cleanUsername);
+      setUsernameAvailability({
+        status: 'available',
+        message: 'Nombre disponible (guardado)'
+      });
       
-      setSuccessMsg('¡Perfil actualizado con éxito en Supabase y Firebase!');
+      setSuccessMsg('¡Nombre de usuario actualizado con éxito en Supabase!');
       
       // Auto-ocultar el mensaje de éxito después de 4 segundos
       setTimeout(() => {
@@ -165,7 +314,20 @@ export default function MyProfile({ uid, onBackToHome }: MyProfileProps) {
 
     } catch (err: any) {
       console.error('Error al guardar los cambios:', err);
-      setErrorMsg(err?.message || 'Error al guardar los cambios en la base de datos.');
+      if (
+        err?.code === '23505' || 
+        err?.message?.includes('23505') || 
+        err?.message?.includes('duplicate key') ||
+        err?.message?.includes('unique constraint')
+      ) {
+        setUsernameAvailability({
+          status: 'taken',
+          message: 'Este nombre ya está en uso'
+        });
+        setErrorMsg('Este nombre acaba de ser tomado por otro usuario. Por favor elige otro.');
+      } else {
+        setErrorMsg(err?.message || 'Error al guardar los cambios en la base de datos.');
+      }
     } finally {
       setSaving(false);
     }
@@ -342,28 +504,79 @@ export default function MyProfile({ uid, onBackToHome }: MyProfileProps) {
                     
                     {/* Nombre de Usuario */}
                     <div className="sm:col-span-2 space-y-2">
-                      <label className="block text-[10px] font-extrabold uppercase tracking-widest text-[#eab308] flex items-center gap-1.5">
-                        <User className="w-3.5 h-3.5" /> Nombre de Usuario / Apodo Público
-                      </label>
+                      <div className="flex items-center justify-between">
+                        <label className="block text-[10px] font-extrabold uppercase tracking-widest text-[#eab308] flex items-center gap-1.5">
+                          <User className="w-3.5 h-3.5" /> Nombre de Usuario / Apodo Público
+                        </label>
+                        {isOwnProfile && usernameAvailability.status === 'checking' && (
+                          <span className="text-[10px] text-zinc-400 font-mono flex items-center gap-1 lowercase">
+                            <Loader2 className="w-3 h-3 animate-spin text-[#eab308]" /> comprobando...
+                          </span>
+                        )}
+                      </div>
                       <div className="relative">
                         <input
                           type="text"
                           value={displayNameInput}
                           onChange={(e) => setDisplayNameInput(e.target.value)}
-                          disabled={!isOwnProfile}
+                          disabled={!isOwnProfile || saving}
                           placeholder="Ej. Valeria Morales"
-                          className={`w-full rounded-xl px-4 py-3 text-sm text-white outline-none transition-all ${
+                          className={`w-full rounded-xl px-4 py-3 text-sm text-white outline-none transition-all pr-10 ${
                             isOwnProfile 
-                              ? 'bg-[#151515] border border-[#ffffff15] focus:border-[#eab308] focus:ring-1 focus:ring-[#eab308]' 
+                              ? usernameAvailability.status === 'taken' || usernameAvailability.status === 'error'
+                                ? 'bg-[#151515] border border-red-500/80 focus:border-red-500 focus:ring-1 focus:ring-red-500'
+                                : usernameAvailability.status === 'available' && displayNameInput.trim() !== ''
+                                  ? 'bg-[#151515] border border-emerald-500/80 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500'
+                                  : 'bg-[#151515] border border-[#ffffff15] focus:border-[#eab308] focus:ring-1 focus:ring-[#eab308]' 
                               : 'bg-[#121212] border border-[#ffffff0a] text-zinc-300 cursor-not-allowed font-semibold'
                           }`}
                         />
+
+                        {isOwnProfile && (
+                          <div className="absolute right-3.5 top-1/2 -translate-y-1/2 flex items-center pointer-events-none">
+                            {usernameAvailability.status === 'checking' && (
+                              <Loader2 className="w-4 h-4 text-[#eab308] animate-spin" />
+                            )}
+                            {usernameAvailability.status === 'available' && displayNameInput.trim() !== '' && (
+                              <CheckCircle2 className="w-4 h-4 text-emerald-400 animate-in zoom-in duration-200" />
+                            )}
+                            {(usernameAvailability.status === 'taken' || usernameAvailability.status === 'error') && (
+                              <AlertCircle className="w-4 h-4 text-red-400 animate-in zoom-in duration-200" />
+                            )}
+                          </div>
+                        )}
                       </div>
-                      {isOwnProfile && (
-                        <p className="text-[10px] text-zinc-500">
-                          Este nombre es el que verán los demás alumnos en las votaciones y rankings del campus.
-                        </p>
-                      )}
+
+                      {/* Mensaje descriptivo de disponibilidad */}
+                      {isOwnProfile ? (
+                        <div className="flex items-center justify-between min-h-[20px] pt-0.5">
+                          {usernameAvailability.status === 'available' && displayNameInput.trim() !== '' ? (
+                            <p className="text-xs text-emerald-400 font-bold flex items-center gap-1.5 animate-in fade-in duration-200">
+                              <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
+                              <span>{usernameAvailability.message || 'Nombre disponible'}</span>
+                            </p>
+                          ) : usernameAvailability.status === 'taken' ? (
+                            <p className="text-xs text-red-400 font-bold flex items-center gap-1.5 animate-in fade-in duration-200">
+                              <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                              <span>{usernameAvailability.message || 'Este nombre ya está en uso'}</span>
+                            </p>
+                          ) : usernameAvailability.status === 'error' ? (
+                            <p className="text-xs text-amber-400 font-medium flex items-center gap-1.5 animate-in fade-in duration-200">
+                              <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                              <span>{usernameAvailability.message}</span>
+                            </p>
+                          ) : usernameAvailability.status === 'checking' ? (
+                            <p className="text-xs text-zinc-400 flex items-center gap-1.5">
+                              <Loader2 className="w-3 h-3 animate-spin text-[#eab308] flex-shrink-0" />
+                              <span>Comprobando disponibilidad en base de datos...</span>
+                            </p>
+                          ) : (
+                            <p className="text-[10px] text-zinc-500">
+                              Este nombre es el que verán los demás alumnos en las votaciones y rankings del campus.
+                            </p>
+                          )}
+                        </div>
+                      ) : null}
                     </div>
 
                     {/* Email (Solo se muestra a uno mismo) */}
@@ -478,20 +691,42 @@ export default function MyProfile({ uid, onBackToHome }: MyProfileProps) {
 
                   {/* Botones de acción (Solo si es tu propio perfil) */}
                   {isOwnProfile && (
-                    <div className="pt-4 border-t border-[#ffffff10] flex justify-end">
+                    <div className="pt-4 border-t border-[#ffffff10] flex items-center justify-between">
+                      <div className="text-[11px] text-zinc-500">
+                        {usernameAvailability.status === 'taken' && (
+                          <span className="text-red-400 font-bold flex items-center gap-1">
+                            <AlertCircle className="w-3.5 h-3.5" /> Elige un nombre disponible para guardar
+                          </span>
+                        )}
+                      </div>
+
                       <button
                         type="submit"
-                        disabled={saving}
-                        className="px-6 py-3 rounded-xl bg-[#eab308] hover:bg-[#d9a307] text-black font-black text-xs uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer shadow-[0_4px_20px_rgba(234,179,8,0.25)] disabled:opacity-50"
+                        disabled={
+                          saving || 
+                          usernameAvailability.status === 'taken' || 
+                          usernameAvailability.status === 'checking' || 
+                          usernameAvailability.status === 'error' || 
+                          !displayNameInput.trim()
+                        }
+                        className={`px-6 py-3 rounded-xl font-black text-xs uppercase tracking-wider flex items-center gap-2 transition-all ${
+                          saving || 
+                          usernameAvailability.status === 'taken' || 
+                          usernameAvailability.status === 'checking' || 
+                          usernameAvailability.status === 'error' || 
+                          !displayNameInput.trim()
+                            ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed border border-zinc-700/50'
+                            : 'bg-[#eab308] hover:bg-[#d9a307] text-black cursor-pointer shadow-[0_4px_20px_rgba(234,179,8,0.25)] active:scale-98'
+                        }`}
                       >
                         {saving ? (
                           <>
-                            <Loader2 className="w-4 h-4 animate-spin text-black" />
+                            <Loader2 className="w-4 h-4 animate-spin text-current" />
                             <span>GUARDANDO...</span>
                           </>
                         ) : (
                           <>
-                            <Save className="w-4 h-4 text-black" />
+                            <Save className="w-4 h-4 text-current" />
                             <span>GUARDAR CAMBIOS</span>
                           </>
                         )}

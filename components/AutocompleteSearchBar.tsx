@@ -8,7 +8,6 @@ import {
   UserCheck, 
   GraduationCap, 
   Sparkles, 
-  CornerDownLeft, 
   AlertCircle,
   HelpCircle
 } from 'lucide-react';
@@ -245,7 +244,7 @@ export default function AutocompleteSearchBar({
             className="bg-[#eab308] hover:bg-[#d9a307] text-black p-1.5 rounded-full transition-all active:scale-95 flex-shrink-0 cursor-pointer shadow-sm"
             title="Buscar"
           >
-            <CornerDownLeft className="w-3.5 h-3.5 stroke-[2.5]" />
+            <Search className="w-3.5 h-3.5 stroke-[2.5]" />
           </button>
         </div>
       </form>
