@@ -13,6 +13,7 @@ import CreateCenterModal from '@/components/Modals/CreateCenterModal';
 import SearchResultsView from '@/components/SearchResultsView';
 import EducationalCenterProfileView from '@/components/EducationalCenterProfileView';
 import ProfessorProfile from '@/src/pages/ProfessorProfile';
+import AdminDashboard from '@/src/components/AdminDashboard';
 import { useAuth } from '@/src/context/AuthContext';
 import { LayoutGrid, User, Plus } from 'lucide-react';
 import { Institution, Student } from '@/lib/mockData';
@@ -205,6 +206,8 @@ export default function App() {
   const isUserProfileRoute = route.pathname.startsWith('/perfil/');
   const userProfileUid = isUserProfileRoute ? route.pathname.replace('/perfil/', '') : '';
 
+  const isAdminRoute = route.pathname === '/admin';
+
   const isSearchRoute = route.pathname === '/search' || (route.pathname === '/' && new URLSearchParams(route.search).has('q'));
   const currentQuery = new URLSearchParams(route.search).get('q') || searchQuery;
 
@@ -233,7 +236,18 @@ export default function App() {
 
       {/* 2. Main Content Area according to Route */}
       <main className="flex-1 pb-28">
-        {isProfessorRoute ? (
+        {isAdminRoute ? (
+          <AdminDashboard
+            onBack={() => {
+              if (user) {
+                navigate(`/perfil/${user.uid}`);
+              } else {
+                navigate('/');
+              }
+            }}
+            onNavigate={(url) => navigate(url)}
+          />
+        ) : isProfessorRoute ? (
           <ProfessorProfile
             slug={professorSlug}
             onBack={() => {
@@ -265,7 +279,11 @@ export default function App() {
             </div>
           )
         ) : route.pathname === '/perfil' || isUserProfileRoute ? (
-          <MyProfile uid={userProfileUid} onBackToHome={() => navigate('/')} />
+          <MyProfile 
+            uid={userProfileUid} 
+            onBackToHome={() => navigate('/')} 
+            onNavigate={(url) => navigate(url)}
+          />
         ) : isSearchRoute ? (
           <SearchResultsView
             query={currentQuery}

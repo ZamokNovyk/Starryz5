@@ -51,9 +51,10 @@ interface SupabaseUser {
 interface MyProfileProps {
   uid?: string;
   onBackToHome: () => void;
+  onNavigate?: (path: string) => void;
 }
 
-export default function MyProfile({ uid, onBackToHome }: MyProfileProps) {
+export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfileProps) {
   const { user, linkWithGoogle } = useAuth();
   const [dbUser, setDbUser] = useState<SupabaseUser | null>(null);
   const [loading, setLoading] = useState(true);
@@ -589,18 +590,20 @@ export default function MyProfile({ uid, onBackToHome }: MyProfileProps) {
             )}
           </div>
 
-          <div className="space-y-1.5 w-full">
-            <div className="flex items-center justify-center gap-1.5 flex-wrap">
-              <h3 className="text-lg font-black text-white truncate max-w-full">
-                {dbUser?.display_name || 'Cargando...'}
-              </h3>
-              {dbUser?.role === 'admin' && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/40 text-amber-400 text-[10px] font-black tracking-wider uppercase shadow-[0_0_12px_rgba(245,158,11,0.25)]">
+          <div className="space-y-1.5 w-full flex flex-col items-center">
+            <h3 className="text-xl font-black text-white tracking-tight truncate max-w-full">
+              {dbUser?.display_name || 'Cargando...'}
+            </h3>
+            
+            {dbUser?.role === 'admin' && (
+              <div className="pt-0.5 pb-0.5">
+                <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-400 text-[10px] font-black tracking-wider uppercase shadow-[0_0_14px_rgba(245,158,11,0.25)]">
                   <ShieldCheck className="w-3.5 h-3.5 text-amber-400 stroke-[2.5]" />
                   ADMIN
                 </span>
-              )}
-            </div>
+              </div>
+            )}
+
             {isOwnProfile && (
               <p className="text-xs text-zinc-400 truncate max-w-full">
                 {dbUser?.email || 'Sesión Local Sin Correo'}
@@ -1010,6 +1013,45 @@ export default function MyProfile({ uid, onBackToHome }: MyProfileProps) {
                           </>
                         )}
                       </button>
+                    </div>
+                  )}
+
+                  {/* Botón de Acceso Exclusivo al Panel de Administración */}
+                  {isOwnProfile && dbUser?.role === 'admin' && (
+                    <div className="pt-6 border-t border-amber-500/20">
+                      <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-[0_0_25px_rgba(245,158,11,0.08)]">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <ShieldCheck className="w-4 h-4 text-amber-400 stroke-[2.5]" />
+                            <h4 className="text-xs font-black text-white uppercase tracking-wider">
+                              Administración del Sistema
+                            </h4>
+                            <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[9px] font-black uppercase">
+                              ADMIN
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-zinc-400 leading-relaxed">
+                            Accede a las métricas dinámicas de usuarios, estados de autenticación y centros educativos en Supabase.
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (onNavigate) {
+                              onNavigate('/admin');
+                            } else {
+                              window.history.pushState(null, '', '/admin');
+                              window.dispatchEvent(new PopStateEvent('popstate'));
+                            }
+                          }}
+                          className="w-full sm:w-auto px-5 py-3 rounded-xl bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 hover:from-amber-300 hover:to-yellow-400 text-black font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2.5 transition-all shadow-[0_4px_20px_rgba(245,158,11,0.35)] hover:shadow-[0_4px_25px_rgba(245,158,11,0.5)] cursor-pointer active:scale-98 flex-shrink-0"
+                        >
+                          <ShieldCheck className="w-4 h-4 text-black stroke-[3]" />
+                          <span>🛡️ PANEL DE CONTROL ADMIN</span>
+                          <ChevronRight className="w-4 h-4 text-black stroke-[3]" />
+                        </button>
+                      </div>
                     </div>
                   )}
 
