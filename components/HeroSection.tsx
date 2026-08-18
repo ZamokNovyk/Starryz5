@@ -1,12 +1,15 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Crown, Search } from 'lucide-react';
+import React from 'react';
+import { Crown } from 'lucide-react';
+import AutocompleteSearchBar from './AutocompleteSearchBar';
+import { SearchSuggestion } from '@/src/lib/search';
 
 interface HeroSectionProps {
   searchQuery: string;
   setSearchQuery: (query: string) => void;
   onSearchSubmit: (e: React.FormEvent) => void;
+  onNavigate?: (url: string) => void;
   onSelectStudent?: (student: any) => void;
   onSelectInstitution?: (inst: any) => void;
 }
@@ -15,8 +18,21 @@ export default function HeroSection({
   searchQuery,
   setSearchQuery,
   onSearchSubmit,
+  onNavigate,
 }: HeroSectionProps) {
-  const [isFocused, setIsFocused] = useState(false);
+  const handleSearch = (q: string) => {
+    setSearchQuery(q);
+    const syntheticEvent = { preventDefault: () => {} } as React.FormEvent;
+    onSearchSubmit(syntheticEvent);
+  };
+
+  const handleSelectSuggestion = (suggestion: SearchSuggestion) => {
+    if (onNavigate && suggestion.url) {
+      onNavigate(suggestion.url);
+    } else {
+      handleSearch(suggestion.title);
+    }
+  };
 
   return (
     <section className="relative min-h-[580px] lg:min-h-[620px] flex flex-col items-center justify-center pt-12 pb-16 px-6 lg:px-8 bg-[#0a0a0a] bg-radial-grid overflow-hidden">
@@ -43,36 +59,17 @@ export default function HeroSection({
         </h1>
       </div>
 
-      {/* SEARCH BAR (PILL STYLE) */}
+      {/* AUTOCOMPLETE SEARCH BAR (PILL STYLE) */}
       <div className="relative z-20 w-full max-w-2xl mx-auto mb-10">
-        <form onSubmit={onSearchSubmit} className="relative">
-          <div className="relative w-full">
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onFocus={() => setIsFocused(true)}
-              onBlur={() => setIsFocused(false)}
-              placeholder="Busca alumnos o instituciones..."
-              className={`w-full bg-[#0d0d0d] border ${
-                isFocused ? 'border-[#eab308] ring-2 ring-[#eab308]/20' : 'border-[#ffffff20]'
-              } px-8 py-4 sm:py-5 rounded-full text-base sm:text-lg text-white placeholder:text-zinc-500 focus:outline-none shadow-2xl transition-all font-sans pr-16`}
-            />
-
-            {/* Circular Search Button */}
-            <button
-              type="submit"
-              className="absolute right-2 top-2 bottom-2 aspect-square bg-[#eab308] text-black rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-transform cursor-pointer shadow-lg"
-              aria-label="Buscar"
-            >
-              <Search className="w-5 h-5 text-black stroke-[3]" />
-            </button>
-          </div>
-        </form>
+        <AutocompleteSearchBar
+          value={searchQuery}
+          placeholder="Busca profesores, alumnos o instituciones..."
+          onSearch={handleSearch}
+          onSelectSuggestion={handleSelectSuggestion}
+          inputClassName="px-6 py-4 sm:py-5 text-base sm:text-lg border border-zinc-800 focus-within:border-[#eab308]"
+        />
       </div>
 
     </section>
   );
 }
-
-

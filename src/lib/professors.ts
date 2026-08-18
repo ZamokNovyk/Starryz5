@@ -85,40 +85,51 @@ export async function createProfessor(data: CreateProfessorData, firebaseUid: st
  * Carga la información del perfil del profesor por su ID / slug.
  */
 export async function getProfessorById(slug: string): Promise<Professor | null> {
-  const { data, error } = await supabase
-    .from('professors')
-    .select('*')
-    .eq('id', slug.toLowerCase().trim())
-    .maybeSingle();
+  try {
+    const { data, error } = await supabase
+      .from('professors')
+      .select('*')
+      .eq('id', slug.toLowerCase().trim())
+      .maybeSingle();
 
-  if (error) {
-    console.error('Error al obtener perfil de profesor por ID:', error);
-    throw error;
+    if (error) {
+      if (error.code === 'PGRST116' || error.message?.includes('does not exist')) {
+        return null;
+      }
+      console.warn('Aviso al obtener perfil de profesor por ID:', error.message || error);
+      return null;
+    }
+
+    return data as Professor | null;
+  } catch (err) {
+    console.warn('Excepción de red al obtener profesor por ID:', err);
+    return null;
   }
-
-  return data as Professor | null;
 }
 
 /**
  * Obtiene los profesores asignados a un instituto / campus específico.
  */
 export async function getProfessorsByInstitute(instituteId: string): Promise<Professor[]> {
-  const { data, error } = await supabase
-    .from('professors')
-    .select('*')
-    .eq('institute_id', instituteId);
+  try {
+    const { data, error } = await supabase
+      .from('professors')
+      .select('*')
+      .eq('institute_id', instituteId);
 
-  if (error) {
-    // Si la tabla no existe, retornamos vacío amigablemente
-    if (error.code === 'P0001' || error.message?.includes('does not exist')) {
-      console.warn('La tabla professors no existe aún.');
+    if (error) {
+      if (error.code === 'P0001' || error.message?.includes('does not exist')) {
+        return [];
+      }
+      console.warn('Aviso al obtener profesores por instituto:', error.message || error);
       return [];
     }
-    console.error('Error al obtener profesores por instituto:', error);
-    throw error;
-  }
 
-  return data as Professor[] || [];
+    return (data as Professor[]) || [];
+  } catch (err) {
+    console.warn('Excepción de red al obtener profesores por instituto:', err);
+    return [];
+  }
 }
 
 /**
@@ -128,42 +139,51 @@ export async function getUserProfessorInteraction(
   professorId: string,
   userUid: string
 ): Promise<{ interaction_type: 'knows' | 'fan' | null } | null> {
-  const { data, error } = await supabase
-    .from('professor_interactions')
-    .select('interaction_type')
-    .eq('professor_id', professorId)
-    .eq('user_uid', userUid)
-    .maybeSingle();
+  try {
+    const { data, error } = await supabase
+      .from('professor_interactions')
+      .select('interaction_type')
+      .eq('professor_id', professorId)
+      .eq('user_uid', userUid)
+      .maybeSingle();
 
-  if (error) {
-    if (error.code === 'PGRST116' || error.message?.includes('does not exist')) {
+    if (error) {
+      if (error.code === 'PGRST116' || error.message?.includes('does not exist')) {
+        return null;
+      }
+      console.warn('Aviso al obtener la interacción del usuario:', error.message || error);
       return null;
     }
-    console.error('Error al obtener la interacción del usuario:', error);
+
+    return data as { interaction_type: 'knows' | 'fan' | null } | null;
+  } catch (err) {
+    console.warn('Excepción de red al consultar interacción:', err);
     return null;
   }
-
-  return data as { interaction_type: 'knows' | 'fan' | null } | null;
 }
 
 /**
  * Obtiene los conteos totales de interacciones (YO TE CONOZCO y FAN) para un profesor.
  */
 export async function getProfessorInteractionCounts(professorId: string): Promise<{ knows: number; fan: number }> {
-  const { data, error } = await supabase
-    .from('professor_interactions')
-    .select('interaction_type')
-    .eq('professor_id', professorId);
+  try {
+    const { data, error } = await supabase
+      .from('professor_interactions')
+      .select('interaction_type')
+      .eq('professor_id', professorId);
 
-  if (error) {
-    console.warn('Error u omisión de la tabla professor_interactions:', error.message);
+    if (error) {
+      return { knows: 0, fan: 0 };
+    }
+
+    const knows = (data || []).filter((item: any) => item.interaction_type === 'knows').length;
+    const fan = (data || []).filter((item: any) => item.interaction_type === 'fan').length;
+
+    return { knows, fan };
+  } catch (err) {
+    console.warn('Excepción de red al obtener conteo de interacciones:', err);
     return { knows: 0, fan: 0 };
   }
-
-  const knows = data.filter((item: any) => item.interaction_type === 'knows').length;
-  const fan = data.filter((item: any) => item.interaction_type === 'fan').length;
-
-  return { knows, fan };
 }
 
 /**
@@ -174,44 +194,50 @@ export async function toggleProfessorInteraction(
   userUid: string,
   type: 'knows' | 'fan'
 ): Promise<{ success: boolean; action: 'inserted' | 'deleted' | 'updated'; current_type: 'knows' | 'fan' | null } | null> {
-  const { data, error } = await supabase.rpc('toggle_professor_interaction', {
-    p_professor_id: professorId,
-    p_user_uid: userUid,
-    p_target_type: type
-  });
+  try {
+    const { data, error } = await supabase.rpc('toggle_professor_interaction', {
+      p_professor_id: professorId,
+      p_user_uid: userUid,
+      p_target_type: type
+    });
 
-  if (error) {
-    console.error('Error al ejecutar RPC toggle_professor_interaction:', error);
-    throw error;
+    if (error) {
+      console.warn('Aviso al ejecutar RPC toggle_professor_interaction:', error.message || error);
+      return null;
+    }
+
+    return data as any;
+  } catch (err) {
+    console.warn('Excepción de red al alternar interacción:', err);
+    return null;
   }
-
-  return data as any;
 }
 
 /**
  * Obtiene la lista de votos realizados por el usuario HOY para un profesor específico.
  */
 export async function getTodayProfessorVotes(professorId: string, userUid: string): Promise<number[]> {
-  const todayStart = new Date();
-  todayStart.setHours(0,0,0,0);
-  const todayIso = todayStart.toISOString();
+  try {
+    const todayStart = new Date();
+    todayStart.setHours(0,0,0,0);
+    const todayIso = todayStart.toISOString();
 
-  const { data, error } = await supabase
-    .from('professor_votes')
-    .select('stars')
-    .eq('professor_id', professorId)
-    .eq('user_uid', userUid)
-    .gte('created_at', todayIso);
+    const { data, error } = await supabase
+      .from('professor_votes')
+      .select('stars')
+      .eq('professor_id', professorId)
+      .eq('user_uid', userUid)
+      .gte('created_at', todayIso);
 
-  if (error) {
-    if (error.code === 'PGRST116' || error.message?.includes('does not exist')) {
+    if (error) {
       return [];
     }
-    console.error('Error al obtener los votos de hoy:', error);
+
+    return (data || []).map((v: any) => Number(v.stars));
+  } catch (err) {
+    console.warn('Excepción de red al obtener votos:', err);
     return [];
   }
-
-  return (data || []).map((v: any) => Number(v.stars));
 }
 
 /**
@@ -220,29 +246,30 @@ export async function getTodayProfessorVotes(professorId: string, userUid: strin
 export async function getProfessorRatingBreakdown(professorId: string): Promise<{ [key: number]: number }> {
   const breakdown: { [key: number]: number } = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
   
-  const { data, error } = await supabase
-    .from('professor_votes')
-    .select('stars')
-    .eq('professor_id', professorId);
+  try {
+    const { data, error } = await supabase
+      .from('professor_votes')
+      .select('stars')
+      .eq('professor_id', professorId);
 
-  if (error) {
-    if (error.message?.includes('does not exist')) {
+    if (error) {
       return breakdown;
     }
-    console.error('Error al obtener distribución de calificaciones:', error);
+
+    if (data) {
+      data.forEach((v: any) => {
+        const s = Number(v.stars);
+        if (s >= 1 && s <= 5) {
+          breakdown[s] = (breakdown[s] || 0) + 1;
+        }
+      });
+    }
+
+    return breakdown;
+  } catch (err) {
+    console.warn('Excepción de red al obtener breakdown:', err);
     return breakdown;
   }
-
-  if (data) {
-    data.forEach((v: any) => {
-      const s = Number(v.stars);
-      if (s >= 1 && s <= 5) {
-        breakdown[s] = (breakdown[s] || 0) + 1;
-      }
-    });
-  }
-
-  return breakdown;
 }
 
 /**
@@ -285,27 +312,57 @@ export async function updateProfessorWiki(
     biography: string;
   }
 ): Promise<{ success: boolean }> {
-  const { error } = await supabase
-    .from('professors')
-    .update({
-      avatar_url: wikiData.avatar_url || null,
-      height_cm: wikiData.height_cm,
-      marital_status: wikiData.marital_status || 'No especificado',
-      gender: wikiData.gender || 'No especificado',
-      birth_date: wikiData.birth_date,
-      instagram_url: wikiData.instagram_url || null,
-      youtube_url: wikiData.youtube_url || null,
-      facebook_url: wikiData.facebook_url || null,
-      twitter_url: wikiData.twitter_url || null,
-      biography: wikiData.biography || null
-    })
-    .eq('id', professorId);
+  try {
+    const { error } = await supabase
+      .from('professors')
+      .update({
+        avatar_url: wikiData.avatar_url || null,
+        height_cm: wikiData.height_cm,
+        marital_status: wikiData.marital_status || 'No especificado',
+        gender: wikiData.gender || 'No especificado',
+        birth_date: wikiData.birth_date,
+        instagram_url: wikiData.instagram_url || null,
+        youtube_url: wikiData.youtube_url || null,
+        facebook_url: wikiData.facebook_url || null,
+        twitter_url: wikiData.twitter_url || null,
+        biography: wikiData.biography || null
+      })
+      .eq('id', professorId);
 
-  if (error) {
-    console.error('Error al actualizar la Wiki del profesor:', error);
-    throw error;
+    if (error) {
+      console.warn('Aviso al actualizar la Wiki del profesor:', error.message || error);
+      return { success: false };
+    }
+
+    return { success: true };
+  } catch (err) {
+    console.warn('Excepción de red al actualizar wiki:', err);
+    return { success: false };
   }
+}
 
-  return { success: true };
+/**
+ * Obtiene todos los profesores registrados en Supabase para búsquedas globales.
+ */
+export async function getAllProfessors(): Promise<Professor[]> {
+  try {
+    const { data, error } = await supabase
+      .from('professors')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      if (error.code === 'P0001' || error.message?.includes('does not exist')) {
+        return [];
+      }
+      console.warn('Aviso al consultar profesores en Supabase:', error.message || error);
+      return [];
+    }
+
+    return (data as Professor[]) || [];
+  } catch (err) {
+    console.warn('Excepción de red o conexión al obtener profesores:', err);
+    return [];
+  }
 }
 

@@ -178,6 +178,16 @@ export default function App() {
     }
   };
 
+  const handleDirectSearch = (queryText: string) => {
+    const clean = queryText.trim();
+    setSearchQuery(clean);
+    if (clean) {
+      navigate('/search', `?q=${encodeURIComponent(clean)}`);
+    } else if (route.pathname === '/search') {
+      navigate('/');
+    }
+  };
+
   const handleSelectInstitution = (inst: Institution) => {
     navigate(`/educational_centers/${toSlug(inst.name)}`);
   };
@@ -209,8 +219,11 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-zinc-100 flex flex-col font-sans selection:bg-[#eab308] selection:text-black">
       
-      {/* 1. Header (Barra de Navegación) */}
+      {/* 1. Header (Barra de Navegación con Buscador Integrado) */}
       <Header
+        searchQuery={searchQuery}
+        onSearch={handleDirectSearch}
+        onNavigate={(url) => navigate(url)}
         onOpenInstallModal={() => setInstallModalOpen(true)}
         onOpenJoinModal={() => setJoinModalOpen(true)}
         onGoToProfile={handleProfileTabClick}
@@ -258,6 +271,8 @@ export default function App() {
             query={currentQuery}
             results={searchResults}
             onSelectInstitution={handleSelectInstitution}
+            onSelectProfessor={(slug) => navigate(`/profesores/${slug}`)}
+            onSelectStudent={(uid) => navigate(`/perfil/${uid}`)}
             onBack={() => navigate('/')}
           />
         ) : (
@@ -266,6 +281,7 @@ export default function App() {
               searchQuery={searchQuery}
               setSearchQuery={setSearchQuery}
               onSearchSubmit={handleSearchSubmit}
+              onNavigate={(url) => navigate(url)}
             />
 
             <div id="seccion-resultados">

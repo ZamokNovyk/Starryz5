@@ -48,20 +48,23 @@ export async function createEducationalCenter(data: CreateCenterData, firebaseUi
  * Recupera todos los centros educativos creados por los usuarios en Supabase.
  */
 export async function getEducationalCenters(): Promise<EducationalCenter[]> {
-  const { data, error } = await supabase
-    .from('educational_centers')
-    .select('*')
-    .order('created_at', { ascending: false });
+  try {
+    const { data, error } = await supabase
+      .from('educational_centers')
+      .select('*')
+      .order('created_at', { ascending: false });
 
-  if (error) {
-    // Si la tabla no existe aún, retornamos vacío de manera amigable
-    if (error.code === 'P0001' || error.message?.includes('does not exist')) {
-      console.warn('La tabla educational_centers no existe aún en Supabase.');
+    if (error) {
+      if (error.code === 'P0001' || error.message?.includes('does not exist')) {
+        return [];
+      }
+      console.warn('Aviso al obtener centros educativos de Supabase:', error.message || error);
       return [];
     }
-    console.error('Error al obtener centros educativos:', error);
-    throw error;
-  }
 
-  return data as EducationalCenter[] || [];
+    return (data as EducationalCenter[]) || [];
+  } catch (err) {
+    console.warn('Excepción de red al obtener centros educativos:', err);
+    return [];
+  }
 }
