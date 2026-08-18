@@ -174,6 +174,11 @@ export default function AdminDashboard({ onBack, onNavigate }: AdminDashboardPro
             <span className="px-2.5 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-400 text-[10px] font-black uppercase tracking-wider shadow-[0_0_15px_rgba(245,158,11,0.25)]">
               ADMIN VERIFICADO
             </span>
+            {metrics?.source === 'platform_stats' && (
+              <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[9px] font-black uppercase tracking-wider flex items-center gap-1">
+                ⚡ platform_stats
+              </span>
+            )}
           </div>
           <p className="text-xs text-zinc-400">
             Monitor de telemetría y métricas dinámicas de cuentas y centros educativos en Supabase.

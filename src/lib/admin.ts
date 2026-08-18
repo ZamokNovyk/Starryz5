@@ -29,97 +29,117 @@ export interface AdminDashboardData {
     linked_google_at: string | null;
     created_at: string;
   }>;
+  source: 'platform_stats' | 'live_count';
 }
 
 /**
- * Consulta en tiempo real las métricas dinámicas de usuarios y centros desde Supabase
+ * Consulta de alto rendimiento: Lee los datos precálculados desde la tabla de resumen 'platform_stats' (id = 1)
  */
 export async function getAdminDashboardMetrics(): Promise<AdminDashboardData> {
   try {
-    // 1. Consultar todos los usuarios en Supabase
-    const { data: usersData, error: usersError } = await supabase
-      .from('users')
-      .select('*');
+    // 1. SELECT simple a la tabla de resumen 'platform_stats' (id = 1)
+    const { data: statsData, error: statsError } = await supabase
+      .from('platform_stats')
+      .select('*')
+      .eq('id', 1)
+      .maybeSingle();
 
-    if (usersError) {
-      console.error('Error al consultar tabla users en admin metrics:', usersError.message);
+    if (!statsError && statsData) {
+      const googleDirect = Number(statsData.google_direct ?? 0);
+      const anonActive = Number(statsData.anonymous_active ?? 0);
+      const anonLinked = Number(statsData.anonymous_linked_google ?? 0);
+      const totalUsers = googleDirect + anonActive + anonLinked;
+
+      const colegios = Number(statsData.colegios ?? 0);
+      const institutos = Number(statsData.institutos ?? 0);
+      const universidades = Number(statsData.universidades ?? 0);
+      const totalCenters = Number(statsData.total_centers ?? (colegios + institutos + universidades));
+
+      const userMetrics: AdminUserMetric = {
+        totalUsers,
+        directGoogle: googleDirect,
+        activeAnonymous: anonActive,
+        linkedAnonymous: anonLinked,
+        adminUsers: Number(statsData.admin_users ?? 0)
+      };
+
+      const centerMetrics: AdminCentersMetric = {
+        totalCenters,
+        colegios,
+        institutos,
+        universidades
+      };
+
+      // Traer una muestra ligera de usuarios recientes (solo 10 para vista previa)
+      const { data: recent } = await supabase
+        .from('users')
+        .select('id, firebase_uid, email, display_name, username, role, is_anonymous, linked_google_at, created_at')
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      return {
+        userMetrics,
+        centerMetrics,
+        recentUsers: recent || [],
+        source: 'platform_stats'
+      };
     }
 
+    // 2. Fallback de respaldo en caso de que la tabla aún no haya sido creada en Supabase
+    console.warn('Aviso: platform_stats no encontrada o inaccesible. Ejecutando conteo dinámico de respaldo.');
+    
+    const { data: usersData } = await supabase.from('users').select('*');
     const users: any[] = usersData || [];
 
-    // Lógica dinámica de estados de usuarios:
-    // a) Directo con Google: proveedor Google (tiene email o is_anonymous=false) que NO fue anónimo previamente
     const directGoogle = users.filter(u => {
       const isAnon = u.is_anonymous === true;
       const hasLinkedGoogle = Boolean(u.linked_google_at);
       const hasEmail = Boolean(u.email);
-      // Si tiene email y no es anónimo y no tiene fecha de migración posterior -> Directo con Google
       return (hasEmail || !isAnon) && !hasLinkedGoogle;
     }).length;
 
-    // b) Usuarios Anónimos Actuales: registrados de forma anónima que aún NO han vinculado Google
     const activeAnonymous = users.filter(u => {
       const isAnon = u.is_anonymous === true;
       const hasLinkedGoogle = Boolean(u.linked_google_at);
       return isAnon && !hasLinkedGoogle;
     }).length;
 
-    // c) Anónimos Migrados / Vinculados a Google: iniciaron como anónimos y vincularon Google OAuth
-    const linkedAnonymous = users.filter(u => {
-      return Boolean(u.linked_google_at);
-    }).length;
-
+    const linkedAnonymous = users.filter(u => Boolean(u.linked_google_at)).length;
     const adminUsers = users.filter(u => (u.role || '').toLowerCase() === 'admin').length;
 
-    const userMetrics: AdminUserMetric = {
-      totalUsers: users.length,
-      directGoogle,
-      activeAnonymous,
-      linkedAnonymous,
-      adminUsers
-    };
-
-    // 2. Consultar todos los centros educativos
-    const { data: centersData, error: centersError } = await supabase
-      .from('educational_centers')
-      .select('*');
-
-    if (centersError) {
-      console.warn('Aviso al consultar centros en admin metrics:', centersError.message);
-    }
-
+    const { data: centersData } = await supabase.from('educational_centers').select('*');
     const centers: any[] = centersData || [];
-    
+
     let colegios = 0;
     let institutos = 0;
     let universidades = 0;
 
     centers.forEach(c => {
       const type = (c.type || '').toLowerCase().trim();
-      if (type === 'colegio') {
-        colegios++;
-      } else if (type === 'instituto') {
-        institutos++;
-      } else {
-        // universidades o default
-        universidades++;
-      }
+      if (type === 'colegio') colegios++;
+      else if (type === 'instituto') institutos++;
+      else universidades++;
     });
 
-    const centerMetrics: AdminCentersMetric = {
-      totalCenters: centers.length,
-      colegios,
-      institutos,
-      universidades
-    };
-
     return {
-      userMetrics,
-      centerMetrics,
-      recentUsers: users.slice(0, 20)
+      userMetrics: {
+        totalUsers: directGoogle + activeAnonymous + linkedAnonymous,
+        directGoogle,
+        activeAnonymous,
+        linkedAnonymous,
+        adminUsers
+      },
+      centerMetrics: {
+        totalCenters: centers.length,
+        colegios,
+        institutos,
+        universidades
+      },
+      recentUsers: users.slice(0, 10),
+      source: 'live_count'
     };
   } catch (err) {
-    console.error('Error general al obtener métricas del panel de administración:', err);
+    console.error('Error general al obtener métricas de platform_stats:', err);
     return {
       userMetrics: {
         totalUsers: 0,
@@ -134,7 +154,8 @@ export async function getAdminDashboardMetrics(): Promise<AdminDashboardData> {
         institutos: 0,
         universidades: 0
       },
-      recentUsers: []
+      recentUsers: [],
+      source: 'live_count'
     };
   }
 }
