@@ -36,24 +36,25 @@ export interface AdminDashboardData {
  */
 export async function getAdminDashboardMetrics(): Promise<AdminDashboardData> {
   try {
-    // 1. Consultar todos los usuarios
+    // 1. Consultar todos los usuarios en Supabase
     const { data: usersData, error: usersError } = await supabase
       .from('users')
-      .select('id, firebase_uid, email, display_name, username, role, is_anonymous, linked_google_at, created_at')
-      .order('created_at', { ascending: false });
+      .select('*');
 
     if (usersError) {
-      console.warn('Aviso al consultar usuarios en admin metrics:', usersError.message);
+      console.error('Error al consultar tabla users en admin metrics:', usersError.message);
     }
 
-    const users = usersData || [];
+    const users: any[] = usersData || [];
 
     // Lógica dinámica de estados de usuarios:
-    // a) Directo con Google: proveedor Google que NO fue anónimo previamente
+    // a) Directo con Google: proveedor Google (tiene email o is_anonymous=false) que NO fue anónimo previamente
     const directGoogle = users.filter(u => {
       const isAnon = u.is_anonymous === true;
       const hasLinkedGoogle = Boolean(u.linked_google_at);
-      return !isAnon && !hasLinkedGoogle;
+      const hasEmail = Boolean(u.email);
+      // Si tiene email y no es anónimo y no tiene fecha de migración posterior -> Directo con Google
+      return (hasEmail || !isAnon) && !hasLinkedGoogle;
     }).length;
 
     // b) Usuarios Anónimos Actuales: registrados de forma anónima que aún NO han vinculado Google
@@ -68,7 +69,7 @@ export async function getAdminDashboardMetrics(): Promise<AdminDashboardData> {
       return Boolean(u.linked_google_at);
     }).length;
 
-    const adminUsers = users.filter(u => u.role === 'admin').length;
+    const adminUsers = users.filter(u => (u.role || '').toLowerCase() === 'admin').length;
 
     const userMetrics: AdminUserMetric = {
       totalUsers: users.length,
@@ -81,13 +82,13 @@ export async function getAdminDashboardMetrics(): Promise<AdminDashboardData> {
     // 2. Consultar todos los centros educativos
     const { data: centersData, error: centersError } = await supabase
       .from('educational_centers')
-      .select('id, name, type, created_at');
+      .select('*');
 
     if (centersError) {
       console.warn('Aviso al consultar centros en admin metrics:', centersError.message);
     }
 
-    const centers = centersData || [];
+    const centers: any[] = centersData || [];
     
     let colegios = 0;
     let institutos = 0;
@@ -115,7 +116,7 @@ export async function getAdminDashboardMetrics(): Promise<AdminDashboardData> {
     return {
       userMetrics,
       centerMetrics,
-      recentUsers: users.slice(0, 15)
+      recentUsers: users.slice(0, 20)
     };
   } catch (err) {
     console.error('Error general al obtener métricas del panel de administración:', err);
