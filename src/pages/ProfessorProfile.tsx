@@ -32,6 +32,7 @@ import {
   toggleProfessorCrush
 } from '@/src/lib/professors';
 import { useAuth } from '@/src/context/AuthContext';
+import { supabase } from '@/src/lib/supabase';
 import BookmarkButton from '@/components/BookmarkButton';
 
 interface ProfessorProfileProps {
@@ -147,6 +148,59 @@ export default function ProfessorProfile({
     }
     loadProfessorAndInteractions();
   }, [slug, user]);
+
+  // Suscribirse a Supabase Realtime para cambios en los votos del profesor
+  useEffect(() => {
+    if (!professor) return;
+
+    const profId = professor.id || slug;
+
+    // Función para refrescar todos los datos de calificación y votación
+    const refreshVotesData = async () => {
+      try {
+        // 1. Refrescar promedio flotante y total de votos
+        const updatedProf = await getProfessorById(slug);
+        if (updatedProf) {
+          setProfessorScore(updatedProf.score || 0.0);
+          setProfessorTotalRatings(updatedProf.total_ratings || 0);
+        }
+
+        // 2. Refrescar desglose de estrellas (1 a 5)
+        const breakdown = await getProfessorRatingBreakdown(profId);
+        setRatingBreakdown(breakdown);
+
+        // 3. Refrescar oportunidades/votos del día del usuario si está autenticado
+        if (user) {
+          const todayV = await getTodayProfessorVotes(profId, user.uid);
+          setTodayVotes(todayV);
+        }
+      } catch (err) {
+        console.error('Error al refrescar votos en tiempo real:', err);
+      }
+    };
+
+    const channel = supabase
+      .channel(`professor-votes-realtime-${profId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // Escuchar todo evento (INSERT, UPDATE)
+          schema: 'public',
+          table: 'professor_votes',
+          filter: `professor_id=eq.${profId}`
+        },
+        (payload) => {
+          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+            refreshVotesData();
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [professor?.id, slug, user?.uid]);
 
   const handleToggleCrush = async () => {
     if (!user) {

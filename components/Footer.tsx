@@ -1,7 +1,6 @@
 'use client';
 
 import React from 'react';
-import { Star } from 'lucide-react';
 
 export default function Footer() {
   return (
@@ -10,9 +9,12 @@ export default function Footer() {
         
         {/* Brand */}
         <div className="flex items-center gap-3">
-          <div className="w-7 h-7 rounded-md bg-[#eab30810] border border-[#eab30830] flex items-center justify-center">
-            <Star className="w-3.5 h-3.5 text-[#eab308] fill-[#eab308]" />
-          </div>
+          <img 
+            src="/Logo/logo.jpg" 
+            alt="Logo Starryz 5" 
+            className="w-7 h-7 rounded-full object-cover border border-[#eab308]/30 shadow-md"
+            referrerPolicy="no-referrer"
+          />
           <span className="font-black text-white text-sm tracking-wider">
             STARRYZ <span className="text-[#eab308]">5</span>
           </span>
