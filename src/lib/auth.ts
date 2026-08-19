@@ -1,4 +1,11 @@
-import { signInWithPopup, signInAnonymously, signOut, linkWithPopup } from 'firebase/auth';
+import { 
+  signInWithPopup, 
+  signInAnonymously, 
+  signOut, 
+  linkWithPopup,
+  setPersistence,
+  browserLocalPersistence
+} from 'firebase/auth';
 import { auth, googleProvider } from './firebase';
 import { supabase } from './supabase';
 
@@ -48,6 +55,8 @@ export async function syncUserWithSupabase(user: AuthUser) {
  */
 export async function loginWithGoogle(): Promise<AuthUser> {
   try {
+    // Forzar explícitamente persistencia local para evitar errores de IndexedDB bloqueado o en pestañas ocultas
+    await setPersistence(auth, browserLocalPersistence);
     const result = await signInWithPopup(auth, googleProvider);
     const firebaseUser = result.user;
 
@@ -61,8 +70,18 @@ export async function loginWithGoogle(): Promise<AuthUser> {
 
     await syncUserWithSupabase(user);
     return user;
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error en login con Google:', error);
+    // Manejo de errores específicos y amigables para el usuario
+    if (error?.code === 'auth/popup-blocked') {
+      throw new Error('La ventana emergente de inicio de sesión fue bloqueada por tu navegador. Por favor, permite las ventanas emergentes para este sitio e inténtalo de nuevo.');
+    }
+    if (error?.code === 'auth/popup-closed-by-user') {
+      throw new Error('Cerraste la ventana de Google antes de completar el inicio de sesión.');
+    }
+    if (error?.code === 'auth/cancelled-popup-request') {
+      throw new Error('Se canceló la ventana de inicio de sesión anterior por una nueva solicitud.');
+    }
     throw error;
   }
 }
@@ -72,6 +91,8 @@ export async function loginWithGoogle(): Promise<AuthUser> {
  */
 export async function loginAnonymously(): Promise<AuthUser> {
   try {
+    // Forzar persistencia para sesiones anónimas
+    await setPersistence(auth, browserLocalPersistence);
     const result = await signInAnonymously(auth);
     const firebaseUser = result.user;
 
@@ -113,6 +134,7 @@ export async function linkAnonymousWithGoogle(): Promise<AuthUser> {
       throw new Error("No hay un usuario activo para vincular.");
     }
 
+    await setPersistence(auth, browserLocalPersistence);
     const result = await linkWithPopup(currentUser, googleProvider);
     const firebaseUser = result.user;
 
@@ -144,8 +166,14 @@ export async function linkAnonymousWithGoogle(): Promise<AuthUser> {
     }
 
     return user;
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error al vincular cuenta con Google:', error);
+    if (error?.code === 'auth/popup-blocked') {
+      throw new Error('La ventana emergente de vinculación fue bloqueada por tu navegador. Por favor permite las ventanas emergentes.');
+    }
+    if (error?.code === 'auth/popup-closed-by-user') {
+      throw new Error('Cancelaste la vinculación de cuenta al cerrar la ventana flotante.');
+    }
     throw error;
   }
 }

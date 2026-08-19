@@ -149,7 +149,7 @@ export default function ProfessorProfile({
     loadProfessorAndInteractions();
   }, [slug, user]);
 
-  // Suscribirse a Supabase Realtime para cambios en los votos del profesor
+  // Suscribirse a Supabase Realtime para cambios en los votos, interacciones y crushes del profesor
   useEffect(() => {
     if (!professor) return;
 
@@ -180,18 +180,68 @@ export default function ProfessorProfile({
     };
 
     const channel = supabase
-      .channel(`professor-votes-realtime-${profId}`)
+      .channel(`professor-profile-realtime-${profId}`)
       .on(
         'postgres_changes',
         {
-          event: '*', // Escuchar todo evento (INSERT, UPDATE)
+          event: '*', // Escuchar todo evento (INSERT, UPDATE, DELETE)
           schema: 'public',
           table: 'professor_votes',
           filter: `professor_id=eq.${profId}`
         },
         (payload) => {
-          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE' || payload.eventType === 'DELETE') {
             refreshVotesData();
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'professor_interactions',
+          filter: `professor_id=eq.${profId}`
+        },
+        async () => {
+          try {
+            // Refrescar conteos totales de interacción de la BD
+            const counts = await getProfessorInteractionCounts(profId);
+            setKnowCount(counts.knows);
+            setFanCount(counts.fan);
+
+            // Refrescar si el propio usuario cambió su interacción
+            if (user) {
+              const userInteraction = await getUserProfessorInteraction(profId, user.uid);
+              if (userInteraction) {
+                setHasVotedKnow(userInteraction.interaction_type === 'knows');
+                setHasVotedFan(userInteraction.interaction_type === 'fan');
+              } else {
+                setHasVotedKnow(false);
+                setHasVotedFan(false);
+              }
+            }
+          } catch (err) {
+            console.error('Error al refrescar interacciones en tiempo real:', err);
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'professor_crushes',
+          filter: `professor_id=eq.${profId}`
+        },
+        async () => {
+          try {
+            // Refrescar crushes de la BD en tiempo real
+            const crushStatus = await getProfessorCrushStatus(profId, user?.uid);
+            setCrushCount(crushStatus.count);
+            setHasCrushed(crushStatus.hasCrushed);
+          } catch (err) {
+            console.error('Error al refrescar crushes en tiempo real:', err);
           }
         }
       )
