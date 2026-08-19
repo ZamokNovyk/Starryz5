@@ -32,9 +32,37 @@ import {
   Send,
   CornerDownRight,
   Trash2,
-  AlertTriangle
+  AlertTriangle,
+  Settings
 } from 'lucide-react';
+import { supabase } from '@/src/lib/supabase';
 import { Institution } from '@/lib/mockData';
+
+const InstagramIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
+    <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/>
+    <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/>
+  </svg>
+);
+
+const FacebookIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+    <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+  </svg>
+);
+
+const YoutubeIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+    <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+  </svg>
+);
+
+const TwitterXIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+  </svg>
+);
 import { getProfessorsByInstitute, Professor as DbProfessor } from '@/src/lib/professors';
 import { 
   getCenterConfessions, 
@@ -120,6 +148,190 @@ export default function EducationalCenterProfileView({
   const [confessionToDelete, setConfessionToDelete] = useState<CenterConfession | null>(null);
   const [isDeletingConfession, setIsDeletingConfession] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Wiki State
+  interface CenterWikiData {
+    id: string;
+    profile_photo_url: string;
+    description: string;
+    instagram_url: string;
+    facebook_url: string;
+    youtube_url: string;
+    twitter_url: string;
+  }
+
+  const [centerWikiData, setCenterWikiData] = useState<CenterWikiData | null>(null);
+  const [loadingWiki, setLoadingWiki] = useState(false);
+  const [isEditingWiki, setIsEditingWiki] = useState(false);
+  const [savingWiki, setSavingWiki] = useState(false);
+
+  // Edit form state
+  const [editPhotoUrl, setEditPhotoUrl] = useState('');
+  const [imgPreviewError, setImgPreviewError] = useState(false);
+  const [editDescription, setEditDescription] = useState('');
+  const [editInstagram, setEditInstagram] = useState('');
+  const [editFacebook, setEditFacebook] = useState('');
+  const [editYoutube, setEditYoutube] = useState('');
+  const [editTwitter, setEditTwitter] = useState('');
+
+  const isAdmin = (user as any)?.role === 'admin' || user?.email === 'wikistars12@gmail.com';
+
+  // Photo URL Validation Helper
+  const photoUrlError = (() => {
+    const trimmed = editPhotoUrl.trim().toLowerCase();
+    if (!trimmed) return null;
+
+    if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://') && !trimmed.startsWith('data:image/')) {
+      return 'El enlace de la imagen debe comenzar con http:// o https://';
+    }
+
+    const isKnownCdn = 
+      trimmed.includes('fbcdn.net') || 
+      trimmed.includes('scontent') || 
+      trimmed.includes('facebook.com') || 
+      trimmed.includes('instagram.com') || 
+      trimmed.includes('cdninstagram.com') ||
+      trimmed.includes('unsplash.com') ||
+      trimmed.includes('imgur.com') ||
+      trimmed.includes('googleusercontent.com') ||
+      trimmed.includes('cloudinary.com');
+
+    const hasImageExt = /\.(jpg|jpeg|png|webp|gif|svg|avif)($|\?)/i.test(trimmed);
+    const hasImageParam = trimmed.includes('format=') || trimmed.includes('fit=') || trimmed.includes('photo') || trimmed.includes('image');
+
+    if (!isKnownCdn && !hasImageExt && !hasImageParam) {
+      return 'Introduce un enlace directo a una imagen (.jpg, .png, .webp) o CDN de Facebook/Instagram/Unsplash';
+    }
+
+    return null;
+  })();
+
+  // Domain Validation Helpers
+  const instagramError = editInstagram.trim() && !editInstagram.toLowerCase().includes('instagram.com') && !editInstagram.toLowerCase().includes('instagr.am')
+    ? 'El enlace de Instagram debe pertenecer a instagram.com'
+    : null;
+
+  const facebookError = editFacebook.trim() && !editFacebook.toLowerCase().includes('facebook.com') && !editFacebook.toLowerCase().includes('fb.com') && !editFacebook.toLowerCase().includes('fb.watch')
+    ? 'El enlace de Facebook debe pertenecer a facebook.com'
+    : null;
+
+  const youtubeError = editYoutube.trim() && !editYoutube.toLowerCase().includes('youtube.com') && !editYoutube.toLowerCase().includes('youtu.be')
+    ? 'El enlace de YouTube debe pertenecer a youtube.com o youtu.be'
+    : null;
+
+  const twitterError = editTwitter.trim() && !editTwitter.toLowerCase().includes('twitter.com') && !editTwitter.toLowerCase().includes('x.com')
+    ? 'El enlace de Twitter / X debe pertenecer a twitter.com o x.com'
+    : null;
+
+  // Load Wiki info from Supabase
+  useEffect(() => {
+    async function loadCenterWiki() {
+      if (!institution) return;
+      try {
+        setLoadingWiki(true);
+        let { data, error } = await supabase
+          .from('educational_centers')
+          .select('*')
+          .or(`id.eq.${institution.id},name.ilike.${institution.name}`)
+          .limit(1)
+          .maybeSingle();
+
+        if (data) {
+          setCenterWikiData({
+            id: data.id,
+            profile_photo_url: data.profile_photo_url || institution.image || '',
+            description: data.description || '',
+            instagram_url: data.instagram_url || '',
+            facebook_url: data.facebook_url || '',
+            youtube_url: data.youtube_url || '',
+            twitter_url: data.twitter_url || '',
+          });
+        } else {
+          setCenterWikiData({
+            id: institution.id,
+            profile_photo_url: institution.image || '',
+            description: '',
+            instagram_url: '',
+            facebook_url: '',
+            youtube_url: '',
+            twitter_url: '',
+          });
+        }
+      } catch (err) {
+        console.warn('Aviso al cargar Wiki de Supabase:', err);
+      } finally {
+        setLoadingWiki(false);
+      }
+    }
+
+    loadCenterWiki();
+  }, [institution]);
+
+  const handleStartEditWiki = () => {
+    setEditPhotoUrl(centerWikiData?.profile_photo_url || institution.image || '');
+    setImgPreviewError(false);
+    setEditDescription(centerWikiData?.description || '');
+    setEditInstagram(centerWikiData?.instagram_url || '');
+    setEditFacebook(centerWikiData?.facebook_url || '');
+    setEditYoutube(centerWikiData?.youtube_url || '');
+    setEditTwitter(centerWikiData?.twitter_url || '');
+    setIsEditingWiki(true);
+  };
+
+  const handleSaveWiki = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (photoUrlError || instagramError || facebookError || youtubeError || twitterError) {
+      setToastMessage('Corrige los enlaces inválidos antes de guardar los cambios');
+      setTimeout(() => setToastMessage(null), 4000);
+      return;
+    }
+
+    setSavingWiki(true);
+
+    try {
+      const payload = {
+        profile_photo_url: editPhotoUrl.trim() || null,
+        description: editDescription.trim() || null,
+        instagram_url: editInstagram.trim() || null,
+        facebook_url: editFacebook.trim() || null,
+        youtube_url: editYoutube.trim() || null,
+        twitter_url: editTwitter.trim() || null,
+      };
+
+      const targetId = centerWikiData?.id || institution.id;
+
+      const { error } = await supabase
+        .from('educational_centers')
+        .update(payload)
+        .eq('id', targetId);
+
+      if (error) {
+        console.error('Error al guardar Wiki en Supabase:', error);
+        setToastMessage('Error al actualizar Wiki: ' + error.message);
+        return;
+      }
+
+      setCenterWikiData({
+        id: targetId,
+        profile_photo_url: editPhotoUrl.trim(),
+        description: editDescription.trim(),
+        instagram_url: editInstagram.trim(),
+        facebook_url: editFacebook.trim(),
+        youtube_url: editYoutube.trim(),
+        twitter_url: editTwitter.trim(),
+      });
+
+      setIsEditingWiki(false);
+      setToastMessage('Datos de la Wiki actualizados correctamente');
+      setTimeout(() => setToastMessage(null), 4000);
+    } catch (err: any) {
+      console.error('Excepción al actualizar Wiki:', err);
+      setToastMessage('Ocurrió un error inesperado al guardar.');
+    } finally {
+      setSavingWiki(false);
+    }
+  };
 
   const handleToggleComments = async (confessionId: string) => {
     if (expandedCommentsId === confessionId) {
@@ -383,8 +595,8 @@ export default function EducationalCenterProfileView({
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 space-y-6 animate-in fade-in duration-300">
       
-      {/* Volver a la Red */}
-      <div className="flex items-center justify-between">
+      {/* Volver a la Red + Botones de Acción (Guardar y Compartir) */}
+      <div className="flex items-center justify-between gap-4">
         <button
           onClick={onBack}
           className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-zinc-500 hover:text-[#eab308] transition-colors cursor-pointer"
@@ -392,38 +604,60 @@ export default function EducationalCenterProfileView({
           <ArrowLeft className="w-4 h-4" />
           <span>Volver a la Red</span>
         </button>
+
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <BookmarkButton
+            itemId={institution.id || institution.slug || ''}
+            itemType="center"
+            itemName={institution.name}
+            itemImage={null}
+            itemSubtitle={institution.acronym || 'Centro Educativo'}
+          />
+          <button
+            onClick={handleShare}
+            className="p-3 rounded-full bg-[#151515] hover:bg-[#202020] border border-zinc-800 text-zinc-400 hover:text-[#eab308] transition-all cursor-pointer shadow-md"
+            title="Compartir link"
+          >
+            <Share2 className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       {/* HEADER DE LA INSTITUCIÓN */}
       <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 pt-2 pb-4">
         {/* Avatar circular */}
-        <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-[#181818] border border-zinc-800 flex items-center justify-center text-zinc-500 text-3xl font-black shadow-lg flex-shrink-0">
-          {institution.acronym ? institution.acronym.substring(0, 1) : 'I'}
+        <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-[#181818] border border-zinc-800 flex items-center justify-center text-zinc-500 text-3xl font-black shadow-lg flex-shrink-0 overflow-hidden relative">
+          {centerWikiData?.profile_photo_url ? (
+            <img
+              src={centerWikiData.profile_photo_url}
+              alt={institution.name}
+              className="w-full h-full object-cover relative z-10"
+              referrerPolicy="no-referrer"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+              }}
+            />
+          ) : institution.image ? (
+            <img
+              src={institution.image}
+              alt={institution.name}
+              className="w-full h-full object-cover relative z-10"
+              referrerPolicy="no-referrer"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+              }}
+            />
+          ) : null}
+          <span className="absolute inset-0 flex items-center justify-center text-zinc-500 text-3xl font-black">
+            {institution.acronym ? institution.acronym.substring(0, 1) : 'I'}
+          </span>
         </div>
 
-        {/* Nombre y Compartir */}
-        <div className="flex-1 text-center sm:text-left space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-            <h1 className="text-2xl sm:text-3.5xl font-black text-white leading-tight uppercase tracking-tight">
-              {institution.name}
-            </h1>
-            <div className="flex items-center gap-2 flex-shrink-0 self-center sm:self-start">
-              <BookmarkButton
-                itemId={institution.id || institution.slug || ''}
-                itemType="center"
-                itemName={institution.name}
-                itemImage={null}
-                itemSubtitle={institution.acronym || 'Centro Educativo'}
-              />
-              <button
-                onClick={handleShare}
-                className="p-3 rounded-full bg-[#151515] hover:bg-[#202020] border border-zinc-800 text-zinc-400 hover:text-[#eab308] transition-all cursor-pointer shadow-md"
-                title="Compartir link"
-              >
-                <Share2 className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
+        {/* Nombre */}
+        <div className="flex-1 text-center sm:text-left space-y-2">
+          <h1 className="text-2xl sm:text-3.5xl font-black text-white leading-tight uppercase tracking-tight">
+            {institution.name}
+          </h1>
           {copied && (
             <p className="text-xs text-[#eab308] font-bold tracking-wide animate-pulse">
               ✓ ¡Enlace copiado al portapapeles!
@@ -731,36 +965,369 @@ export default function EducationalCenterProfileView({
 
       {/* 2. WIKI TAB */}
       {activeTab === 'Wiki' && (
-        <div className="space-y-3">
-          {wikiArticles.length === 0 ? (
-            <div className="bg-[#0d0d0d] border border-zinc-800/40 rounded-xl p-12 text-center text-zinc-500 text-sm">
-              No hay artículos en la Wiki todavía.
+        <div className="space-y-6 animate-in fade-in duration-300">
+          
+          {/* ENCABEZADO Y BOTÓN EDITAR WIKI (SOLO ADMINS) */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-800/80 pb-4">
+            <div>
+              <h2 className="text-xl font-black text-white uppercase tracking-tight flex items-center gap-2">
+                <BookOpen className="w-5 h-5 text-[#eab308]" />
+                <span>Información del Instituto</span>
+              </h2>
+              <p className="text-xs text-zinc-400 mt-1">
+                Datos sobre <strong className="text-zinc-200">{institution.name}</strong>.
+              </p>
             </div>
-          ) : (
-            wikiArticles.map(article => (
-              <div
-                key={article.id}
-                className="bg-[#0d0d0d] border border-zinc-800/40 rounded-xl p-5 hover:border-[#eab308]/40 transition-all space-y-3"
+
+            {isAdmin && !isEditingWiki && (
+              <button
+                type="button"
+                onClick={handleStartEditWiki}
+                className="self-start sm:self-center px-4 py-2.5 rounded-xl bg-[#eab308] hover:bg-[#d9a307] text-black font-extrabold text-xs uppercase tracking-wider flex items-center gap-2 transition-all shadow-[0_4px_20px_rgba(234,179,8,0.25)] cursor-pointer active:scale-98"
               >
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <span className="px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wider bg-[#1a1a1a] text-[#eab308] rounded-md border border-[#eab308]/20">
-                      {article.category}
-                    </span>
-                    <h3 className="text-sm sm:text-base font-extrabold text-white mt-2 hover:text-[#eab308] transition-colors cursor-pointer">
-                      {article.title}
-                    </h3>
+                <Settings className="w-4 h-4" />
+                <span>⚙️ EDITAR WIKI</span>
+              </button>
+            )}
+          </div>
+
+          {loadingWiki ? (
+            <div className="py-16 text-center text-zinc-500 space-y-3 bg-[#0d0d0d] border border-zinc-800/40 rounded-2xl">
+              <div className="w-7 h-7 border-2 border-[#eab308] border-t-transparent rounded-full animate-spin mx-auto"></div>
+              <p className="text-xs font-mono">Cargando datos de la Wiki...</p>
+            </div>
+          ) : isEditingWiki ? (
+            /* MODO EDICIÓN (SOLO ADMINS) */
+            <form onSubmit={handleSaveWiki} className="bg-[#0d0d0d] border border-zinc-800/80 rounded-2xl p-6 sm:p-8 space-y-6 animate-in fade-in zoom-in-95 duration-200">
+              
+              {/* BLOQUE: Imagen del Instituto */}
+              <div className="space-y-3">
+                <label className="block text-xs font-extrabold text-white uppercase tracking-wider">
+                  Imagen del Instituto
+                </label>
+                
+                <div className="bg-[#121212] border border-zinc-800/80 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                  {/* Vista Previa de la Imagen */}
+                  <div className="w-16 h-16 rounded-xl bg-[#1a1a1a] border border-zinc-800 flex-shrink-0 overflow-hidden flex items-center justify-center">
+                    {!imgPreviewError && editPhotoUrl.trim() ? (
+                      <img
+                        src={editPhotoUrl.trim()}
+                        alt="Vista previa"
+                        className="w-full h-full object-cover"
+                        referrerPolicy="no-referrer"
+                        onError={() => setImgPreviewError(true)}
+                      />
+                    ) : (
+                      <Building2 className="w-7 h-7 text-zinc-600" />
+                    )}
                   </div>
-                  <div className="text-zinc-500 text-xs flex items-center gap-1.5">
-                    <Star className="w-3.5 h-3.5 text-zinc-600" />
-                    <span>Útil</span>
+
+                  <div className="flex-1 w-full space-y-1.5">
+                    <span className="block text-xs font-bold text-zinc-300">
+                      Enlace de Imagen (Perfil)
+                    </span>
+                    <div className="relative flex items-center">
+                      <input
+                        type="text"
+                        value={editPhotoUrl}
+                        onChange={(e) => {
+                          setEditPhotoUrl(e.target.value);
+                          setImgPreviewError(false);
+                        }}
+                        placeholder="https://..."
+                        className={`w-full bg-[#141414] border ${
+                          photoUrlError ? 'border-red-500 focus:border-red-500 bg-red-950/10' : 'border-zinc-800 focus:border-[#eab308]/80'
+                        } text-white rounded-xl px-3.5 py-2.5 text-xs outline-none transition-all pr-8`}
+                      />
+                      {editPhotoUrl && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditPhotoUrl('');
+                            setImgPreviewError(false);
+                          }}
+                          className="absolute right-2.5 text-zinc-500 hover:text-white p-1"
+                          title="Limpiar"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                    {photoUrlError ? (
+                      <p className="text-[11px] text-red-400 font-medium flex items-center gap-1 animate-in fade-in">
+                        <span>⚠️</span>
+                        <span>{photoUrlError}</span>
+                      </p>
+                    ) : (
+                      <p className="text-[11px] text-zinc-500">
+                        Soporta CDN de Facebook (fbcdn/scontent), Instagram, Unsplash, o cualquier enlace directo (.jpg, .png, .webp).
+                      </p>
+                    )}
                   </div>
                 </div>
-                <p className="text-xs text-zinc-500">
-                  Creado por la comunidad de alumnos para facilitar el acceso a información oficial del campus.
-                </p>
               </div>
-            ))
+
+              {/* BLOQUE: Redes Sociales */}
+              <div className="space-y-3 pt-2 border-t border-zinc-800/60">
+                <label className="block text-xs font-extrabold text-white uppercase tracking-wider">
+                  Redes Sociales
+                </label>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Instagram */}
+                  <div className="space-y-1.5">
+                    <label className="block text-[11px] font-bold text-zinc-400">
+                      Instagram
+                    </label>
+                    <div className="relative flex items-center">
+                      <input
+                        type="text"
+                        value={editInstagram}
+                        onChange={(e) => setEditInstagram(e.target.value)}
+                        placeholder="https://instagram.com/..."
+                        className={`w-full bg-[#141414] border ${
+                          instagramError ? 'border-red-500 focus:border-red-500 bg-red-950/10' : 'border-zinc-800 focus:border-[#eab308]/80'
+                        } text-white rounded-xl px-3.5 py-2.5 text-xs outline-none transition-all pr-8`}
+                      />
+                      {editInstagram && (
+                        <button
+                          type="button"
+                          onClick={() => setEditInstagram('')}
+                          className="absolute right-2.5 text-zinc-500 hover:text-white p-1"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                    {instagramError && (
+                      <p className="text-[11px] text-red-400 font-medium flex items-center gap-1 animate-in fade-in">
+                        <span>⚠️</span>
+                        <span>{instagramError}</span>
+                      </p>
+                    )}
+                  </div>
+
+                  {/* YouTube */}
+                  <div className="space-y-1.5">
+                    <label className="block text-[11px] font-bold text-zinc-400">
+                      YouTube
+                    </label>
+                    <div className="relative flex items-center">
+                      <input
+                        type="text"
+                        value={editYoutube}
+                        onChange={(e) => setEditYoutube(e.target.value)}
+                        placeholder="https://youtube.com/..."
+                        className={`w-full bg-[#141414] border ${
+                          youtubeError ? 'border-red-500 focus:border-red-500 bg-red-950/10' : 'border-zinc-800 focus:border-[#eab308]/80'
+                        } text-white rounded-xl px-3.5 py-2.5 text-xs outline-none transition-all pr-8`}
+                      />
+                      {editYoutube && (
+                        <button
+                          type="button"
+                          onClick={() => setEditYoutube('')}
+                          className="absolute right-2.5 text-zinc-500 hover:text-white p-1"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                    {youtubeError && (
+                      <p className="text-[11px] text-red-400 font-medium flex items-center gap-1 animate-in fade-in">
+                        <span>⚠️</span>
+                        <span>{youtubeError}</span>
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Facebook */}
+                  <div className="space-y-1.5">
+                    <label className="block text-[11px] font-bold text-zinc-400">
+                      Facebook
+                    </label>
+                    <div className="relative flex items-center">
+                      <input
+                        type="text"
+                        value={editFacebook}
+                        onChange={(e) => setEditFacebook(e.target.value)}
+                        placeholder="https://web.facebook.com/..."
+                        className={`w-full bg-[#141414] border ${
+                          facebookError ? 'border-red-500 focus:border-red-500 bg-red-950/10' : 'border-zinc-800 focus:border-[#eab308]/80'
+                        } text-white rounded-xl px-3.5 py-2.5 text-xs outline-none transition-all pr-8`}
+                      />
+                      {editFacebook && (
+                        <button
+                          type="button"
+                          onClick={() => setEditFacebook('')}
+                          className="absolute right-2.5 text-zinc-500 hover:text-white p-1"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                    {facebookError && (
+                      <p className="text-[11px] text-red-400 font-medium flex items-center gap-1 animate-in fade-in">
+                        <span>⚠️</span>
+                        <span>{facebookError}</span>
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Twitter / X */}
+                  <div className="space-y-1.5">
+                    <label className="block text-[11px] font-bold text-zinc-400">
+                      Twitter / X
+                    </label>
+                    <div className="relative flex items-center">
+                      <input
+                        type="text"
+                        value={editTwitter}
+                        onChange={(e) => setEditTwitter(e.target.value)}
+                        placeholder="https://twitter.com/..."
+                        className={`w-full bg-[#141414] border ${
+                          twitterError ? 'border-red-500 focus:border-red-500 bg-red-950/10' : 'border-zinc-800 focus:border-[#eab308]/80'
+                        } text-white rounded-xl px-3.5 py-2.5 text-xs outline-none transition-all pr-8`}
+                      />
+                      {editTwitter && (
+                        <button
+                          type="button"
+                          onClick={() => setEditTwitter('')}
+                          className="absolute right-2.5 text-zinc-500 hover:text-white p-1"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                    {twitterError && (
+                      <p className="text-[11px] text-red-400 font-medium flex items-center gap-1 animate-in fade-in">
+                        <span>⚠️</span>
+                        <span>{twitterError}</span>
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* BOTONES DE ACCIÓN */}
+              <div className="pt-4 border-t border-zinc-800/80 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsEditingWiki(false)}
+                  disabled={savingWiki}
+                  className="px-5 py-2.5 rounded-xl text-zinc-400 hover:text-white font-bold text-xs cursor-pointer transition-all disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingWiki}
+                  className="px-6 py-2.5 rounded-xl bg-[#eab308] hover:bg-[#d9a307] text-black font-extrabold text-xs uppercase tracking-wider cursor-pointer transition-all shadow-md flex items-center gap-2 disabled:opacity-50 active:scale-98"
+                >
+                  {savingWiki ? 'Guardando...' : 'Guardar Cambios'}
+                </button>
+              </div>
+
+            </form>
+          ) : (
+            /* MODO LECTURA (VISTA PÚBLICA) */
+            <div className="bg-[#0d0d0d] border border-zinc-800/80 rounded-2xl p-6 sm:p-8 space-y-6">
+              
+              {/* Imagen y Banner del Instituto */}
+              <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 pb-6 border-b border-zinc-800/60">
+                <div className="w-28 h-28 rounded-2xl bg-[#141414] border border-zinc-800/80 overflow-hidden flex items-center justify-center flex-shrink-0 shadow-lg relative">
+                  {centerWikiData?.profile_photo_url ? (
+                    <img
+                      src={centerWikiData.profile_photo_url}
+                      alt={institution.name}
+                      className="w-full h-full object-cover relative z-10"
+                      referrerPolicy="no-referrer"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                      }}
+                    />
+                  ) : null}
+                  <span className="absolute inset-0 flex items-center justify-center text-3xl font-black text-zinc-500">
+                    {institution.acronym ? institution.acronym.substring(0, 1) : 'I'}
+                  </span>
+                </div>
+
+                <div className="flex-1 text-center sm:text-left space-y-2">
+                  <h3 className="text-xl sm:text-2xl font-black text-white uppercase tracking-tight">
+                    {institution.name}
+                  </h3>
+                  <div className="flex items-center justify-center sm:justify-start gap-2 text-xs text-zinc-400 font-medium">
+                    <Building2 className="w-4 h-4 text-[#eab308]" />
+                    <span>{institution.category || 'Centro Educativo'}</span>
+                    <span>•</span>
+                    <span className="text-zinc-500">{institution.campus || 'Campus Principal'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Redes Sociales */}
+              <div className="space-y-3 pt-2">
+                <h4 className="text-xs font-black text-zinc-400 uppercase tracking-wider">
+                  Redes Sociales Oficiales
+                </h4>
+
+                {centerWikiData?.instagram_url || centerWikiData?.facebook_url || centerWikiData?.youtube_url || centerWikiData?.twitter_url ? (
+                  <div className="flex flex-wrap gap-3 pt-1">
+                    {centerWikiData.instagram_url && (
+                      <a
+                        href={centerWikiData.instagram_url.startsWith('http') ? centerWikiData.instagram_url : `https://${centerWikiData.instagram_url}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-4 py-2.5 rounded-xl bg-[#141414] hover:bg-gradient-to-r hover:from-purple-900/30 hover:to-pink-900/30 border border-zinc-800 hover:border-pink-500/50 text-white font-bold text-xs flex items-center gap-2.5 transition-all cursor-pointer shadow-sm group"
+                      >
+                        <InstagramIcon className="w-4 h-4 text-pink-400 group-hover:scale-110 transition-transform" />
+                        <span>Instagram</span>
+                      </a>
+                    )}
+
+                    {centerWikiData.facebook_url && (
+                      <a
+                        href={centerWikiData.facebook_url.startsWith('http') ? centerWikiData.facebook_url : `https://${centerWikiData.facebook_url}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-4 py-2.5 rounded-xl bg-[#141414] hover:bg-blue-950/40 border border-zinc-800 hover:border-blue-500/50 text-white font-bold text-xs flex items-center gap-2.5 transition-all cursor-pointer shadow-sm group"
+                      >
+                        <FacebookIcon className="w-4 h-4 text-blue-500 group-hover:scale-110 transition-transform" />
+                        <span>Facebook</span>
+                      </a>
+                    )}
+
+                    {centerWikiData.youtube_url && (
+                      <a
+                        href={centerWikiData.youtube_url.startsWith('http') ? centerWikiData.youtube_url : `https://${centerWikiData.youtube_url}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-4 py-2.5 rounded-xl bg-[#141414] hover:bg-red-950/40 border border-zinc-800 hover:border-red-500/50 text-white font-bold text-xs flex items-center gap-2.5 transition-all cursor-pointer shadow-sm group"
+                      >
+                        <YoutubeIcon className="w-4 h-4 text-red-500 group-hover:scale-110 transition-transform" />
+                        <span>YouTube</span>
+                      </a>
+                    )}
+
+                    {centerWikiData.twitter_url && (
+                      <a
+                        href={centerWikiData.twitter_url.startsWith('http') ? centerWikiData.twitter_url : `https://${centerWikiData.twitter_url}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-4 py-2.5 rounded-xl bg-[#141414] hover:bg-zinc-800/60 border border-zinc-800 hover:border-zinc-500 text-white font-bold text-xs flex items-center gap-2.5 transition-all cursor-pointer shadow-sm group"
+                      >
+                        <TwitterXIcon className="w-4 h-4 text-zinc-300 group-hover:scale-110 transition-transform" />
+                        <span>Twitter / X</span>
+                      </a>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-xs text-zinc-500 italic">
+                    Aún no se han configurado enlaces a redes sociales para este centro.
+                  </p>
+                )}
+              </div>
+
+            </div>
           )}
         </div>
       )}

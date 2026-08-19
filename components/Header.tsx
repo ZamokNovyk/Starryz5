@@ -15,7 +15,8 @@ import {
   Settings,
   Sun,
   Moon,
-  Palette
+  Palette,
+  Bell
 } from 'lucide-react';
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
@@ -137,30 +138,26 @@ export default function Header({
               <Search className="w-5 h-5" />
             </button>
 
+            {/* BOTÓN DE CAMPANA EN MÓVILES (SÓLO VISUAL) */}
+            <button
+              className="sm:hidden p-2 rounded-xl bg-[#141414] border border-[#ffffff15] text-[#eab308] hover:bg-[#1a1a1a] transition-all active:scale-95 cursor-pointer relative"
+              title="Notificaciones (Muy pronto)"
+            >
+              <Bell className="w-5 h-5" />
+              <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-amber-500 rounded-full animate-ping" />
+              <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-amber-500 rounded-full" />
+            </button>
+
             {/* BOTONES DE USUARIO Y CONFIGURACIÓN (DESKTOP) */}
             <div className="hidden md:flex items-center gap-3">
-              {/* BOTÓN RÁPIDO DE CAMBIO DE TEMA */}
+              {/* BOTÓN DE CAMPANA EN ESCRITORIO (SÓLO VISUAL) */}
               <button
-                onClick={toggleTheme}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#141414] border border-[#ffffff15] text-xs font-bold text-zinc-300 hover:text-white hover:border-[#eab308]/40 transition-all cursor-pointer select-none"
-                title="Cambiar tema de la aplicación"
+                className="p-2.5 rounded-xl bg-[#141414] border border-[#ffffff10] text-[#eab308] hover:text-white hover:border-[#eab308]/40 hover:bg-[#1a1a1a] transition-all cursor-pointer relative"
+                title="Notificaciones (Muy pronto)"
               >
-                {theme === 'night' ? (
-                  <>
-                    <Moon className="w-3.5 h-3.5 text-indigo-400" />
-                    <span>Modo Noche</span>
-                  </>
-                ) : theme === 'day' ? (
-                  <>
-                    <Sun className="w-3.5 h-3.5 text-amber-500" />
-                    <span>Modo Día</span>
-                  </>
-                ) : (
-                  <>
-                    <Star className="w-3.5 h-3.5 text-sky-400 fill-sky-400" />
-                    <span>Modo IESPPU</span>
-                  </>
-                )}
+                <Bell className="w-4 h-4" />
+                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-amber-500 rounded-full animate-ping" />
+                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-amber-500 rounded-full" />
               </button>
 
               {user ? (

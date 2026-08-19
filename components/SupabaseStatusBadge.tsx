@@ -1,10 +1,57 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Database, ShieldCheck, ExternalLink } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Database, ShieldCheck } from 'lucide-react';
+import { useAuth } from '@/src/context/AuthContext';
+import { supabase } from '@/src/lib/supabase';
 
 export default function SupabaseStatusBadge() {
   const [expanded, setExpanded] = useState(false);
+  const { user } = useAuth();
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function checkAdminStatus() {
+      if (!user || user.isAnonymous) {
+        if (isMounted) setIsAdmin(false);
+        return;
+      }
+
+      // Fast check for known admin credentials / role
+      if (user.email === 'wikistars12@gmail.com' || (user as any).role === 'admin') {
+        if (isMounted) setIsAdmin(true);
+        return;
+      }
+
+      // Check profiles table in Supabase
+      try {
+        const { data } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('firebase_uid', user.uid)
+          .maybeSingle();
+
+        if (isMounted) {
+          setIsAdmin(data?.role === 'admin');
+        }
+      } catch (err) {
+        if (isMounted) setIsAdmin(false);
+      }
+    }
+
+    checkAdminStatus();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user]);
+
+  // Only show the badge if current user is an admin
+  if (!isAdmin) {
+    return null;
+  }
 
   return (
     <div className="fixed bottom-4 right-4 z-40">
@@ -23,7 +70,7 @@ export default function SupabaseStatusBadge() {
         <div className="absolute bottom-12 right-0 w-80 bg-[#0d0d10] border border-yellow-500/60 rounded-2xl p-4 shadow-2xl text-xs space-y-3 animate-in fade-in slide-in-from-bottom-2">
           <div className="flex items-center justify-between border-b border-neutral-800 pb-2">
             <span className="font-extrabold text-yellow-400 flex items-center gap-1.5">
-              <ShieldCheck className="w-4 h-4" /> Integración Técnica
+              <ShieldCheck className="w-4 h-4" /> Integración Técnica (Admin)
             </span>
             <button
               onClick={() => setExpanded(false)}

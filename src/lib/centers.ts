@@ -5,6 +5,11 @@ export interface EducationalCenter {
   name: string;
   type: 'colegio' | 'instituto' | 'universidad';
   profile_photo_url: string | null;
+  description?: string | null;
+  instagram_url?: string | null;
+  facebook_url?: string | null;
+  youtube_url?: string | null;
+  twitter_url?: string | null;
   created_by: string;
   created_at: string;
 }
@@ -66,5 +71,20 @@ export async function getEducationalCenters(): Promise<EducationalCenter[]> {
   } catch (err) {
     console.warn('Excepción de red al obtener centros educativos:', err);
     return [];
+  }
+}
+
+/**
+ * Elimina un centro educativo de la tabla 'educational_centers' en Supabase.
+ */
+export async function deleteEducationalCenter(centerId: string): Promise<void> {
+  const { error } = await supabase
+    .from('educational_centers')
+    .delete()
+    .eq('id', centerId);
+
+  if (error) {
+    console.error('Error al eliminar centro educativo en Supabase:', error);
+    throw new Error(error.message || 'No se pudo eliminar el centro educativo.');
   }
 }

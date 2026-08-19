@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/src/context/AuthContext';
 import { supabase } from '@/src/lib/supabase';
 import { getAdminDashboardMetrics, AdminDashboardData } from '@/src/lib/admin';
+import { EducationalCenter, getEducationalCenters, deleteEducationalCenter } from '@/src/lib/centers';
 import {
   ShieldCheck,
   ShieldAlert,
@@ -18,7 +19,12 @@ import {
   Calendar,
   Layers,
   Award,
-  AlertCircle
+  AlertCircle,
+  Trash2,
+  Search,
+  AlertTriangle,
+  CheckCircle2,
+  X
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -33,6 +39,14 @@ export default function AdminDashboard({ onBack, onNavigate }: AdminDashboardPro
   const [loadingMetrics, setLoadingMetrics] = useState(true);
   const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
   const [metrics, setMetrics] = useState<AdminDashboardData | null>(null);
+
+  // Centers Management State
+  const [centers, setCenters] = useState<EducationalCenter[]>([]);
+  const [loadingCenters, setLoadingCenters] = useState(false);
+  const [centerSearchQuery, setCenterSearchQuery] = useState('');
+  const [centerToDelete, setCenterToDelete] = useState<EducationalCenter | null>(null);
+  const [isDeletingCenter, setIsDeletingCenter] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // 1. Verificación estricta de seguridad y rol
   useEffect(() => {
@@ -68,7 +82,19 @@ export default function AdminDashboard({ onBack, onNavigate }: AdminDashboardPro
     verifyAdminRole();
   }, [user]);
 
-  // 2. Cargar métricas en tiempo real si es Admin
+  // 2. Cargar métricas y centros en tiempo real si es Admin
+  const loadCenters = async () => {
+    try {
+      setLoadingCenters(true);
+      const data = await getEducationalCenters();
+      setCenters(data);
+    } catch (err) {
+      console.error('Error al cargar centros educativos:', err);
+    } finally {
+      setLoadingCenters(false);
+    }
+  };
+
   const loadMetrics = async () => {
     try {
       setLoadingMetrics(true);
@@ -85,8 +111,38 @@ export default function AdminDashboard({ onBack, onNavigate }: AdminDashboardPro
   useEffect(() => {
     if (isAdmin) {
       loadMetrics();
+      loadCenters();
     }
   }, [isAdmin]);
+
+  const confirmDeleteCenter = async () => {
+    if (!centerToDelete) return;
+    try {
+      setIsDeletingCenter(true);
+      await deleteEducationalCenter(centerToDelete.id);
+      setCenters(prev => prev.filter(c => c.id !== centerToDelete.id));
+      setToastMessage('Centro educativo y todo su contenido eliminado correctamente');
+      setTimeout(() => setToastMessage(null), 4000);
+      setCenterToDelete(null);
+      loadMetrics();
+    } catch (err: any) {
+      console.error('Error al eliminar centro:', err);
+      setToastMessage('Error al eliminar el centro: ' + (err.message || 'Error de red'));
+      setTimeout(() => setToastMessage(null), 4000);
+    } finally {
+      setIsDeletingCenter(false);
+    }
+  };
+
+  const filteredCenters = (() => {
+    if (!centerSearchQuery.trim()) return [];
+    const q = centerSearchQuery.toLowerCase().trim();
+    return centers.filter((center) => {
+      const nameMatch = center.name.toLowerCase().includes(q);
+      const typeMatch = center.type ? center.type.toLowerCase().includes(q) : false;
+      return nameMatch || typeMatch;
+    });
+  })();
 
   // Pantalla de comprobación de permisos
   if (checkingRole) {
@@ -457,6 +513,127 @@ export default function AdminDashboard({ onBack, onNavigate }: AdminDashboardPro
         </div>
       </section>
 
+      {/* 3.5. SECCIÓN: GESTIÓN DE CENTROS EDUCATIVOS (ELIMINACIÓN DE CENTROS) */}
+      <section className="space-y-4 pt-6 border-t border-zinc-800/80">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Building2 className="w-5 h-5 text-amber-400" />
+            <h2 className="text-base font-black text-white uppercase tracking-wider">
+              Gestión de Centros Educativos
+            </h2>
+          </div>
+          <span className="text-xs text-zinc-500 font-mono">
+            Mostrando {filteredCenters.length} de {centers.length} instituciones
+          </span>
+        </div>
+
+        {/* Buscador Dedicado Únicamente para Centros Educativos */}
+        <div className="relative flex items-center">
+          <Search className="w-4 h-4 text-zinc-500 absolute left-3.5 pointer-events-none" />
+          <input
+            type="text"
+            value={centerSearchQuery}
+            onChange={(e) => setCenterSearchQuery(e.target.value)}
+            placeholder="Buscar centro educativo por nombre o tipo (universidad, instituto, colegio)..."
+            className="w-full bg-[#0d0d0d] border border-zinc-800 focus:border-amber-400/80 text-white placeholder-zinc-500 rounded-xl pl-10 pr-10 py-3 text-xs outline-none transition-all shadow-md"
+          />
+          {centerSearchQuery && (
+            <button
+              onClick={() => setCenterSearchQuery('')}
+              className="absolute right-3 text-zinc-500 hover:text-white p-1"
+              title="Limpiar búsqueda"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+
+        {/* Lista de Tarjetas de Centros Educativos */}
+        {loadingCenters ? (
+          <div className="py-12 text-center text-zinc-500 space-y-2 bg-[#0d0d0d] border border-zinc-800/80 rounded-2xl">
+            <div className="w-6 h-6 border-2 border-amber-400 border-t-transparent rounded-full animate-spin mx-auto" />
+            <p className="text-xs font-mono">Cargando centros educativos...</p>
+          </div>
+        ) : !centerSearchQuery.trim() ? (
+          <div className="py-12 text-center text-zinc-500 space-y-2 bg-[#0d0d0d]/40 border border-dashed border-zinc-800/80 rounded-2xl p-6">
+            <Search className="w-8 h-8 text-zinc-600 mx-auto opacity-60 animate-pulse" />
+            <p className="text-xs font-bold text-zinc-400">Buscador de Centros</p>
+            <p className="text-[11px] text-zinc-500 max-w-sm mx-auto leading-relaxed">
+              Ingresa el nombre de la institución o el tipo (universidad, instituto, colegio) en el buscador superior para ver los resultados de gestión.
+            </p>
+          </div>
+        ) : filteredCenters.length === 0 ? (
+          <div className="py-12 text-center text-zinc-500 space-y-2 bg-[#0d0d0d] border border-zinc-800/80 rounded-2xl p-6">
+            <Building2 className="w-10 h-10 text-zinc-600 mx-auto opacity-50" />
+            <p className="text-xs font-bold text-zinc-400">No se encontraron centros educativos con esta búsqueda.</p>
+            <p className="text-[11px] text-zinc-600">Intenta buscar por universidad, instituto, colegio o nombre del centro.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredCenters.map((center) => {
+              const typeLabel = center.type === 'universidad' ? 'Universidad' : center.type === 'instituto' ? 'Instituto' : 'Colegio';
+              const typeBadgeStyle = center.type === 'universidad' 
+                ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                : center.type === 'instituto'
+                ? 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30'
+                : 'bg-purple-500/15 text-purple-400 border-purple-500/30';
+
+              return (
+                <div 
+                  key={center.id} 
+                  className="bg-[#0d0d0d] border border-zinc-800/80 hover:border-zinc-700 rounded-2xl p-4 flex flex-col justify-between gap-4 transition-all shadow-md group"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="w-12 h-12 rounded-xl bg-[#141414] border border-zinc-800 flex items-center justify-center flex-shrink-0 overflow-hidden">
+                      {center.profile_photo_url ? (
+                        <img 
+                          src={center.profile_photo_url} 
+                          alt={center.name} 
+                          className="w-full h-full object-cover" 
+                          referrerPolicy="no-referrer"
+                          onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }}
+                        />
+                      ) : (
+                        <Building2 className="w-6 h-6 text-zinc-500" />
+                      )}
+                    </div>
+
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`px-2 py-0.5 rounded-md border text-[10px] font-black uppercase tracking-wider ${typeBadgeStyle}`}>
+                          {typeLabel}
+                        </span>
+                      </div>
+                      <h4 className="font-extrabold text-white text-sm truncate" title={center.name}>
+                        {center.name}
+                      </h4>
+                      <p className="text-[11px] text-zinc-500 font-mono truncate">
+                        ID: {center.id.substring(0, 12)}...
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="pt-3 border-t border-zinc-800/60 flex items-center justify-between gap-2">
+                    <span className="text-[10px] text-zinc-500 font-mono">
+                      {center.created_at ? new Date(center.created_at).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Registrado'}
+                    </span>
+
+                    <button
+                      onClick={() => setCenterToDelete(center)}
+                      className="px-3 py-1.5 rounded-xl bg-red-950/40 hover:bg-red-600 border border-red-500/30 hover:border-red-500 text-red-400 hover:text-white font-black text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95"
+                      title="Eliminar centro educativo de la plataforma"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Eliminar Centro</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
       {/* 4. TABLA DE USUARIOS RECIENTES */}
       {metrics?.recentUsers && metrics.recentUsers.length > 0 && (
         <section className="space-y-4">
@@ -539,6 +716,55 @@ export default function AdminDashboard({ onBack, onNavigate }: AdminDashboardPro
             </table>
           </div>
         </section>
+      )}
+
+      {/* Toast Notification Flotante */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 bg-[#121212] border border-amber-400/80 text-white px-5 py-3.5 rounded-2xl shadow-[0_0_30px_rgba(234,179,8,0.25)] flex items-center gap-3 animate-in slide-in-from-bottom-5 duration-300 max-w-md">
+          <CheckCircle2 className="w-5 h-5 text-[#eab308] flex-shrink-0" />
+          <span className="text-xs font-bold leading-tight">{toastMessage}</span>
+        </div>
+      )}
+
+      {/* Modal de Confirmación de Eliminación Permanente */}
+      {centerToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="bg-[#121212] border border-red-500/40 rounded-2xl max-w-lg w-full p-6 space-y-6 shadow-[0_0_50px_rgba(239,68,68,0.25)] animate-in zoom-in-95 duration-200 relative">
+            <div className="flex items-start gap-4">
+              <div className="p-3 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-400 flex-shrink-0">
+                <AlertTriangle className="w-8 h-8" />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-lg font-black text-white uppercase tracking-tight">
+                  Confirmar Eliminación Permanente
+                </h3>
+                <p className="text-xs text-zinc-300 leading-relaxed bg-red-950/20 border border-red-500/20 p-3.5 rounded-xl">
+                  ⚠️ ¿Estás seguro de eliminar <strong className="text-white font-black">{centerToDelete.name}</strong>? Esta acción borrará permanentemente la institución, sus profesores registrados, confesiones, comentarios y estadísticas asociadas. Esta acción no se puede deshacer.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-zinc-800">
+              <button
+                type="button"
+                onClick={() => setCenterToDelete(null)}
+                disabled={isDeletingCenter}
+                className="px-5 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold text-xs uppercase tracking-wider transition-all cursor-pointer disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteCenter}
+                disabled={isDeletingCenter}
+                className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-black text-xs uppercase tracking-wider transition-all cursor-pointer shadow-lg flex items-center gap-2 disabled:opacity-50 active:scale-95"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>{isDeletingCenter ? 'ELIMINANDO...' : 'SÍ, ELIMINAR CENTRO'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
     </div>
