@@ -16,7 +16,9 @@ import {
   Sun,
   Moon,
   Palette,
-  Bell
+  Bell,
+  Smartphone,
+  Download
 } from 'lucide-react';
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
@@ -50,6 +52,46 @@ export default function Header({
   const settingsRef = useRef<HTMLDivElement>(null);
   const { user, logout } = useAuth();
   const { theme, toggleTheme, setTheme } = useTheme();
+
+  // Lógica de PWA (deferredPrompt y comprobación de instalabilidad)
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isPwaInstallable, setIsPwaInstallable] = useState(false);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setIsPwaInstallable(true);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    const handleAppInstalled = () => {
+      setIsPwaInstallable(false);
+      setDeferredPrompt(null);
+    };
+
+    window.addEventListener('appinstalled', handleAppInstalled);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', handleAppInstalled);
+    };
+  }, []);
+
+  const handlePwaInstallClick = async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        setDeferredPrompt(null);
+        setIsPwaInstallable(false);
+      }
+    } else {
+      // Si no hay evento de instalación nativa (como en iOS o previews en iframe), abrimos el modal detallado
+      onOpenInstallModal();
+    }
+  };
 
   // Cerrar menú de configuración al hacer clic fuera
   useEffect(() => {
@@ -99,8 +141,13 @@ export default function Header({
             onClick={onGoToHome}
             className="flex items-center gap-2 cursor-pointer group select-none flex-shrink-0"
           >
-            <div className="text-[#eab308] flex items-center justify-center transition-transform group-hover:scale-110">
-              <Star className="w-5 h-5 sm:w-6 sm:h-6 fill-[#eab308] text-[#eab308]" />
+            <div className="flex items-center justify-center transition-transform group-hover:scale-110">
+              <img 
+                src="https://pub-bc6c27157abc40bea1e3260a2cd65513.r2.dev/Logo/estrellados.jpg" 
+                alt="Logo Starryz 5" 
+                className="w-7 h-7 sm:w-8 sm:h-8 rounded-full object-cover border border-[#eab308]/30 shadow-md"
+                referrerPolicy="no-referrer"
+              />
             </div>
 
             <div className="flex flex-col">
@@ -138,6 +185,15 @@ export default function Header({
               <Search className="w-5 h-5" />
             </button>
 
+            {/* BOTÓN DE DESCARGA PWA EN MÓVILES */}
+            <button
+              onClick={handlePwaInstallClick}
+              className="sm:hidden p-2 rounded-xl bg-[#141414] border border-[#ffffff15] text-[#eab308] hover:text-white hover:border-[#eab308]/40 hover:bg-[#1a1a1a] transition-all active:scale-95 cursor-pointer"
+              title="Descargar Aplicación (PWA)"
+            >
+              <Download className="w-5 h-5" />
+            </button>
+
             {/* BOTÓN DE CAMPANA EN MÓVILES (SÓLO VISUAL) */}
             <button
               className="sm:hidden p-2 rounded-xl bg-[#141414] border border-[#ffffff15] text-[#eab308] hover:bg-[#1a1a1a] transition-all active:scale-95 cursor-pointer relative"
@@ -150,6 +206,15 @@ export default function Header({
 
             {/* BOTONES DE USUARIO Y CONFIGURACIÓN (DESKTOP) */}
             <div className="hidden md:flex items-center gap-3">
+              {/* BOTÓN DE DESCARGA PWA EN ESCRITORIO */}
+              <button
+                onClick={handlePwaInstallClick}
+                className="p-2.5 rounded-xl bg-[#141414] border border-[#ffffff10] text-[#eab308] hover:text-white hover:border-[#eab308]/40 hover:bg-[#1a1a1a] transition-all cursor-pointer"
+                title="Descargar Aplicación (PWA)"
+              >
+                <Download className="w-4 h-4" />
+              </button>
+
               {/* BOTÓN DE CAMPANA EN ESCRITORIO (SÓLO VISUAL) */}
               <button
                 className="p-2.5 rounded-xl bg-[#141414] border border-[#ffffff10] text-[#eab308] hover:text-white hover:border-[#eab308]/40 hover:bg-[#1a1a1a] transition-all cursor-pointer relative"
