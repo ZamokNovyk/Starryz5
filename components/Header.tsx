@@ -300,67 +300,101 @@ export default function Header({
 
         {/* 4. MENÚ DESPLEGABLE MÓVIL */}
         {mobileMenuOpen && (
-          <div className="md:hidden bg-[#0d0d0d] border-b border-[#ffffff10] px-6 py-5 space-y-3 animate-in slide-in-from-top-4 duration-200">
+          <div className="md:hidden bg-[#0d0d0d] border-b border-[#ffffff10] px-6 py-5 space-y-4 animate-in slide-in-from-top-4 duration-200">
+            {user && (
+              <button
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  if (onGoToProfile) onGoToProfile();
+                }}
+                className="w-full text-left flex items-center gap-3 bg-[#141414] border border-[#ffffff10] hover:border-[#eab308]/50 p-3 rounded-xl hover:bg-[#1a1a1a] transition-all cursor-pointer"
+              >
+                {user.photoURL ? (
+                  <img
+                    src={user.photoURL}
+                    alt={user.displayName || 'Usuario'}
+                    className="w-10 h-10 rounded-full object-cover animate-in fade-in"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="w-10 h-10 rounded-full bg-[#eab308] text-black flex items-center justify-center text-xs font-black">
+                    {user.displayName ? user.displayName.substring(0, 2).toUpperCase() : 'UA'}
+                  </div>
+                )}
+                <div>
+                  <div className="text-sm font-bold text-white">{user.displayName}</div>
+                  <div className="text-[10px] text-zinc-500 font-medium truncate max-w-[200px]">
+                    {user.email || 'Acceso Anónimo'}
+                  </div>
+                </div>
+              </button>
+            )}
+
+            {/* SELECCIÓN DE TEMA EN MÓVIL (LOS 3 TEMAS) */}
+            <div className="p-3.5 rounded-2xl border border-zinc-800/80 bg-[#141414] space-y-2.5">
+              <div className="flex items-center justify-between text-xs font-bold text-zinc-300">
+                <div className="flex items-center gap-2">
+                  <Palette className="w-4 h-4 text-[#eab308]" />
+                  <span>Cambiar Tema</span>
+                </div>
+                <span className="text-[10px] text-zinc-500 font-medium">3 Opciones</span>
+              </div>
+              
+              <div className="grid grid-cols-3 gap-2 pt-0.5">
+                <button
+                  type="button"
+                  onClick={() => setTheme('day')}
+                  className={`py-2 px-1.5 rounded-xl text-xs font-black transition-all cursor-pointer flex flex-col items-center justify-center gap-1 border ${
+                    theme === 'day'
+                      ? 'bg-amber-500/20 border-amber-500/50 text-amber-400 shadow-sm'
+                      : 'bg-zinc-900/80 border-zinc-800 text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  <span className="text-sm">☀️</span>
+                  <span className="text-[10px]">Modo Día</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTheme('night')}
+                  className={`py-2 px-1.5 rounded-xl text-xs font-black transition-all cursor-pointer flex flex-col items-center justify-center gap-1 border ${
+                    theme === 'night'
+                      ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-400 shadow-sm'
+                      : 'bg-zinc-900/80 border-zinc-800 text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  <span className="text-sm">🌙</span>
+                  <span className="text-[10px]">Modo Noche</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTheme('iesppu')}
+                  className={`py-2 px-1.5 rounded-xl text-xs font-black transition-all cursor-pointer flex flex-col items-center justify-center gap-1 border ${
+                    theme === 'iesppu'
+                      ? 'bg-sky-500/20 border-sky-500/50 text-sky-400 shadow-sm'
+                      : 'bg-zinc-900/80 border-zinc-800 text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  <span className="text-sm">💙</span>
+                  <span className="text-[10px]">IESPPU</span>
+                </button>
+              </div>
+            </div>
+
             {user ? (
-              <div className="space-y-3">
+              !user.isAnonymous && (
                 <button
                   onClick={() => {
                     setMobileMenuOpen(false);
-                    if (onGoToProfile) onGoToProfile();
+                    logout();
                   }}
-                  className="w-full text-left flex items-center gap-3 bg-[#141414] border border-[#ffffff10] hover:border-[#eab308]/50 p-3 rounded-xl hover:bg-[#1a1a1a] transition-all cursor-pointer"
+                  className="w-full py-2.5 px-4 rounded-xl border border-red-500/30 text-red-400 font-semibold text-xs tracking-widest uppercase bg-red-950/20 hover:bg-red-950/40 flex items-center justify-center gap-2"
                 >
-                  {user.photoURL ? (
-                    <img
-                      src={user.photoURL}
-                      alt={user.displayName || 'Usuario'}
-                      className="w-10 h-10 rounded-full object-cover animate-in fade-in"
-                      referrerPolicy="no-referrer"
-                    />
-                  ) : (
-                    <div className="w-10 h-10 rounded-full bg-[#eab308] text-black flex items-center justify-center text-xs font-black">
-                      {user.displayName ? user.displayName.substring(0, 2).toUpperCase() : 'UA'}
-                    </div>
-                  )}
-                  <div>
-                    <div className="text-sm font-bold text-white">{user.displayName}</div>
-                    <div className="text-[10px] text-zinc-500 font-medium truncate max-w-[200px]">
-                      {user.email || 'Acceso Anónimo'}
-                    </div>
-                  </div>
+                  <LogOut className="w-4 h-4" />
+                  <span>CERRAR SESIÓN</span>
                 </button>
-
-                {/* BOTÓN CAMBIO DE TEMA EN MÓVIL */}
-                <button
-                  onClick={toggleTheme}
-                  className="w-full flex items-center justify-between py-2.5 px-4 rounded-xl border border-zinc-800 bg-[#141414] text-zinc-300 hover:text-white transition-all"
-                >
-                  <div className="flex items-center gap-2.5">
-                    {theme === 'night' ? (
-                      <Moon className="w-4 h-4 text-indigo-400" />
-                    ) : (
-                      <Sun className="w-4 h-4 text-amber-400" />
-                    )}
-                    <span className="text-xs font-bold">Cambiar Tema</span>
-                  </div>
-                  <span className="px-2 py-0.5 rounded-md bg-zinc-800 text-[10px] font-mono text-amber-400 border border-zinc-700/50">
-                    {theme === 'night' ? '🌙 Modo Noche' : '☀️ Modo Día'}
-                  </span>
-                </button>
-
-                {!user.isAnonymous && (
-                  <button
-                    onClick={() => {
-                      setMobileMenuOpen(false);
-                      logout();
-                    }}
-                    className="w-full py-2.5 px-4 rounded-xl border border-red-500/30 text-red-400 font-semibold text-xs tracking-widest uppercase bg-red-950/20 hover:bg-red-950/40 flex items-center justify-center gap-2"
-                  >
-                    <LogOut className="w-4 h-4" />
-                    <span>CERRAR SESIÓN</span>
-                  </button>
-                )}
-              </div>
+              )
             ) : (
               <button
                 onClick={() => {
