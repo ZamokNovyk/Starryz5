@@ -692,13 +692,6 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
             >
               <Heart className={`w-3.5 h-3.5 ${profileTab === 'interactions' ? 'fill-black text-black' : 'text-pink-500 fill-pink-500/20'}`} />
               <span>Mis Interacciones</span>
-              {interactions.length > 0 && (
-                <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-black ${
-                  profileTab === 'interactions' ? 'bg-black/20 text-black' : 'bg-pink-500/20 text-pink-400 border border-pink-500/30'
-                }`}>
-                  {interactions.length}
-                </span>
-              )}
             </button>
           </div>
 
