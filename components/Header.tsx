@@ -169,7 +169,7 @@ export default function Header({
           >
             <div className="flex items-center justify-center transition-transform group-hover:scale-110">
               <img 
-                src="https://pub-bc6c27157abc40bea1e3260a2cd65513.r2.dev/Logo/estrellados.jpg" 
+                src="/Logo/logo.jpg" 
                 alt="Logo Starryz 5" 
                 className="w-7 h-7 sm:w-8 sm:h-8 rounded-full object-cover border border-[#eab308]/30 shadow-md"
                 referrerPolicy="no-referrer"

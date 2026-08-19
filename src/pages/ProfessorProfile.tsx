@@ -285,7 +285,7 @@ export default function ProfessorProfile({
   const handleStarVote = async (stars: number) => {
     // Play corresponding star sound (1-5) immediately on click
     try {
-      const audioUrl = `https://pub-bc6c27157abc40bea1e3260a2cd65513.r2.dev/sonidos/star${stars}.mp3`;
+      const audioUrl = `/sonidos/star${stars}.mp3`;
       const audio = new Audio(audioUrl);
       audio.volume = 0.55;
       audio.play().catch(e => console.warn('Audio play prevented:', e));
