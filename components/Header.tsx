@@ -58,34 +58,60 @@ export default function Header({
   const [isPwaInstallable, setIsPwaInstallable] = useState(false);
 
   useEffect(() => {
+    if (typeof window !== 'undefined' && (window as any).deferredPrompt) {
+      setDeferredPrompt((window as any).deferredPrompt);
+      setIsPwaInstallable(true);
+    }
+
     const handleBeforeInstallPrompt = (e: any) => {
       e.preventDefault();
       setDeferredPrompt(e);
+      (window as any).deferredPrompt = e;
       setIsPwaInstallable(true);
     };
 
+    const handlePwaCustomEvent = () => {
+      if (typeof window !== 'undefined' && (window as any).deferredPrompt) {
+        setDeferredPrompt((window as any).deferredPrompt);
+        setIsPwaInstallable(true);
+      }
+    };
+
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    window.addEventListener('pwa-installable', handlePwaCustomEvent);
 
     const handleAppInstalled = () => {
       setIsPwaInstallable(false);
       setDeferredPrompt(null);
+      if (typeof window !== 'undefined') {
+        (window as any).deferredPrompt = null;
+      }
     };
 
     window.addEventListener('appinstalled', handleAppInstalled);
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('pwa-installable', handlePwaCustomEvent);
       window.removeEventListener('appinstalled', handleAppInstalled);
     };
   }, []);
 
   const handlePwaInstallClick = async () => {
-    if (deferredPrompt) {
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
-      if (outcome === 'accepted') {
-        setDeferredPrompt(null);
-        setIsPwaInstallable(false);
+    const promptEvent = deferredPrompt || (typeof window !== 'undefined' ? (window as any).deferredPrompt : null);
+    if (promptEvent) {
+      try {
+        promptEvent.prompt();
+        const { outcome } = await promptEvent.userChoice;
+        if (outcome === 'accepted') {
+          setDeferredPrompt(null);
+          if (typeof window !== 'undefined') {
+            (window as any).deferredPrompt = null;
+          }
+          setIsPwaInstallable(false);
+        }
+      } catch (err) {
+        console.error('Error al iniciar instalación PWA nativa:', err);
       }
     } else {
       // Si no hay evento de instalación nativa (como en iOS o previews en iframe), abrimos el modal detallado

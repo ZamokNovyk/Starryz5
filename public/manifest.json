@@ -1,0 +1,21 @@
+{
+  "short_name": "Starryz5",
+  "name": "Starryz5: Popularidad estudiantil",
+  "icons": [
+    {
+      "src": "https://pub-bc6c27157abc40bea1e3260a2cd65513.r2.dev/Logo/PWA.jpg",
+      "sizes": "192x192",
+      "type": "image/jpeg"
+    },
+    {
+      "src": "https://pub-bc6c27157abc40bea1e3260a2cd65513.r2.dev/Logo/PWA.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#0a0a0a",
+  "theme_color": "#eab308",
+  "display": "standalone",
+  "orientation": "portrait"
+}

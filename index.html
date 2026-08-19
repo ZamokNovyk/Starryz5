@@ -6,6 +6,23 @@
     <title>Starryz5: Popularidad estudiantil</title>
     <meta name="description" content="Starryz5 permite a alumnos registrar institutos y votar democráticamente por estudiantes y profesores." />
     <link rel="icon" type="image/jpeg" href="https://pub-bc6c27157abc40bea1e3260a2cd65513.r2.dev/Logo/favicon.jpg" />
+    <link rel="manifest" href="/manifest.json" />
+    <script>
+      window.deferredPrompt = null;
+      window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        window.deferredPrompt = e;
+        window.dispatchEvent(new CustomEvent('pwa-installable'));
+      });
+
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then((reg) => console.log('Service Worker registrado con éxito:', reg.scope))
+            .catch((err) => console.error('Error al registrar el Service Worker:', err));
+        });
+      }
+    </script>
   </head>
   <body class="bg-[#0a0a0a] text-white">
     <div id="root"></div>

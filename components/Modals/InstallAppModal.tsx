@@ -67,9 +67,22 @@ export default function InstallAppModal({ isOpen, onClose }: InstallAppModalProp
         {/* Action button */}
         <div className="pt-2 flex flex-col sm:flex-row gap-3">
           <button
-            onClick={() => {
-              alert('Instalador de STARRYZ 5 iniciado. ¡Tu aplicación está lista para usar!');
-              onClose();
+            onClick={async () => {
+              const deferredPrompt = (window as any).deferredPrompt;
+              if (deferredPrompt) {
+                try {
+                  deferredPrompt.prompt();
+                  const { outcome } = await deferredPrompt.userChoice;
+                  console.log(`PWA installation outcome: ${outcome}`);
+                  (window as any).deferredPrompt = null;
+                  onClose();
+                } catch (err) {
+                  console.error('Error starting native PWA install prompt:', err);
+                  alert('Hubo un problema al abrir el instalador nativo. Por favor, sigue los pasos manuales descritos arriba.');
+                }
+              } else {
+                alert('La instalación rápida directa no está disponible en este navegador (común en iOS Safari). Por favor, sigue las instrucciones manuales detalladas arriba para agregar la app a tu inicio.');
+              }
             }}
             className="w-full py-3 px-6 rounded-lg bg-[#eab308] hover:bg-[#d9a307] text-black font-black text-xs tracking-widest uppercase flex items-center justify-center gap-2 transition-colors cursor-pointer"
           >
