@@ -185,9 +185,13 @@ export default function Header({
     }
 
     let confessionId: string | null = null;
+    let commentId: string | null = null;
     if (notif.link_url) {
       if (notif.link_url.includes('show_confession=')) {
         confessionId = notif.link_url.split('show_confession=')[1]?.split('&')[0] || null;
+      }
+      if (notif.link_url.includes('comment_id=')) {
+        commentId = notif.link_url.split('comment_id=')[1]?.split('&')[0] || null;
       }
     }
 
@@ -207,14 +211,18 @@ export default function Header({
         if (confession) {
           setModalConfession(confession);
           
-          const { data: comments } = await supabase
-            .from('confession_comments')
-            .select('*')
-            .eq('confession_id', confessionId)
-            .order('created_at', { ascending: true });
-            
-          if (comments) {
-            setModalComments(comments);
+          if (commentId) {
+            const { data: comments } = await supabase
+              .from('confession_comments')
+              .select('*')
+              .eq('id', commentId);
+              
+            if (comments) {
+              setModalComments(comments);
+            }
+          } else {
+            // No comment associated (e.g., just a reaction)
+            setModalComments([]);
           }
         }
       } catch (err) {
@@ -467,7 +475,7 @@ export default function Header({
                           className={`p-3 text-left transition-all hover:bg-[#ffffff05] cursor-pointer ${!notif.is_read ? 'bg-amber-500/5' : ''}`}
                         >
                           <div className="flex justify-between items-start gap-2">
-                            <span className={`text-[11px] font-bold ${!notif.is_read ? 'text-[#eab308]' : 'text-zinc-200'}`}>
+                            <span className="text-[11px] text-yellow-400 font-bold">
                               {notif.title}
                             </span>
                             <span className="text-[9px] text-zinc-500 shrink-0 mt-0.5">
@@ -541,7 +549,7 @@ export default function Header({
                             className={`p-3.5 text-left transition-all hover:bg-[#ffffff05] cursor-pointer ${!notif.is_read ? 'bg-amber-500/5' : ''}`}
                           >
                             <div className="flex justify-between items-start gap-2">
-                              <span className={`text-[11px] font-bold ${!notif.is_read ? 'text-[#eab308]' : 'text-zinc-200'}`}>
+                              <span className="text-[11px] text-yellow-400 font-bold">
                                 {notif.title}
                               </span>
                               <span className="text-[9px] text-zinc-500 shrink-0 mt-0.5">

@@ -395,7 +395,7 @@ export async function toggleConfessionReaction(
           
           await supabase.from('notifications').insert([{
             user_uid: confession.firebase_uid,
-            title: 'Nueva reacción',
+            title: senderName,
             body: bodyText,
             link_url: `/educational_centers/${confession.center_id}?show_confession=${confessionId}`,
             is_read: false
@@ -526,9 +526,9 @@ export async function createConfessionComment(payload: {
 
         await supabase.from('notifications').insert([{
           user_uid: conf.firebase_uid,
-          title: 'Nuevo comentario',
+          title: senderName,
           body: bodyText,
-          link_url: `/educational_centers/${conf.center_id}?show_confession=${payload.confession_id}`,
+          link_url: `/educational_centers/${conf.center_id}?show_confession=${payload.confession_id}&comment_id=${data.id}`,
           is_read: false
         }]);
       }
