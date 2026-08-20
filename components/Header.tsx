@@ -119,6 +119,15 @@ export default function Header({
         }, 
         (payload) => {
           const newNotif = payload.new as NotificationItem;
+          
+          // Reproducir sonido de notificación en vivo
+          try {
+            const audio = new Audio('/sonidos/noti.mp3');
+            audio.play().catch(e => console.log('Audio playback blocked or failed:', e));
+          } catch (audioErr) {
+            console.error('Error al reproducir el sonido de notificación:', audioErr);
+          }
+
           setNotifications((prev) => {
             if (prev.some(n => n.id === newNotif.id)) return prev;
             return [newNotif, ...prev];
