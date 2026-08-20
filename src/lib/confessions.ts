@@ -393,13 +393,26 @@ export async function toggleConfessionReaction(
           const senderName = currentUserName || 'Alguien';
           const bodyText = `[${senderName}] ha reaccionado con ${emoji} a tu confesión`;
           
-          await supabase.from('notifications').insert([{
+          const { error: notiError } = await supabase.from('notifications').insert([{
             user_uid: confession.firebase_uid,
             title: senderName,
             body: bodyText,
             link_url: `/educational_centers/${confession.center_id}?show_confession=${confessionId}`,
             is_read: false
           }]);
+
+          if (!notiError) {
+            // Despachar Push Notification vía Edge Function rapid-processor
+            supabase.functions.invoke('rapid-processor', {
+              body: {
+                user_uid: confession.firebase_uid,
+                title: senderName,
+                body: bodyText,
+                link_url: `/educational_centers/${confession.center_id}?show_confession=${confessionId}`,
+                confession_id: confessionId
+              }
+            }).catch(() => {});
+          }
         }
       } catch (err) {
         console.warn('No se pudo enviar la notificación de reacción:', err);
@@ -524,13 +537,27 @@ export async function createConfessionComment(payload: {
         const senderName = payload.author_name || 'Alguien';
         const bodyText = `[${senderName}] ha respondido a tu confesión: "${payload.content.substring(0, 45)}${payload.content.length > 45 ? '...' : ''}"`;
 
-        await supabase.from('notifications').insert([{
+        const { error: notiError } = await supabase.from('notifications').insert([{
           user_uid: conf.firebase_uid,
           title: senderName,
           body: bodyText,
           link_url: `/educational_centers/${conf.center_id}?show_confession=${payload.confession_id}&comment_id=${data.id}`,
           is_read: false
         }]);
+
+        if (!notiError) {
+          // Despachar Push Notification vía Edge Function rapid-processor
+          supabase.functions.invoke('rapid-processor', {
+            body: {
+              user_uid: conf.firebase_uid,
+              title: senderName,
+              body: bodyText,
+              link_url: `/educational_centers/${conf.center_id}?show_confession=${payload.confession_id}&comment_id=${data.id}`,
+              confession_id: payload.confession_id,
+              comment_id: data.id
+            }
+          }).catch(() => {});
+        }
       }
     }
   } catch (e) {

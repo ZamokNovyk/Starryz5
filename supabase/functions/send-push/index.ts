@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
+import * as jose from "https://esm.sh/jose@5.2.3";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,70 +13,34 @@ interface ServiceAccount {
   client_email?: string;
 }
 
-// Genera un token OAuth2 de Google a partir de la Service Account de Firebase
+// Genera un token OAuth2 de Google usando Jose (100% compatible con Deno/WebCrypto)
 async function getAccessToken(serviceAccount: ServiceAccount): Promise<string> {
   const { client_email, private_key } = serviceAccount;
   if (!client_email || !private_key) {
     throw new Error("Credenciales de Service Account incompletas (falta client_email o private_key)");
   }
 
-  const now = Math.floor(Date.now() / 1000);
-  const header = { alg: "RS256", typ: "JWT" };
-  const claimSet = {
-    iss: client_email,
+  // Corregir posibles saltos de línea escapados en variables de entorno
+  const cleanPrivateKey = private_key.replace(/\\n/g, "\n");
+
+  const privateKeyObj = await jose.importPKCS8(cleanPrivateKey, "RS256");
+
+  const jwt = await new jose.SignJWT({
     scope: "https://www.googleapis.com/auth/firebase.messaging",
-    aud: "https://oauth2.googleapis.com/token",
-    exp: now + 3600,
-    iat: now,
-  };
-
-  const encodeBase64Url = (str: string) => {
-    return btoa(str).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
-  };
-
-  const strHeader = encodeBase64Url(JSON.stringify(header));
-  const strClaimSet = encodeBase64Url(JSON.stringify(claimSet));
-  const unsignedToken = `${strHeader}.${strClaimSet}`;
-
-  // Formatear llave privada PEM para WebCrypto
-  const pem = private_key
-    .replace(/-----BEGIN PRIVATE KEY-----/, "")
-    .replace(/-----END PRIVATE KEY-----/, "")
-    .replace(/\\n/g, "")
-    .replace(/\s+/g, "");
-
-  const binaryDer = Uint8Array.from(atob(pem), (c) => c.charCodeAt(0));
-
-  const cryptoKey = await crypto.subtle.importKey(
-    "pkcs8",
-    binaryDer.buffer,
-    {
-      name: "RSASSA-PKCS1-v1_5",
-      hash: "SHA-256",
-    },
-    false,
-    ["sign"]
-  );
-
-  const signatureBuffer = await crypto.subtle.sign(
-    "RSASSA-PKCS1-v1_5",
-    cryptoKey,
-    new TextEncoder().encode(unsignedToken)
-  );
-
-  const signatureArray = Array.from(new Uint8Array(signatureBuffer));
-  const signatureBase64Url = encodeBase64Url(
-    String.fromCharCode.apply(null, signatureArray)
-  );
-
-  const signedJwt = `${unsignedToken}.${signatureBase64Url}`;
+  })
+    .setProtectedHeader({ alg: "RS256", typ: "JWT" })
+    .setIssuer(client_email)
+    .setAudience("https://oauth2.googleapis.com/token")
+    .setIssuedAt()
+    .setExpirationTime("1h")
+    .sign(privateKeyObj);
 
   const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-      assertion: signedJwt,
+      assertion: jwt,
     }),
   });
 
@@ -97,7 +62,7 @@ serve(async (req) => {
     const rawBody = await req.json().catch(() => ({}));
     console.log("[send-push] Petición recibida en Edge Function:", JSON.stringify(rawBody));
 
-    // Soporte para Database Webhook (record) o llamada directa API
+    // Soporte para Database Webhook (record) o invocación directa
     const record = rawBody.record || rawBody;
     const recipientUid = record.user_uid || record.recipientUid;
     let title = record.title || "Starryz 5";
@@ -113,7 +78,7 @@ serve(async (req) => {
       );
     }
 
-    // Inicializar cliente Supabase con Service Role Key para acceso a base de datos
+    // Inicializar cliente Supabase para buscar token FCM
     const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_ANON_KEY") || "";
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -144,7 +109,7 @@ serve(async (req) => {
     const fcmToken = tokenRecord.fcm_token;
     console.log(`[send-push] Destinatario ${recipientUid} tiene token: ${fcmToken.substring(0, 15)}...`);
 
-    // Limpiar formato del título si viene con corchetes
+    // Limpiar formato del título
     title = title.replace(/[\[\]]/g, "").trim();
 
     // 2. Obtener credenciales de Firebase Service Account desde variables de entorno
@@ -154,7 +119,6 @@ serve(async (req) => {
       try {
         serviceAccount = JSON.parse(serviceAccountEnv);
       } catch {
-        // Intento decodificar base64 si no es JSON directo
         try {
           serviceAccount = JSON.parse(atob(serviceAccountEnv));
         } catch (e) {
@@ -163,7 +127,7 @@ serve(async (req) => {
       }
     }
 
-    // Variables individuales de fallback
+    // Fallback con variables individuales
     if (!serviceAccount) {
       const clientEmail = Deno.env.get("FIREBASE_CLIENT_EMAIL");
       const privateKey = Deno.env.get("FIREBASE_PRIVATE_KEY");
@@ -178,11 +142,10 @@ serve(async (req) => {
     }
 
     if (!serviceAccount || !serviceAccount.client_email || !serviceAccount.private_key) {
-      console.warn("[send-push] AVISO: No se encontraron credenciales de Service Account configuradas en Supabase Edge Functions (FIREBASE_SERVICE_ACCOUNT).");
+      console.warn("[send-push] AVISO: No se encontraron credenciales de Service Account en Supabase Edge Functions (FIREBASE_SERVICE_ACCOUNT).");
       return new Response(
         JSON.stringify({
           error: "Falta configurar FIREBASE_SERVICE_ACCOUNT en los secrets de Supabase Edge Functions",
-          hint: "Ejecuta: supabase secrets set FIREBASE_SERVICE_ACCOUNT='{...serviceAccount.json}'",
           tokenFound: true,
           fcmTokenPreview: fcmToken.substring(0, 15)
         }),
@@ -196,7 +159,7 @@ serve(async (req) => {
     console.log("[send-push] Generando OAuth2 Access Token para Google FCM v1...");
     const accessToken = await getAccessToken(serviceAccount);
 
-    // 4. Construir payload FCM HTTP v1
+    // 4. Construir payload FCM HTTP v1 con alta prioridad
     const fcmUrl = `https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`;
     const fcmMessage = {
       message: {
@@ -206,6 +169,9 @@ serve(async (req) => {
           body: body,
         },
         webpush: {
+          headers: {
+            Urgency: "high",
+          },
           notification: {
             icon: "/Logo/logo.jpg",
             badge: "/Logo/favicon.jpg",
@@ -226,7 +192,7 @@ serve(async (req) => {
       },
     };
 
-    console.log("[send-push] Enviando mensaje a FCM v1 API:", JSON.stringify(fcmMessage));
+    console.log("[send-push] Enviando mensaje a FCM v1 API...");
 
     const fcmResponse = await fetch(fcmUrl, {
       method: "POST",
@@ -247,7 +213,7 @@ serve(async (req) => {
       );
     }
 
-    console.log("[send-push] ¡Notificación enviada exitosamente a FCM! Respuesta:", fcmResult);
+    console.log("[send-push] ¡Notificación enviada exitosamente a FCM! Message ID:", fcmResult.name);
 
     return new Response(
       JSON.stringify({ success: true, messageId: fcmResult.name, recipientUid }),
@@ -256,7 +222,7 @@ serve(async (req) => {
   } catch (err: any) {
     console.error("[send-push] Excepción capturada en Edge Function:", err);
     return new Response(
-      JSON.stringify({ error: err.message || "Error interno del servidor", stack: err.stack }),
+      JSON.stringify({ error: err.message || "Error interno del servidor" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
