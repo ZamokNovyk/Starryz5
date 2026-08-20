@@ -15,7 +15,8 @@ import EducationalCenterProfileView from '@/components/EducationalCenterProfileV
 import ProfessorProfile from '@/src/pages/ProfessorProfile';
 import AdminDashboard from '@/src/components/AdminDashboard';
 import { useAuth } from '@/src/context/AuthContext';
-import { LayoutGrid, User, Plus } from 'lucide-react';
+import { LayoutGrid, User, Plus, Bell, X } from 'lucide-react';
+import { useFCMNotifications } from '@/hooks/useFCMNotifications';
 import { Institution, Student } from '@/lib/mockData';
 import { getEducationalCenters, EducationalCenter } from '@/src/lib/centers';
 
@@ -52,6 +53,7 @@ function matchSlug(name: string, targetSlug: string): boolean {
 
 export default function App() {
   const { user } = useAuth();
+  const { toastNotification, closeToast } = useFCMNotifications();
   const [searchQuery, setSearchQuery] = useState('');
   const [autoNavigateToProfile, setAutoNavigateToProfile] = useState(false);
 
@@ -385,6 +387,29 @@ export default function App() {
         onClose={() => setCreateCenterModalOpen(false)}
         onSuccess={() => setInstitutionsRefreshKey(prev => prev + 1)}
       />
+
+      {/* Notification Toast for Foreground FCM Messages */}
+      {toastNotification && (
+        <div 
+          id="fcm-toast"
+          className="fixed top-24 right-6 z-50 max-w-sm w-full bg-[#121212]/95 border border-[#eab308]/40 backdrop-blur-md rounded-2xl p-4 shadow-[0_10px_35px_rgba(0,0,0,0.8)] flex gap-3 animate-fade-in transition-all duration-300 transform translate-y-0 scale-100"
+        >
+          <div className="w-8 h-8 rounded-full bg-[#eab308]/10 border border-[#eab308]/20 flex items-center justify-center text-[#eab308] shrink-0">
+            <Bell className="w-4 h-4 fill-[#eab308]/20" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-xs font-black text-white uppercase tracking-wider">{toastNotification.title}</div>
+            <div className="text-[11px] text-zinc-400 mt-1 leading-normal">{toastNotification.body}</div>
+          </div>
+          <button 
+            onClick={closeToast} 
+            className="text-zinc-500 hover:text-white shrink-0 p-1 transition-colors self-start"
+            title="Cerrar notificación"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Technical integration badge */}
       <SupabaseStatusBadge />
