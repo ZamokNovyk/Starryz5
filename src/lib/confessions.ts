@@ -359,9 +359,9 @@ export async function toggleConfessionReaction(
 
     if (existing) {
       await supabase
-        .from('confession_reactions')
-        .delete()
-        .eq('id', existing.id);
+         .from('confession_reactions')
+         .delete()
+         .eq('id', existing.id);
 
       return { added: false };
     } else {
@@ -374,6 +374,32 @@ export async function toggleConfessionReaction(
             user_id: effectiveUserId,
           },
         ]);
+
+      // Disparar notificación si el dueño es otro usuario
+      try {
+        const { data: confession } = await supabase
+          .from('center_confessions')
+          .select('firebase_uid, center_id')
+          .eq('id', confessionId)
+          .single();
+
+        if (confession && confession.firebase_uid && confession.firebase_uid !== effectiveUserId) {
+          const emoji = reactionType === 'heart' ? '❤️' : 
+                        reactionType === 'laugh' ? '😂' : 
+                        reactionType === 'fire' ? '🔥' : 
+                        reactionType === 'cry' ? '😭' : '🤯';
+          
+          await supabase.from('notifications').insert([{
+            user_uid: confession.firebase_uid,
+            title: 'Nueva reacción',
+            body: `Alguien reaccionó con ${emoji} a tu confesión`,
+            link_url: `/educational_centers/${confession.center_id}`,
+            is_read: false
+          }]);
+        }
+      } catch (err) {
+        console.warn('No se pudo enviar la notificación de reacción:', err);
+      }
 
       return { added: true };
     }
@@ -473,22 +499,35 @@ export async function createConfessionComment(payload: {
     throw error;
   }
 
-  // Incrementar el conteo en center_confessions
+  // Incrementar el conteo en center_confessions y disparar notificación
   try {
     const { data: conf } = await supabase
       .from('center_confessions')
-      .select('comments_count')
+      .select('comments_count, firebase_uid, center_id')
       .eq('id', payload.confession_id)
       .single();
 
-    const newCount = (conf?.comments_count || 0) + 1;
+    if (conf) {
+      const newCount = (conf.comments_count || 0) + 1;
 
-    await supabase
-      .from('center_confessions')
-      .update({ comments_count: newCount })
-      .eq('id', payload.confession_id);
+      await supabase
+        .from('center_confessions')
+        .update({ comments_count: newCount })
+        .eq('id', payload.confession_id);
+
+      // Disparar la notificación si el autor del comentario no es el mismo dueño de la confesión
+      if (conf.firebase_uid && conf.firebase_uid !== payload.firebase_uid) {
+        await supabase.from('notifications').insert([{
+          user_uid: conf.firebase_uid,
+          title: 'Nuevo comentario',
+          body: `Alguien comentó en tu confesión: "${payload.content.substring(0, 45)}${payload.content.length > 45 ? '...' : ''}"`,
+          link_url: `/educational_centers/${conf.center_id}`,
+          is_read: false
+        }]);
+      }
+    }
   } catch (e) {
-    console.warn('Error al actualizar conteo de comentarios:', e);
+    console.warn('Error al actualizar conteo de comentarios o disparar notificación:', e);
   }
 
   return data;

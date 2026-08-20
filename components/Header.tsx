@@ -24,6 +24,17 @@ import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
 import AutocompleteSearchBar from './AutocompleteSearchBar';
 import { SearchSuggestion } from '@/src/lib/search';
+import { supabase } from '@/src/lib/supabase';
+
+interface NotificationItem {
+  id: string;
+  user_uid: string;
+  title: string;
+  body: string;
+  link_url?: string;
+  is_read: boolean;
+  created_at: string;
+}
 
 interface HeaderProps {
   searchQuery?: string;
@@ -56,6 +67,129 @@ export default function Header({
   // Lógica de PWA (deferredPrompt y comprobación de instalabilidad)
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isPwaInstallable, setIsPwaInstallable] = useState(false);
+
+  // Lógica de Notificaciones In-App
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [mobileNotificationsOpen, setMobileNotificationsOpen] = useState(false);
+  const notificationsRef = useRef<HTMLDivElement>(null);
+  const mobileNotificationsRef = useRef<HTMLDivElement>(null);
+
+  const unreadCount = notifications.filter(n => !n.is_read).length;
+
+  const fetchNotifications = async () => {
+    if (!user) return;
+    try {
+      const { data, error } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('user_uid', user.uid)
+        .order('created_at', { ascending: false });
+      if (!error && data) {
+        setNotifications(data);
+      }
+    } catch (err) {
+      console.error('Error al obtener notificaciones:', err);
+    }
+  };
+
+  useEffect(() => {
+    if (!user) {
+      setNotifications([]);
+      return;
+    }
+
+    fetchNotifications();
+
+    const channel = supabase
+      .channel(`user-notifications-${user.uid}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'notifications'
+        },
+        () => {
+          fetchNotifications();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.uid]);
+
+  // Cerrar notificaciones al hacer clic fuera
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (notificationsRef.current && !notificationsRef.current.contains(event.target as Node)) {
+        setNotificationsOpen(false);
+      }
+      if (mobileNotificationsRef.current && !mobileNotificationsRef.current.contains(event.target as Node)) {
+        setMobileNotificationsOpen(false);
+      }
+    }
+    if (notificationsOpen || mobileNotificationsOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [notificationsOpen, mobileNotificationsOpen]);
+
+  const markAllAsRead = async () => {
+    if (!user || notifications.length === 0) return;
+    try {
+      const { error } = await supabase
+        .from('notifications')
+        .update({ is_read: true })
+        .eq('user_uid', user.uid)
+        .eq('is_read', false);
+      if (!error) {
+        setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+      }
+    } catch (err) {
+      console.error('Error al marcar notificaciones como leídas:', err);
+    }
+  };
+
+  const handleNotificationClick = async (notif: NotificationItem) => {
+    setNotificationsOpen(false);
+    setMobileNotificationsOpen(false);
+    if (!notif.is_read) {
+      try {
+        const { error } = await supabase
+          .from('notifications')
+          .update({ is_read: true })
+          .eq('id', notif.id);
+        if (!error) {
+          setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, is_read: true } : n));
+        }
+      } catch (err) {
+        console.error('Error al marcar notificación como leída:', err);
+      }
+    }
+    if (notif.link_url && onNavigate) {
+      onNavigate(notif.link_url);
+    }
+  };
+
+  const formatNotifDate = (dateStr: string) => {
+    try {
+      const d = new Date(dateStr);
+      const diffMs = Date.now() - d.getTime();
+      const diffMins = Math.floor(diffMs / 60000);
+      const diffHrs = Math.floor(diffMins / 60);
+      if (diffMins < 1) return 'Ahora';
+      if (diffMins < 60) return `Hace ${diffMins} min`;
+      if (diffHrs < 24) return `Hace ${diffHrs} h`;
+      return d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
+    } catch (e) {
+      return '';
+    }
+  };
 
   useEffect(() => {
     if (typeof window !== 'undefined' && (window as any).deferredPrompt) {
@@ -220,15 +354,68 @@ export default function Header({
               <Download className="w-5 h-5" />
             </button>
 
-            {/* BOTÓN DE CAMPANA EN MÓVILES (SÓLO VISUAL) */}
-            <button
-              className="sm:hidden p-2 rounded-xl bg-[#141414] border border-[#ffffff15] text-[#eab308] hover:bg-[#1a1a1a] transition-all active:scale-95 cursor-pointer relative"
-              title="Notificaciones (Muy pronto)"
-            >
-              <Bell className="w-5 h-5" />
-              <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-amber-500 rounded-full animate-ping" />
-              <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-amber-500 rounded-full" />
-            </button>
+            {/* NOTIFICACIONES EN MÓVILES CON DROPDOWN REAL */}
+            <div className="relative sm:hidden" ref={mobileNotificationsRef}>
+              <button
+                onClick={() => setMobileNotificationsOpen(!mobileNotificationsOpen)}
+                className="p-2 rounded-xl bg-[#141414] border border-[#ffffff15] text-[#eab308] hover:bg-[#1a1a1a] transition-all active:scale-95 cursor-pointer relative"
+                title="Notificaciones"
+              >
+                <Bell className={`w-5 h-5 ${unreadCount > 0 ? 'fill-amber-500/20' : ''}`} />
+                {unreadCount > 0 && (
+                  <>
+                    <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-amber-500 rounded-full animate-ping" />
+                    <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-amber-500 rounded-full" />
+                  </>
+                )}
+              </button>
+
+              {mobileNotificationsOpen && (
+                <div 
+                  id="mobile-notifs-dropdown"
+                  className="absolute right-0 mt-2 z-50 w-72 bg-[#121212]/95 border border-[#eab308]/40 backdrop-blur-md rounded-2xl shadow-[0_10px_35px_rgba(0,0,0,0.8)] overflow-hidden"
+                >
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-[#ffffff10] bg-[#141414]">
+                    <span className="text-xs font-black text-white uppercase tracking-wider">Notificaciones</span>
+                    {unreadCount > 0 && (
+                      <button 
+                        onClick={markAllAsRead}
+                        className="text-[10px] text-amber-500 hover:text-amber-400 font-bold transition-colors"
+                      >
+                        Marcar leídas
+                      </button>
+                    )}
+                  </div>
+                  <div className="max-h-64 overflow-y-auto divide-y divide-[#ffffff08]">
+                    {notifications.length === 0 ? (
+                      <div className="p-6 text-center text-zinc-500 text-xs">
+                        No tienes notificaciones
+                      </div>
+                    ) : (
+                      notifications.map((notif) => (
+                        <div 
+                          key={notif.id}
+                          onClick={() => handleNotificationClick(notif)}
+                          className={`p-3 text-left transition-all hover:bg-[#ffffff05] cursor-pointer ${!notif.is_read ? 'bg-amber-500/5' : ''}`}
+                        >
+                          <div className="flex justify-between items-start gap-2">
+                            <span className={`text-[11px] font-bold ${!notif.is_read ? 'text-[#eab308]' : 'text-zinc-200'}`}>
+                              {notif.title}
+                            </span>
+                            <span className="text-[9px] text-zinc-500 shrink-0 mt-0.5">
+                              {formatNotifDate(notif.created_at)}
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-zinc-400 mt-0.5 leading-snug">
+                            {notif.body}
+                          </p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* BOTONES DE USUARIO Y CONFIGURACIÓN (DESKTOP) */}
             <div className="hidden md:flex items-center gap-3">
@@ -241,15 +428,68 @@ export default function Header({
                 <Download className="w-4 h-4" />
               </button>
 
-              {/* BOTÓN DE CAMPANA EN ESCRITORIO (SÓLO VISUAL) */}
-              <button
-                className="p-2.5 rounded-xl bg-[#141414] border border-[#ffffff10] text-[#eab308] hover:text-white hover:border-[#eab308]/40 hover:bg-[#1a1a1a] transition-all cursor-pointer relative"
-                title="Notificaciones (Muy pronto)"
-              >
-                <Bell className="w-4 h-4" />
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-amber-500 rounded-full animate-ping" />
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-amber-500 rounded-full" />
-              </button>
+              {/* NOTIFICACIONES EN ESCRITORIO CON DROPDOWN REAL */}
+              <div className="relative" ref={notificationsRef}>
+                <button
+                  onClick={() => setNotificationsOpen(!notificationsOpen)}
+                  className="p-2.5 rounded-xl bg-[#141414] border border-[#ffffff10] text-[#eab308] hover:text-white hover:border-[#eab308]/40 hover:bg-[#1a1a1a] transition-all cursor-pointer relative"
+                  title="Notificaciones"
+                >
+                  <Bell className={`w-4 h-4 ${unreadCount > 0 ? 'fill-amber-500/20' : ''}`} />
+                  {unreadCount > 0 && (
+                    <>
+                      <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-amber-500 rounded-full animate-ping" />
+                      <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-amber-500 rounded-full" />
+                    </>
+                  )}
+                </button>
+
+                {notificationsOpen && (
+                  <div 
+                    id="desktop-notifs-dropdown"
+                    className="absolute right-0 mt-2 z-50 w-80 bg-[#121212]/95 border border-[#eab308]/40 backdrop-blur-md rounded-2xl shadow-[0_10px_35px_rgba(0,0,0,0.8)] overflow-hidden"
+                  >
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-[#ffffff10] bg-[#141414]">
+                      <span className="text-xs font-black text-white uppercase tracking-wider">Notificaciones</span>
+                      {unreadCount > 0 && (
+                        <button 
+                          onClick={markAllAsRead}
+                          className="text-[10px] text-amber-500 hover:text-amber-400 font-bold transition-colors"
+                        >
+                          Marcar todas como leídas
+                        </button>
+                      )}
+                    </div>
+                    <div className="max-h-72 overflow-y-auto divide-y divide-[#ffffff08]">
+                      {notifications.length === 0 ? (
+                        <div className="p-8 text-center text-zinc-500 text-xs">
+                          No tienes notificaciones nuevas
+                        </div>
+                      ) : (
+                        notifications.map((notif) => (
+                          <div 
+                            key={notif.id}
+                            onClick={() => handleNotificationClick(notif)}
+                            className={`p-3.5 text-left transition-all hover:bg-[#ffffff05] cursor-pointer ${!notif.is_read ? 'bg-amber-500/5' : ''}`}
+                          >
+                            <div className="flex justify-between items-start gap-2">
+                              <span className={`text-[11px] font-bold ${!notif.is_read ? 'text-[#eab308]' : 'text-zinc-200'}`}>
+                                {notif.title}
+                              </span>
+                              <span className="text-[9px] text-zinc-500 shrink-0 mt-0.5">
+                                {formatNotifDate(notif.created_at)}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-zinc-400 mt-0.5 leading-snug">
+                              {notif.body}
+                            </p>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {user ? (
                 <div className="flex items-center gap-2.5 relative" ref={settingsRef}>

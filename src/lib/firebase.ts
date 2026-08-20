@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider } from 'firebase/auth';
+import { getAuth, initializeAuth, browserLocalPersistence, GoogleAuthProvider } from 'firebase/auth';
 
 // Retrieve environment variables with compatibility
 const getEnvVar = (key: string): string => {
@@ -37,7 +37,18 @@ const firebaseConfig = {
 
 // Initialize Firebase App
 export const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-export const auth = getAuth(app);
+
+// Force explicit local storage persistence to prevent the "Database is closing/hidden" IndexedDB bug
+export const auth = (() => {
+  try {
+    return initializeAuth(app, {
+      persistence: browserLocalPersistence
+    });
+  } catch (e) {
+    return getAuth(app);
+  }
+})();
+
 export const googleProvider = new GoogleAuthProvider();
 
 // Custom parameters can be set for Google provider if desired
