@@ -489,7 +489,8 @@ export default function EducationalCenterProfileView({
     );
 
     try {
-      await toggleConfessionReaction(confessionId, reactionType, user?.uid);
+      const displayName = user ? (user.displayName || user.email?.split('@')[0]) : undefined;
+      await toggleConfessionReaction(confessionId, reactionType, user?.uid, displayName);
     } catch (err) {
       console.error('Error al reaccionar:', err);
       loadConfessions();

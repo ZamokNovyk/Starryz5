@@ -336,7 +336,8 @@ export async function createCenterConfession(payload: CreateConfessionPayload): 
 export async function toggleConfessionReaction(
   confessionId: string,
   reactionType: ReactionType,
-  currentUserId?: string
+  currentUserId?: string,
+  currentUserName?: string
 ): Promise<{ added: boolean }> {
   const effectiveUserId = currentUserId || getDeviceId();
 
@@ -389,11 +390,14 @@ export async function toggleConfessionReaction(
                         reactionType === 'fire' ? '🔥' : 
                         reactionType === 'cry' ? '😭' : '🤯';
           
+          const senderName = currentUserName || 'Alguien';
+          const bodyText = `[${senderName}] ha reaccionado con ${emoji} a tu confesión`;
+          
           await supabase.from('notifications').insert([{
             user_uid: confession.firebase_uid,
             title: 'Nueva reacción',
-            body: `Alguien reaccionó con ${emoji} a tu confesión`,
-            link_url: `/educational_centers/${confession.center_id}`,
+            body: bodyText,
+            link_url: `/educational_centers/${confession.center_id}?show_confession=${confessionId}`,
             is_read: false
           }]);
         }
@@ -517,11 +521,14 @@ export async function createConfessionComment(payload: {
 
       // Disparar la notificación si el autor del comentario no es el mismo dueño de la confesión
       if (conf.firebase_uid && conf.firebase_uid !== payload.firebase_uid) {
+        const senderName = payload.author_name || 'Alguien';
+        const bodyText = `[${senderName}] ha respondido a tu confesión: "${payload.content.substring(0, 45)}${payload.content.length > 45 ? '...' : ''}"`;
+
         await supabase.from('notifications').insert([{
           user_uid: conf.firebase_uid,
           title: 'Nuevo comentario',
-          body: `Alguien comentó en tu confesión: "${payload.content.substring(0, 45)}${payload.content.length > 45 ? '...' : ''}"`,
-          link_url: `/educational_centers/${conf.center_id}`,
+          body: bodyText,
+          link_url: `/educational_centers/${conf.center_id}?show_confession=${payload.confession_id}`,
           is_read: false
         }]);
       }

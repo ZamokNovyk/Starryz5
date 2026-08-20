@@ -75,6 +75,12 @@ export default function Header({
   const notificationsRef = useRef<HTMLDivElement>(null);
   const mobileNotificationsRef = useRef<HTMLDivElement>(null);
 
+  // States for Notification Detail Modal
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const [modalLoading, setModalLoading] = useState(false);
+  const [modalConfession, setModalConfession] = useState<any>(null);
+  const [modalComments, setModalComments] = useState<any[]>([]);
+
   const unreadCount = notifications.filter(n => !n.is_read).length;
 
   const fetchNotifications = async () => {
@@ -102,16 +108,21 @@ export default function Header({
     fetchNotifications();
 
     const channel = supabase
-      .channel(`user-notifications-${user.uid}`)
+      .channel('realtime_notifications')
       .on(
         'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'notifications'
-        },
-        () => {
-          fetchNotifications();
+        { 
+          event: 'INSERT', 
+          schema: 'public', 
+          table: 'notifications', 
+          filter: `user_uid=eq.${user.uid}` 
+        }, 
+        (payload) => {
+          const newNotif = payload.new as NotificationItem;
+          setNotifications((prev) => {
+            if (prev.some(n => n.id === newNotif.id)) return prev;
+            return [newNotif, ...prev];
+          });
         }
       )
       .subscribe();
@@ -158,6 +169,7 @@ export default function Header({
   const handleNotificationClick = async (notif: NotificationItem) => {
     setNotificationsOpen(false);
     setMobileNotificationsOpen(false);
+    
     if (!notif.is_read) {
       try {
         const { error } = await supabase
@@ -171,9 +183,65 @@ export default function Header({
         console.error('Error al marcar notificación como leída:', err);
       }
     }
-    if (notif.link_url && onNavigate) {
-      onNavigate(notif.link_url);
+
+    let confessionId: string | null = null;
+    if (notif.link_url) {
+      if (notif.link_url.includes('show_confession=')) {
+        confessionId = notif.link_url.split('show_confession=')[1]?.split('&')[0] || null;
+      }
     }
+
+    if (confessionId) {
+      setShowDetailModal(true);
+      setModalLoading(true);
+      setModalConfession(null);
+      setModalComments([]);
+      
+      try {
+        const { data: confession } = await supabase
+          .from('center_confessions')
+          .select('*')
+          .eq('id', confessionId)
+          .single();
+
+        if (confession) {
+          setModalConfession(confession);
+          
+          const { data: comments } = await supabase
+            .from('confession_comments')
+            .select('*')
+            .eq('confession_id', confessionId)
+            .order('created_at', { ascending: true });
+            
+          if (comments) {
+            setModalComments(comments);
+          }
+        }
+      } catch (err) {
+        console.error('Error al cargar detalles de la confesión para la notificación:', err);
+      } finally {
+        setModalLoading(false);
+      }
+    } else {
+      if (notif.link_url && onNavigate) {
+        onNavigate(notif.link_url);
+      }
+    }
+  };
+
+  const renderNotificationBody = (body: string) => {
+    if (body.startsWith('[') && body.includes(']')) {
+      const closingIndex = body.indexOf(']');
+      const username = body.substring(1, closingIndex);
+      const rest = body.substring(closingIndex + 1);
+      return (
+        <span>
+          <span className="text-yellow-400 font-bold">{username}</span>
+          {rest}
+        </span>
+      );
+    }
+    return <span>{body}</span>;
   };
 
   const formatNotifDate = (dateStr: string) => {
@@ -407,7 +475,7 @@ export default function Header({
                             </span>
                           </div>
                           <p className="text-[10px] text-zinc-400 mt-0.5 leading-snug">
-                            {notif.body}
+                            {renderNotificationBody(notif.body)}
                           </p>
                         </div>
                       ))
@@ -481,7 +549,7 @@ export default function Header({
                               </span>
                             </div>
                             <p className="text-[10px] text-zinc-400 mt-0.5 leading-snug">
-                              {notif.body}
+                              {renderNotificationBody(notif.body)}
                             </p>
                           </div>
                         ))
@@ -819,6 +887,129 @@ export default function Header({
 
           </div>
 
+        </div>
+      )}
+
+      {/* MODAL DE DETALLE DE NOTIFICACIÓN */}
+      {showDetailModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="relative w-full max-w-2xl bg-[#0c0c0c] border border-[#eab308]/40 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.9)] overflow-hidden">
+            
+            {/* Header del Modal */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 bg-[#0e0e0e]">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-yellow-500 animate-pulse" />
+                <h3 className="text-sm font-black text-white uppercase tracking-wider">Detalle de Confesión</h3>
+              </div>
+              <button 
+                onClick={() => setShowDetailModal(false)}
+                className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-[#ffffff10] transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Contenido del Modal */}
+            <div className="p-6 max-h-[70vh] overflow-y-auto space-y-6 animate-fade-in">
+              {modalLoading ? (
+                <div className="flex flex-col items-center justify-center py-12 gap-3">
+                  <div className="w-8 h-8 border-2 border-[#eab308] border-t-transparent rounded-full animate-spin" />
+                  <span className="text-zinc-500 text-xs tracking-wider">Cargando confesión y respuestas...</span>
+                </div>
+              ) : modalConfession ? (
+                <div className="space-y-6">
+                  
+                  {/* Confesión Original */}
+                  <div className="p-5 rounded-2xl bg-gradient-to-br from-[#121212] to-[#0f0f0f] border border-zinc-800 space-y-3 relative overflow-hidden">
+                    {/* Badge de Categoría */}
+                    <div className="absolute top-4 right-4 text-[9px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-yellow-500/10 text-[#eab308] border border-yellow-500/20">
+                      {modalConfession.category || 'Muro'}
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-zinc-850 flex items-center justify-center font-bold text-xs text-[#eab308]">
+                        {(modalConfession.author_name || 'Anónimo').substring(0, 2).toUpperCase()}
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-extrabold text-white">
+                          {modalConfession.author_name || 'Anónimo'}
+                        </h4>
+                        <span className="text-[10px] text-zinc-500">
+                          {modalConfession.created_at ? new Date(modalConfession.created_at).toLocaleDateString('es-ES', {
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          }) : 'Confesión'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <p className="text-sm text-zinc-200 font-medium leading-relaxed whitespace-pre-wrap pt-1">
+                      {modalConfession.content}
+                    </p>
+                  </div>
+
+                  {/* Respuestas Recibidas */}
+                  <div className="space-y-3">
+                    <h4 className="text-xs font-extrabold text-[#eab308] uppercase tracking-wider flex items-center gap-1.5">
+                      <span>Respuestas / Comentarios</span>
+                      <span className="text-[10px] bg-[#eab308]/10 text-[#eab308] px-1.5 py-0.5 rounded-full font-bold">
+                        {modalComments.length}
+                      </span>
+                    </h4>
+
+                    {modalComments.length === 0 ? (
+                      <p className="text-zinc-500 text-xs italic py-2">No hay comentarios en esta confesión aún.</p>
+                    ) : (
+                      <div className="space-y-2.5 max-h-48 overflow-y-auto pr-1">
+                        {modalComments.map((comment: any) => (
+                          <div 
+                            key={comment.id}
+                            className="p-3.5 rounded-xl bg-[#101010] border border-zinc-900 flex gap-3 items-start"
+                          >
+                            <div className="w-6 h-6 rounded-full bg-[#eab308]/10 text-[#eab308] flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">
+                              {(comment.author_name || 'Anónimo').substring(0, 2).toUpperCase()}
+                            </div>
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold text-white">
+                                  {comment.author_name || 'Anónimo'}
+                                </span>
+                                <span className="text-[9px] text-zinc-500">
+                                  {comment.created_at ? new Date(comment.created_at).toLocaleDateString('es-ES', {
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  }) : ''}
+                                </span>
+                              </div>
+                              <p className="text-xs text-zinc-300 leading-normal">
+                                {comment.content}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                </div>
+              ) : (
+                <div className="text-center py-10 text-zinc-500 text-xs">
+                  No se pudo cargar la confesión original o ha sido eliminada por su creador.
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="flex justify-end px-6 py-4 bg-[#0e0e0e] border-t border-zinc-800">
+              <button 
+                onClick={() => setShowDetailModal(false)}
+                className="px-4 py-2 bg-[#eab308] hover:bg-[#ca9a07] text-black font-black text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer"
+              >
+                Entendido
+              </button>
+            </div>
+
+          </div>
         </div>
       )}
     </>
