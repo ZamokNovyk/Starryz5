@@ -4,7 +4,9 @@ import {
   signOut, 
   linkWithPopup,
   setPersistence,
-  browserLocalPersistence
+  browserLocalPersistence,
+  GoogleAuthProvider,
+  browserPopupRedirectResolver
 } from 'firebase/auth';
 import { auth, googleProvider } from './firebase';
 import { supabase } from './supabase';
@@ -55,9 +57,26 @@ export async function syncUserWithSupabase(user: AuthUser) {
  */
 export async function loginWithGoogle(): Promise<AuthUser> {
   try {
-    // Forzar explícitamente persistencia local para evitar errores de IndexedDB bloqueado o en pestañas ocultas
-    await setPersistence(auth, browserLocalPersistence);
-    const result = await signInWithPopup(auth, googleProvider);
+    if (!auth) {
+      console.error('[Auth Error] La instancia de Firebase Auth es undefined o no se inicializó correctamente.');
+      throw new Error('El servicio de autenticación no está disponible. Revisa la consola para más detalles.');
+    }
+
+    // Forzar explícitamente persistencia local, capturando cualquier error de sandbox/iframe
+    try {
+      await setPersistence(auth, browserLocalPersistence);
+    } catch (persistErr) {
+      console.warn('[Auth Warning] No se pudo establecer setPersistence en localStorage, continuando:', persistErr);
+    }
+    
+    // Crear el proveedor en caliente como lo solicita la especificación
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({
+      prompt: 'select_account'
+    });
+
+    console.log('[Auth] Llamando a signInWithPopup con auth, provider y resolver...', { authExists: !!auth, providerExists: !!provider });
+    const result = await signInWithPopup(auth, provider, browserPopupRedirectResolver);
     const firebaseUser = result.user;
 
     const user: AuthUser = {
@@ -71,7 +90,16 @@ export async function loginWithGoogle(): Promise<AuthUser> {
     await syncUserWithSupabase(user);
     return user;
   } catch (error: any) {
-    console.error('Error en login con Google:', error);
+    console.error('[Auth Error] Error detallado al iniciar sesión con Google:', {
+      message: error?.message,
+      code: error?.code,
+      stack: error?.stack,
+      authStatus: auth ? 'Inicializado' : 'Undefined',
+      config: {
+        appId: auth?.app?.options?.appId ? 'Presente' : 'Ausente',
+        projectId: auth?.app?.options?.projectId ? 'Presente' : 'Ausente'
+      }
+    });
     // Manejo de errores específicos y amigables para el usuario
     if (error?.code === 'auth/popup-blocked') {
       throw new Error('La ventana emergente de inicio de sesión fue bloqueada por tu navegador. Por favor, permite las ventanas emergentes para este sitio e inténtalo de nuevo.');
@@ -91,8 +119,12 @@ export async function loginWithGoogle(): Promise<AuthUser> {
  */
 export async function loginAnonymously(): Promise<AuthUser> {
   try {
-    // Forzar persistencia para sesiones anónimas
-    await setPersistence(auth, browserLocalPersistence);
+    // Forzar persistencia para sesiones anónimas, capturando cualquier error de sandbox/iframe
+    try {
+      await setPersistence(auth, browserLocalPersistence);
+    } catch (persistErr) {
+      console.warn('[Auth Warning] No se pudo establecer setPersistence para sesión anónima:', persistErr);
+    }
     const result = await signInAnonymously(auth);
     const firebaseUser = result.user;
 
@@ -129,13 +161,25 @@ export async function logout(): Promise<void> {
  */
 export async function linkAnonymousWithGoogle(): Promise<AuthUser> {
   try {
-    const currentUser = auth.currentUser;
+    const currentUser = auth?.currentUser;
     if (!currentUser) {
       throw new Error("No hay un usuario activo para vincular.");
     }
 
-    await setPersistence(auth, browserLocalPersistence);
-    const result = await linkWithPopup(currentUser, googleProvider);
+    try {
+      await setPersistence(auth, browserLocalPersistence);
+    } catch (persistErr) {
+      console.warn('[Auth Warning] No se pudo establecer setPersistence para vincular cuenta:', persistErr);
+    }
+    
+    // Crear el proveedor en caliente como lo solicita la especificación
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({
+      prompt: 'select_account'
+    });
+
+    console.log('[Auth] Llamando a linkWithPopup con currentUser, provider y resolver...', { currentUserExists: !!currentUser, providerExists: !!provider });
+    const result = await linkWithPopup(currentUser, provider, browserPopupRedirectResolver);
     const firebaseUser = result.user;
 
     const user: AuthUser = {

@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, initializeAuth, browserLocalPersistence, GoogleAuthProvider } from 'firebase/auth';
+import { getAuth, initializeAuth, browserLocalPersistence, GoogleAuthProvider, browserPopupRedirectResolver } from 'firebase/auth';
 
 // Retrieve environment variables with compatibility
 const getEnvVar = (key: string): string => {
@@ -26,8 +26,11 @@ const getEnvVar = (key: string): string => {
   return '';
 };
 
+// Use the known valid firebase key if VITE_FIREBASE_API_KEY is not defined
+const defaultApiKey = "AIzaSyAPTCYvXj0t_tT8pFL3T0au4lnGWFjvBAQ";
+
 const firebaseConfig = {
-  apiKey: getEnvVar('VITE_FIREBASE_API_KEY') || 'placeholder-api-key',
+  apiKey: getEnvVar('VITE_FIREBASE_API_KEY') || defaultApiKey,
   authDomain: "starryz5-usuarios.firebaseapp.com",
   projectId: "starryz5-usuarios",
   storageBucket: "starryz5-usuarios.firebasestorage.app",
@@ -35,17 +38,27 @@ const firebaseConfig = {
   appId: "1:1048861626265:web:406d52cf245be964368d08"
 };
 
+console.log("[Firebase Init] Configurando app con API Key:", firebaseConfig.apiKey ? "Presente" : "FALTANTE");
+
 // Initialize Firebase App
 export const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
 // Force explicit local storage persistence to prevent the "Database is closing/hidden" IndexedDB bug
 export const auth = (() => {
   try {
+    console.log("[Firebase Init] Intentando inicializar Firebase Auth con persistencia en localStorage...");
     return initializeAuth(app, {
-      persistence: browserLocalPersistence
+      persistence: browserLocalPersistence,
+      popupRedirectResolver: browserPopupRedirectResolver
     });
-  } catch (e) {
-    return getAuth(app);
+  } catch (e: any) {
+    console.warn("[Firebase Init] Falló inicializar con localStorage, usando getAuth(app):", e?.message);
+    try {
+      return getAuth(app);
+    } catch (err) {
+      console.error("[Firebase Init] Error crítico inicializando Firebase Auth:", err);
+      return undefined as any;
+    }
   }
 })();
 
