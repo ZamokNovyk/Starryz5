@@ -186,11 +186,11 @@ export default function ProfessorProfile({
         {
           event: '*', // Escuchar todo evento (INSERT, UPDATE, DELETE)
           schema: 'public',
-          table: 'professor_votes',
-          filter: `professor_id=eq.${profId}`
+          table: 'professor_votes'
         },
         (payload) => {
-          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE' || payload.eventType === 'DELETE') {
+          // Si es un DELETE, refrescamos incondicionalmente. Si es INSERT/UPDATE, verificamos que sea para este profesor.
+          if (payload.eventType === 'DELETE' || (payload.new && (payload.new as any).professor_id === profId)) {
             refreshVotesData();
           }
         }
@@ -200,29 +200,30 @@ export default function ProfessorProfile({
         {
           event: '*',
           schema: 'public',
-          table: 'professor_interactions',
-          filter: `professor_id=eq.${profId}`
+          table: 'professor_interactions'
         },
-        async () => {
-          try {
-            // Refrescar conteos totales de interacción de la BD
-            const counts = await getProfessorInteractionCounts(profId);
-            setKnowCount(counts.knows);
-            setFanCount(counts.fan);
+        async (payload) => {
+          if (payload.eventType === 'DELETE' || (payload.new && (payload.new as any).professor_id === profId)) {
+            try {
+              // Refrescar conteos totales de interacción de la BD
+              const counts = await getProfessorInteractionCounts(profId);
+              setKnowCount(counts.knows);
+              setFanCount(counts.fan);
 
-            // Refrescar si el propio usuario cambió su interacción
-            if (user) {
-              const userInteraction = await getUserProfessorInteraction(profId, user.uid);
-              if (userInteraction) {
-                setHasVotedKnow(userInteraction.interaction_type === 'knows');
-                setHasVotedFan(userInteraction.interaction_type === 'fan');
-              } else {
-                setHasVotedKnow(false);
-                setHasVotedFan(false);
+              // Refrescar si el propio usuario cambió su interacción
+              if (user) {
+                const userInteraction = await getUserProfessorInteraction(profId, user.uid);
+                if (userInteraction) {
+                  setHasVotedKnow(userInteraction.interaction_type === 'knows');
+                  setHasVotedFan(userInteraction.interaction_type === 'fan');
+                } else {
+                  setHasVotedKnow(false);
+                  setHasVotedFan(false);
+                }
               }
+            } catch (err) {
+              console.error('Error al refrescar interacciones en tiempo real:', err);
             }
-          } catch (err) {
-            console.error('Error al refrescar interacciones en tiempo real:', err);
           }
         }
       )
@@ -231,17 +232,18 @@ export default function ProfessorProfile({
         {
           event: '*',
           schema: 'public',
-          table: 'professor_crushes',
-          filter: `professor_id=eq.${profId}`
+          table: 'professor_crushes'
         },
-        async () => {
-          try {
-            // Refrescar crushes de la BD en tiempo real
-            const crushStatus = await getProfessorCrushStatus(profId, user?.uid);
-            setCrushCount(crushStatus.count);
-            setHasCrushed(crushStatus.hasCrushed);
-          } catch (err) {
-            console.error('Error al refrescar crushes en tiempo real:', err);
+        async (payload) => {
+          if (payload.eventType === 'DELETE' || (payload.new && (payload.new as any).professor_id === profId)) {
+            try {
+              // Refrescar crushes de la BD en tiempo real
+              const crushStatus = await getProfessorCrushStatus(profId, user?.uid);
+              setCrushCount(crushStatus.count);
+              setHasCrushed(crushStatus.hasCrushed);
+            } catch (err) {
+              console.error('Error al refrescar crushes en tiempo real:', err);
+            }
           }
         }
       )
