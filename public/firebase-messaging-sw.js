@@ -12,22 +12,24 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
-// Manejo de mensajes en segundo plano (cuando la pestaña está en background o cerrada)
+// Manejo de mensajes en segundo plano (Background Push FCM)
 messaging.onBackgroundMessage((payload) => {
-  console.log('[firebase-messaging-sw.js] Mensaje recibido en background:', payload);
+  console.log('[firebase-messaging-sw.js] Mensaje recibido en segundo plano (FCM):', payload);
 
   const title = payload.notification?.title || payload.data?.title || 'Starryz 5';
   const body = payload.notification?.body || payload.data?.body || 'Tienes una nueva interacción';
-  const targetUrl = payload.data?.url || payload.data?.link_url || payload.fcmOptions?.link || '/';
+  const targetUrl = payload.fcmOptions?.link || payload.data?.link_url || payload.data?.url || '/';
+  const icon = payload.notification?.icon || payload.data?.icon || '/Logo/logo.jpg';
 
   const options = {
     body: body,
-    icon: '/icon-192.png',
+    icon: icon,
     badge: '/Logo/favicon.jpg',
     vibrate: [200, 100, 200],
     tag: payload.data?.confession_id ? `confession-${payload.data.confession_id}` : 'starryz-push',
     data: {
       url: targetUrl,
+      link_url: targetUrl,
       ...payload.data
     },
     actions: [
