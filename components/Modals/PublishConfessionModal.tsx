@@ -20,6 +20,7 @@ export default function PublishConfessionModal({
   institutionName,
   onSuccess,
 }: PublishConfessionModalProps) {
+  const { user } = useAuth();
   const [category, setCategory] = useState<'crush' | 'professors' | 'exams' | 'anecdotes'>('crush');
   const [content, setContent] = useState('');
   const [cardStyle, setCardStyle] = useState<CardStyle>('dark');
@@ -41,10 +42,15 @@ export default function PublishConfessionModal({
 
     try {
       setSubmitting(true);
+      
+      const authorName = user 
+        ? (user.displayName || user.email?.split('@')[0] || 'Anónimo') 
+        : 'Anónimo';
+
       await createCenterConfession({
         center_id: institutionId,
-        firebase_uid: null,
-        author_name: 'Anónimo',
+        firebase_uid: user?.uid || null,
+        author_name: authorName,
         content: trimmedContent,
         category,
         card_style: cardStyle,

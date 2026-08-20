@@ -27,7 +27,6 @@ export default function ConfessionCommentsModal({
   const { user } = useAuth();
   const [comments, setComments] = useState<ConfessionComment[]>([]);
   const [loading, setLoading] = useState(false);
-  const [alias, setAlias] = useState('');
   const [content, setContent] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,7 +37,6 @@ export default function ConfessionCommentsModal({
     } else {
       setComments([]);
       setContent('');
-      setAlias('');
       setError(null);
     }
   }, [isOpen, confession]);
@@ -72,7 +70,7 @@ export default function ConfessionCommentsModal({
       return;
     }
 
-    const authorName = alias.trim() || (user ? (user.displayName || user.email?.split('@')[0]) : 'Anónimo') || 'Anónimo';
+    const authorName = user ? (user.displayName || user.email?.split('@')[0] || 'Anónimo') : 'Anónimo';
 
     try {
       setSubmitting(true);
@@ -81,7 +79,7 @@ export default function ConfessionCommentsModal({
         firebase_uid: user?.uid || null,
         author_name: authorName,
         content: trimmedContent,
-        is_anonymous: !alias.trim(),
+        is_anonymous: true,
       });
 
       setComments((prev) => [...prev, newComment]);
@@ -200,16 +198,7 @@ export default function ConfessionCommentsModal({
               </p>
             )}
 
-            <input
-              type="text"
-              value={alias}
-              onChange={(e) => setAlias(e.target.value)}
-              placeholder="Tu Apodo / Alias (Opcional)..."
-              maxLength={40}
-              className="w-full bg-[#0d0d0d] border border-zinc-800 rounded-xl px-3.5 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[#eab308] transition-colors"
-            />
-
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 pt-1">
               <textarea
                 value={content}
                 onChange={(e) => setContent(e.target.value.slice(0, 500))}
