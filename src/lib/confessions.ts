@@ -385,13 +385,24 @@ export async function toggleConfessionReaction(
           .single();
 
         if (confession && confession.firebase_uid && confession.firebase_uid !== effectiveUserId) {
+          let centerName = '';
+          if (confession.center_id) {
+            const { data: centerData } = await supabase
+              .from('educational_centers')
+              .select('name')
+              .eq('id', confession.center_id)
+              .maybeSingle();
+            if (centerData?.name) centerName = centerData.name;
+          }
+
           const emoji = reactionType === 'heart' ? '❤️' : 
                         reactionType === 'laugh' ? '😂' : 
                         reactionType === 'fire' ? '🔥' : 
                         reactionType === 'cry' ? '😭' : '🤯';
           
           const senderName = currentUserName || 'Alguien';
-          const bodyText = `[${senderName}] ha reaccionado con ${emoji} a tu confesión`;
+          const centerSuffix = centerName ? ` en ${centerName}` : '';
+          const bodyText = `[${senderName}] ha reaccionado con ${emoji} a tu confesión${centerSuffix}`;
           
           const { error: notiError } = await supabase.from('notifications').insert([{
             user_uid: confession.firebase_uid,
@@ -534,8 +545,19 @@ export async function createConfessionComment(payload: {
 
       // Disparar la notificación si el autor del comentario no es el mismo dueño de la confesión
       if (conf.firebase_uid && conf.firebase_uid !== payload.firebase_uid) {
+        let centerName = '';
+        if (conf.center_id) {
+          const { data: centerData } = await supabase
+            .from('educational_centers')
+            .select('name')
+            .eq('id', conf.center_id)
+            .maybeSingle();
+          if (centerData?.name) centerName = centerData.name;
+        }
+
         const senderName = payload.author_name || 'Alguien';
-        const bodyText = `[${senderName}] ha respondido a tu confesión: "${payload.content.substring(0, 45)}${payload.content.length > 45 ? '...' : ''}"`;
+        const centerSuffix = centerName ? ` en ${centerName}` : '';
+        const bodyText = `[${senderName}] ha respondido a tu confesión${centerSuffix}: "${payload.content.substring(0, 45)}${payload.content.length > 45 ? '...' : ''}"`;
 
         const { error: notiError } = await supabase.from('notifications').insert([{
           user_uid: conf.firebase_uid,
