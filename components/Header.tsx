@@ -227,6 +227,68 @@ export default function Header({
     }
   };
 
+  const loadConfessionDetails = async (confessionId: string, commentId: string | null = null) => {
+    setShowDetailModal(true);
+    setModalLoading(true);
+    setModalConfession(null);
+    setModalCenterInfo(null);
+    setModalComments([]);
+    setTargetCommentId(commentId);
+    setModalReactionsCount(0);
+    
+    try {
+      // 1. Obtener la confesión
+      const { data: confession } = await supabase
+        .from('center_confessions')
+        .select('*')
+        .eq('id', confessionId)
+        .single();
+
+      if (confession) {
+        setModalConfession(confession);
+
+        // 2. Obtener datos del centro educativo
+        if (confession.center_id) {
+          const { data: center } = await supabase
+            .from('educational_centers')
+            .select('id, name, type')
+            .eq('id', confession.center_id)
+            .maybeSingle();
+          if (center) {
+            setModalCenterInfo(center);
+          }
+        }
+
+        // 3. Obtener todas las respuestas / comentarios ordenadas por fecha más reciente
+        const { data: comments } = await supabase
+          .from('confession_comments')
+          .select('*')
+          .eq('confession_id', confessionId)
+          .order('created_at', { ascending: false });
+
+        if (comments) {
+          setModalComments(comments);
+        }
+      }
+    } catch (err) {
+      console.error('Error al cargar detalles de la confesión para la notificación:', err);
+    } finally {
+      setModalLoading(false);
+    }
+  };
+
+  // Detectar automáticamente si la URL contiene show_confession o confession_id
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const urlParams = new URLSearchParams(window.location.search);
+    const confessionId = urlParams.get('show_confession') || urlParams.get('confession_id');
+    const commentId = urlParams.get('comment_id');
+
+    if (confessionId) {
+      loadConfessionDetails(confessionId, commentId);
+    }
+  }, []);
+
   const handleNotificationClick = async (notif: NotificationItem) => {
     setNotificationsOpen(false);
     setMobileNotificationsOpen(false);
@@ -250,6 +312,8 @@ export default function Header({
     if (notif.link_url) {
       if (notif.link_url.includes('show_confession=')) {
         confessionId = notif.link_url.split('show_confession=')[1]?.split('&')[0] || null;
+      } else if (notif.link_url.includes('confession_id=')) {
+        confessionId = notif.link_url.split('confession_id=')[1]?.split('&')[0] || null;
       }
       if (notif.link_url.includes('comment_id=')) {
         commentId = notif.link_url.split('comment_id=')[1]?.split('&')[0] || null;
@@ -257,61 +321,13 @@ export default function Header({
     }
 
     if (confessionId) {
-      setShowDetailModal(true);
-      setModalLoading(true);
-      setModalConfession(null);
-      setModalCenterInfo(null);
-      setModalComments([]);
-      setTargetCommentId(commentId);
-      setModalReactionsCount(0);
-      
-      try {
-        // 1. Obtener la confesión
-        const { data: confession } = await supabase
-          .from('center_confessions')
-          .select('*')
-          .eq('id', confessionId)
-          .single();
-
-        if (confession) {
-          setModalConfession(confession);
-
-          // 2. Obtener datos del centro educativo
-          if (confession.center_id) {
-            const { data: center } = await supabase
-              .from('educational_centers')
-              .select('id, name, type')
-              .eq('id', confession.center_id)
-              .maybeSingle();
-            if (center) {
-              setModalCenterInfo(center);
-            }
-          }
-
-          // 3. Obtener todas las respuestas / comentarios ordenadas por fecha más reciente
-          const { data: comments } = await supabase
-            .from('confession_comments')
-            .select('*')
-            .eq('confession_id', confessionId)
-            .order('created_at', { ascending: false });
-
-          if (comments) {
-            setModalComments(comments);
-          }
-
-          // 4. Obtener conteo de reacciones de la confesión
-          const { count: reactionCount } = await supabase
-            .from('confession_reactions')
-            .select('*', { count: 'exact', head: true })
-            .eq('confession_id', confessionId);
-
-          setModalReactionsCount(reactionCount || 25);
-        }
-      } catch (err) {
-        console.error('Error al cargar detalles de la confesión para la notificación:', err);
-      } finally {
-        setModalLoading(false);
+      // Llevar al usuario a la página principal y abrir la ventana de la notificación
+      if (onGoToHome) {
+        onGoToHome();
+      } else if (onNavigate) {
+        onNavigate('/');
       }
+      loadConfessionDetails(confessionId, commentId);
     } else {
       if (notif.link_url && onNavigate) {
         onNavigate(notif.link_url);
@@ -1003,11 +1019,6 @@ export default function Header({
                   <h3 className="text-xs sm:text-sm font-black text-white uppercase tracking-wider">
                     Detalle de Confesión
                   </h3>
-                  {modalConfession?.id && (
-                    <span className="bg-zinc-800 text-zinc-400 border border-zinc-700/60 text-[10px] px-2 py-0.5 rounded font-mono font-bold tracking-wider">
-                      #CONF-{modalConfession.id.substring(0, 4).toUpperCase()}
-                    </span>
-                  )}
                 </div>
 
                 <div className="flex items-center gap-1">
@@ -1097,10 +1108,6 @@ export default function Header({
 
                     {/* Stats Footer */}
                     <div className="flex items-center gap-5 pt-3 border-t border-zinc-800/80 text-xs text-zinc-400">
-                      <div className="flex items-center gap-1.5 text-rose-400 font-semibold">
-                        <Heart className="w-3.5 h-3.5 fill-rose-500/30 text-rose-500" />
-                        <span>{modalReactionsCount || 1}</span>
-                      </div>
                       <div className="flex items-center gap-1.5 text-zinc-400 font-medium">
                         <MessageSquare className="w-3.5 h-3.5 text-zinc-400" />
                         <span>{modalComments.length} {modalComments.length === 1 ? 'respuesta' : 'respuestas'}</span>
@@ -1165,15 +1172,6 @@ export default function Header({
                                         {dateInfo.relative && <> • {dateInfo.relative}</>}
                                       </span>
                                     </div>
-
-                                    {/* Botón de Reacción del comentario */}
-                                    <button 
-                                      type="button"
-                                      className="flex items-center gap-1 text-[11px] text-zinc-400 hover:text-rose-400 bg-zinc-800/60 hover:bg-zinc-800 px-2.5 py-1 rounded-lg border border-zinc-700/60 transition-colors"
-                                    >
-                                      <Heart className="w-3 h-3" />
-                                      <span>{comment.likes_count || 1}</span>
-                                    </button>
                                   </div>
 
                                   <p className="text-xs sm:text-sm text-zinc-200 leading-relaxed pt-0.5 whitespace-pre-wrap">
@@ -1197,25 +1195,7 @@ export default function Header({
             </div>
 
             {/* Footer */}
-            <div className="flex items-center justify-between px-5 py-4 bg-[#111217] border-t border-zinc-800/80 shrink-0">
-              {modalConfession?.center_id ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowDetailModal(false);
-                    if (onNavigate) {
-                      onNavigate(`/educational_centers/${modalConfession.center_id}?show_confession=${modalConfession.id}`);
-                    }
-                  }}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-zinc-800/80 hover:bg-zinc-750 text-zinc-300 hover:text-white text-xs font-bold transition-all cursor-pointer"
-                >
-                  <ExternalLink className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Ver en el campus</span>
-                </button>
-              ) : (
-                <div />
-              )}
-
+            <div className="flex items-center justify-end px-5 py-4 bg-[#111217] border-t border-zinc-800/80 shrink-0">
               <button 
                 type="button"
                 onClick={() => setShowDetailModal(false)}

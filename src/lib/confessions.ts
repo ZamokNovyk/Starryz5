@@ -404,11 +404,13 @@ export async function toggleConfessionReaction(
           const centerSuffix = centerName ? ` en ${centerName}` : '';
           const bodyText = `[${senderName}] ha reaccionado con ${emoji} a tu confesión${centerSuffix}`;
           
+          const notifLinkUrl = `/?show_confession=${confessionId}`;
+          
           const { error: notiError } = await supabase.from('notifications').insert([{
             user_uid: confession.firebase_uid,
             title: senderName,
             body: bodyText,
-            link_url: `/educational_centers/${confession.center_id}?show_confession=${confessionId}`,
+            link_url: notifLinkUrl,
             is_read: false
           }]);
 
@@ -419,7 +421,7 @@ export async function toggleConfessionReaction(
                 user_uid: confession.firebase_uid,
                 title: senderName,
                 body: bodyText,
-                link_url: `/educational_centers/${confession.center_id}?show_confession=${confessionId}`,
+                link_url: notifLinkUrl,
                 confession_id: confessionId
               }
             }).catch(() => {});
@@ -559,11 +561,13 @@ export async function createConfessionComment(payload: {
         const centerSuffix = centerName ? ` en ${centerName}` : '';
         const bodyText = `[${senderName}] ha respondido a tu confesión${centerSuffix}: "${payload.content.substring(0, 45)}${payload.content.length > 45 ? '...' : ''}"`;
 
+        const notifLinkUrl = `/?show_confession=${payload.confession_id}&comment_id=${data.id}`;
+
         const { error: notiError } = await supabase.from('notifications').insert([{
           user_uid: conf.firebase_uid,
           title: senderName,
           body: bodyText,
-          link_url: `/educational_centers/${conf.center_id}?show_confession=${payload.confession_id}&comment_id=${data.id}`,
+          link_url: notifLinkUrl,
           is_read: false
         }]);
 
@@ -574,7 +578,7 @@ export async function createConfessionComment(payload: {
               user_uid: conf.firebase_uid,
               title: senderName,
               body: bodyText,
-              link_url: `/educational_centers/${conf.center_id}?show_confession=${payload.confession_id}&comment_id=${data.id}`,
+              link_url: notifLinkUrl,
               confession_id: payload.confession_id,
               comment_id: data.id
             }

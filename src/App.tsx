@@ -199,7 +199,7 @@ export default function App() {
   const isProfileRoute = route.pathname.startsWith('/educational_centers/');
   const profileSlug = isProfileRoute ? route.pathname.replace('/educational_centers/', '') : '';
   const currentProfileInstitution = isProfileRoute
-    ? allInstitutions.find(inst => matchSlug(inst.name, profileSlug))
+    ? allInstitutions.find(inst => matchSlug(inst.name, profileSlug) || inst.id === profileSlug)
     : null;
 
   const isProfessorRoute = route.pathname.startsWith('/profesores/');
