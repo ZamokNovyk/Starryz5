@@ -474,16 +474,32 @@ export default function EducationalCenterProfileView({
       prev.map((c) => {
         if (c.id !== confessionId) return c;
         const isReacted = c.userReactions[reactionType];
+        
+        // Buscar si tenía otra reacción activa para descontarla
+        let prevActiveType: ReactionType | null = null;
+        Object.keys(c.userReactions).forEach((key) => {
+          if (key !== reactionType && c.userReactions[key as ReactionType]) {
+            prevActiveType = key as ReactionType;
+          }
+        });
+
+        const nextReactions = { ...c.reactions };
+        const nextUserReactions = { ...c.userReactions };
+
+        // Si ya tenía otra reacción activa, la desactivamos y restamos 1
+        if (prevActiveType) {
+          nextReactions[prevActiveType] = Math.max(0, nextReactions[prevActiveType] - 1);
+          nextUserReactions[prevActiveType] = false;
+        }
+
+        // Alternamos el estado de la reacción actual
+        nextReactions[reactionType] = Math.max(0, nextReactions[reactionType] + (isReacted ? -1 : 1));
+        nextUserReactions[reactionType] = !isReacted;
+
         return {
           ...c,
-          reactions: {
-            ...c.reactions,
-            [reactionType]: Math.max(0, c.reactions[reactionType] + (isReacted ? -1 : 1)),
-          },
-          userReactions: {
-            ...c.userReactions,
-            [reactionType]: !isReacted,
-          },
+          reactions: nextReactions,
+          userReactions: nextUserReactions,
         };
       })
     );

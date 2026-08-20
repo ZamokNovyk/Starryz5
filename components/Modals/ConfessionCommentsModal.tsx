@@ -1,13 +1,14 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, Send, MessageCircle, Building2, CornerDownRight, CheckCircle2 } from 'lucide-react';
+import { X, Send, MessageCircle, Building2, CornerDownRight, CheckCircle2, Trash } from 'lucide-react';
 import { useAuth } from '@/src/context/AuthContext';
 import { 
   CenterConfession, 
   ConfessionComment, 
   getConfessionComments, 
   createConfessionComment,
+  deleteConfessionComment,
   formatTimeAgo 
 } from '@/src/lib/confessions';
 
@@ -31,6 +32,8 @@ export default function ConfessionCommentsModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [commentToDelete, setCommentToDelete] = useState<string | null>(null);
+
   useEffect(() => {
     if (isOpen && confession) {
       loadComments();
@@ -38,6 +41,7 @@ export default function ConfessionCommentsModal({
       setComments([]);
       setContent('');
       setError(null);
+      setCommentToDelete(null);
     }
   }, [isOpen, confession]);
 
@@ -50,8 +54,41 @@ export default function ConfessionCommentsModal({
       setComments(list);
     } catch (err) {
       console.error('Error al cargar comentarios:', err);
-    } fontally: {
+    } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeleteClick = (commentId: string) => {
+    setCommentToDelete(commentId);
+  };
+
+  const confirmDeleteComment = async () => {
+    if (!commentToDelete) return;
+    const commentId = commentToDelete;
+    setCommentToDelete(null);
+    
+    // Guardar copia para rollback
+    const previousComments = [...comments];
+    
+    // Optimistic Update: remover el comentario localmente al instante
+    setComments((prev) => prev.filter((c) => c.id !== commentId));
+    
+    try {
+      setError(null);
+      const { success, error: deleteErr } = await deleteConfessionComment(commentId, confession.id);
+      if (success) {
+        onCommentAdded(confession.id);
+      } else {
+        // Rollback
+        setComments(previousComments);
+        setError(deleteErr || 'No se pudo eliminar el comentario. Revisa las políticas RLS en tu editor SQL de Supabase.');
+      }
+    } catch (err) {
+      console.error('Error al eliminar comentario:', err);
+      // Rollback
+      setComments(previousComments);
+      setError('Error al conectar con la base de datos.');
     }
   };
 
@@ -256,9 +293,21 @@ export default function ConfessionCommentsModal({
                       <span className="font-extrabold text-xs text-[#eab308]">
                         {comment.author_name}
                       </span>
-                      <span className="text-[10px] text-zinc-500 font-medium">
-                        {formatTimeAgo(comment.created_at)}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-zinc-500 font-medium">
+                          {formatTimeAgo(comment.created_at)}
+                        </span>
+                        {user && comment.firebase_uid === user.uid && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteClick(comment.id)}
+                            className="p-1 rounded text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors cursor-pointer"
+                            title="Eliminar mi respuesta"
+                          >
+                            <Trash className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <p className="text-xs text-zinc-200 leading-relaxed font-medium">
                       {comment.content}
@@ -270,6 +319,38 @@ export default function ConfessionCommentsModal({
           </div>
         </div>
       </div>
+
+      {commentToDelete && (
+        <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 rounded-[24px]">
+          <div className="bg-[#111217] border border-zinc-800 p-6 rounded-2xl w-full max-w-[290px] text-center space-y-4 shadow-2xl">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-500/10 text-red-500">
+              <Trash className="h-5 w-5" />
+            </div>
+            <div className="space-y-1">
+              <h4 className="text-sm font-extrabold text-white">¿Eliminar respuesta?</h4>
+              <p className="text-xs text-zinc-400 leading-relaxed">
+                ¿Estás seguro de que quieres eliminar tu respuesta? Esta acción no se puede deshacer.
+              </p>
+            </div>
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setCommentToDelete(null)}
+                className="flex-1 px-3 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white text-xs font-bold transition-all cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteComment}
+                className="flex-1 px-3 py-2 rounded-xl bg-red-500 hover:bg-red-600 text-white text-xs font-bold transition-all cursor-pointer"
+              >
+                Sí, eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

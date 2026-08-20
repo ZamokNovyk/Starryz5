@@ -342,13 +342,12 @@ export async function toggleConfessionReaction(
   const effectiveUserId = currentUserId || getDeviceId();
 
   try {
-    const { data: existing, error: selectErr } = await supabase
+    // Buscar todas las reacciones de este usuario en esta confesión
+    const { data: existingReactions, error: selectErr } = await supabase
       .from('confession_reactions')
-      .select('id')
+      .select('id, reaction_type')
       .eq('confession_id', confessionId)
-      .eq('reaction_type', reactionType)
-      .eq('user_id', effectiveUserId)
-      .maybeSingle();
+      .eq('user_id', effectiveUserId);
 
     if (selectErr) {
       const isMissing = selectErr.message?.includes('schema cache') || 
@@ -358,81 +357,95 @@ export async function toggleConfessionReaction(
       }
     }
 
-    if (existing) {
+    const sameTypeReaction = existingReactions?.find(r => r.reaction_type === reactionType);
+    const otherTypeReactions = existingReactions?.filter(r => r.reaction_type !== reactionType) || [];
+
+    // Si ya existe la reacción del mismo tipo, la quitamos (toggle off)
+    if (sameTypeReaction) {
       await supabase
          .from('confession_reactions')
          .delete()
-         .eq('id', existing.id);
+         .eq('id', sameTypeReaction.id);
 
       return { added: false };
-    } else {
-      await supabase
-        .from('confession_reactions')
-        .insert([
-          {
-            confession_id: confessionId,
-            reaction_type: reactionType,
-            user_id: effectiveUserId,
-          },
-        ]);
-
-      // Disparar notificación si el dueño es otro usuario
-      try {
-        const { data: confession } = await supabase
-          .from('center_confessions')
-          .select('firebase_uid, center_id')
-          .eq('id', confessionId)
-          .single();
-
-        if (confession && confession.firebase_uid && confession.firebase_uid !== effectiveUserId) {
-          let centerName = '';
-          if (confession.center_id) {
-            const { data: centerData } = await supabase
-              .from('educational_centers')
-              .select('name')
-              .eq('id', confession.center_id)
-              .maybeSingle();
-            if (centerData?.name) centerName = centerData.name;
-          }
-
-          const emoji = reactionType === 'heart' ? '❤️' : 
-                        reactionType === 'laugh' ? '😂' : 
-                        reactionType === 'fire' ? '🔥' : 
-                        reactionType === 'cry' ? '😭' : '🤯';
-          
-          const senderName = currentUserName || 'Alguien';
-          const centerSuffix = centerName ? ` en ${centerName}` : '';
-          const bodyText = `[${senderName}] ha reaccionado con ${emoji} a tu confesión${centerSuffix}`;
-          
-          const notifLinkUrl = `/?show_confession=${confessionId}`;
-          
-          const { error: notiError } = await supabase.from('notifications').insert([{
-            user_uid: confession.firebase_uid,
-            title: senderName,
-            body: bodyText,
-            link_url: notifLinkUrl,
-            is_read: false
-          }]);
-
-          if (!notiError) {
-            // Despachar Push Notification vía Edge Function rapid-processor
-            supabase.functions.invoke('rapid-processor', {
-              body: {
-                user_uid: confession.firebase_uid,
-                title: senderName,
-                body: bodyText,
-                link_url: notifLinkUrl,
-                confession_id: confessionId
-              }
-            }).catch(() => {});
-          }
-        }
-      } catch (err) {
-        console.warn('No se pudo enviar la notificación de reacción:', err);
-      }
-
-      return { added: true };
     }
+
+    // Si tiene reacciones de otros tipos, las eliminamos primero (para asegurar máx 1 reacción)
+    if (otherTypeReactions.length > 0) {
+      const otherIds = otherTypeReactions.map(r => r.id);
+      await supabase
+         .from('confession_reactions')
+         .delete()
+         .in('id', otherIds);
+    }
+
+    // Insertar la nueva reacción
+    await supabase
+      .from('confession_reactions')
+      .insert([
+        {
+          confession_id: confessionId,
+          reaction_type: reactionType,
+          user_id: effectiveUserId,
+        },
+      ]);
+
+    // Disparar notificación si el dueño es otro usuario
+    try {
+      const { data: confession } = await supabase
+        .from('center_confessions')
+        .select('firebase_uid, center_id')
+        .eq('id', confessionId)
+        .single();
+
+      if (confession && confession.firebase_uid && confession.firebase_uid !== effectiveUserId) {
+        let centerName = '';
+        if (confession.center_id) {
+          const { data: centerData } = await supabase
+            .from('educational_centers')
+            .select('name')
+            .eq('id', confession.center_id)
+            .maybeSingle();
+          if (centerData?.name) centerName = centerData.name;
+        }
+
+        const emoji = reactionType === 'heart' ? '❤️' : 
+                      reactionType === 'laugh' ? '😂' : 
+                      reactionType === 'fire' ? '🔥' : 
+                      reactionType === 'cry' ? '😭' : '🤯';
+        
+        const senderName = currentUserName || 'Alguien';
+        const centerSuffix = centerName ? ` en ${centerName}` : '';
+        const bodyText = `[${senderName}] ha reaccionado con ${emoji} a tu confesión${centerSuffix}`;
+        
+        const notifLinkUrl = `/?show_confession=${confessionId}`;
+        
+        const { error: notiError } = await supabase.from('notifications').insert([{
+          user_uid: confession.firebase_uid,
+          title: senderName,
+          body: bodyText,
+          link_url: notifLinkUrl,
+          is_read: false
+        }]);
+
+        if (!notiError) {
+          // Despachar Push Notification vía Edge Function rapid-processor
+          supabase.functions.invoke('rapid-processor', {
+            body: {
+              user_uid: confession.firebase_uid,
+              title: senderName,
+              body: bodyText,
+              link_url: notifLinkUrl,
+              confession_id: confessionId
+            }
+          }).catch(() => {});
+        }
+      }
+    } catch (err) {
+      console.warn('No se pudo enviar la notificación de reacción:', err);
+    }
+
+    return { added: true };
   } catch (err) {
     return { added: true };
   }
@@ -591,4 +604,45 @@ export async function createConfessionComment(payload: {
   }
 
   return data;
+}
+
+/**
+ * Elimina una respuesta / comentario propio y decrementa el conteo de comentarios en la confesión
+ */
+export async function deleteConfessionComment(commentId: string, confessionId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { error: deleteErr } = await supabase
+      .from('confession_comments')
+      .delete()
+      .eq('id', commentId);
+
+    if (deleteErr) {
+      console.error('Error al eliminar comentario de Supabase:', deleteErr);
+      return { success: false, error: deleteErr.message };
+    }
+
+    // Decrementar conteo de comentarios
+    try {
+      const { data: conf } = await supabase
+        .from('center_confessions')
+        .select('comments_count')
+        .eq('id', confessionId)
+        .single();
+
+      if (conf) {
+        const newCount = Math.max(0, (conf.comments_count || 0) - 1);
+        await supabase
+          .from('center_confessions')
+          .update({ comments_count: newCount })
+          .eq('id', confessionId);
+      }
+    } catch (e) {
+      console.warn('Error al actualizar comments_count al eliminar comentario:', e);
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    console.error('Error al eliminar comentario:', err);
+    return { success: false, error: err?.message || 'Error al conectar con Supabase' };
+  }
 }
