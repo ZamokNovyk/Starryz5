@@ -392,7 +392,18 @@ export default function App() {
       {toastNotification && (
         <div 
           id="fcm-toast"
-          className="fixed top-24 right-6 z-50 max-w-sm w-full bg-[#121212]/95 border border-[#eab308]/40 backdrop-blur-md rounded-2xl p-4 shadow-[0_10px_35px_rgba(0,0,0,0.8)] flex gap-3 animate-fade-in transition-all duration-300 transform translate-y-0 scale-100"
+          onClick={() => {
+            if (toastNotification.linkUrl) {
+              if (toastNotification.linkUrl.startsWith('/')) {
+                const [path, search] = toastNotification.linkUrl.split('?');
+                navigate(path, search ? `?${search}` : '');
+              } else {
+                window.location.href = toastNotification.linkUrl;
+              }
+            }
+            closeToast();
+          }}
+          className="fixed top-24 right-6 z-50 max-w-sm w-full bg-[#121212]/95 border border-[#eab308]/40 backdrop-blur-md rounded-2xl p-4 shadow-[0_10px_35px_rgba(0,0,0,0.8)] flex gap-3 animate-fade-in transition-all duration-300 transform translate-y-0 scale-100 cursor-pointer hover:border-[#eab308]"
         >
           <div className="w-8 h-8 rounded-full bg-[#eab308]/10 border border-[#eab308]/20 flex items-center justify-center text-[#eab308] shrink-0">
             <Bell className="w-4 h-4 fill-[#eab308]/20" />
@@ -402,7 +413,10 @@ export default function App() {
             <div className="text-[11px] text-zinc-400 mt-1 leading-normal">{toastNotification.body}</div>
           </div>
           <button 
-            onClick={closeToast} 
+            onClick={(e) => {
+              e.stopPropagation();
+              closeToast();
+            }} 
             className="text-zinc-500 hover:text-white shrink-0 p-1 transition-colors self-start"
             title="Cerrar notificación"
           >

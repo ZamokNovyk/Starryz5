@@ -1,46 +1,101 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { getMessaging, getToken, onMessage, isSupported } from 'firebase/messaging';
 import { app } from '@/src/lib/firebase';
 import { supabase } from '@/src/lib/supabase';
 import { useAuth } from '@/src/context/AuthContext';
 
+const DEFAULT_VAPID_KEY = "BB6-Vfe1DmpPKhZU_CDp2tyFvM2q8i_eXbzEWgZhF2uC3fV2zKaRcGlhy1u_AaLPRiyOsK-tnLQ0Zj_GDG82P9c";
+
+export interface FCMToastData {
+  title: string;
+  body: string;
+  linkUrl?: string;
+}
+
 export function useFCMNotifications() {
   const { user } = useAuth();
   const [token, setToken] = useState<string | null>(null);
-  const [notification, setNotification] = useState<any>(null);
-  const [toastNotification, setToastNotification] = useState<{ title: string; body: string } | null>(null);
+  const [permission, setPermission] = useState<NotificationPermission | 'unsupported'>('default');
+  const [toastNotification, setToastNotification] = useState<FCMToastData | null>(null);
+
+  // Función para solicitar permisos de manera explícita
+  const requestPermission = useCallback(async () => {
+    if (typeof window === 'undefined' || !('Notification' in window)) {
+      setPermission('unsupported');
+      return false;
+    }
+
+    try {
+      const result = await Notification.requestPermission();
+      setPermission(result);
+      return result === 'granted';
+    } catch (e) {
+      console.warn('Error al solicitar permiso de notificación:', e);
+      return false;
+    }
+  }, []);
 
   useEffect(() => {
-    // Solo ejecutar en el cliente y si el navegador soporta notificaciones
-    if (typeof window === 'undefined' || !('Notification' in window)) {
+    // Solo ejecutar en el cliente y si el navegador soporta notificaciones y service workers
+    if (typeof window === 'undefined' || !('Notification' in window) || !('serviceWorker' in navigator)) {
+      setPermission('unsupported');
       return;
     }
 
-    const initFCM = async () => {
+    setPermission(Notification.permission);
+
+    let isMounted = true;
+    let unsubscribeMessage: (() => void) | undefined;
+
+    const setupFCM = async () => {
       try {
         const supported = await isSupported();
         if (!supported) {
-          console.warn('FCM no está soportado en este navegador o entorno de iframe.');
+          console.warn('[FCM] FCM no está soportado en este entorno o iFrame.');
           return;
         }
 
-        const permission = await Notification.requestPermission();
-        if (permission !== 'granted') {
-          console.warn('Permiso para notificaciones push denegado por el usuario.');
+        // Si el permiso no está otorgado, intentar solicitarlo
+        let currentPermission = Notification.permission;
+        if (currentPermission === 'default') {
+          try {
+            currentPermission = await Notification.requestPermission();
+            if (isMounted) setPermission(currentPermission);
+          } catch (permErr) {
+            console.warn('[FCM] No se pudo solicitar permiso:', permErr);
+          }
+        }
+
+        if (currentPermission !== 'granted') {
+          console.log('[FCM] Notificaciones push no otorgadas:', currentPermission);
           return;
+        }
+
+        // Registrar explícitamente el Service Worker de FCM
+        let swRegistration: ServiceWorkerRegistration | undefined;
+        try {
+          swRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+          console.log('[FCM] Service worker registrado con éxito:', swRegistration.scope);
+        } catch (swErr) {
+          console.warn('[FCM] Error al registrar service worker:', swErr);
         }
 
         const messaging = getMessaging(app);
-        
-        // Obtener el token de FCM usando la VAPID Key pública
+        const vapidKey = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_VAPID_KEY) 
+          ? import.meta.env.VITE_FIREBASE_VAPID_KEY 
+          : DEFAULT_VAPID_KEY;
+
+        // Obtener Token de FCM
         const currentToken = await getToken(messaging, {
-          vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY
+          vapidKey,
+          serviceWorkerRegistration: swRegistration
         });
 
-        if (currentToken) {
+        if (currentToken && isMounted) {
           setToken(currentToken);
+          console.log('[FCM] Token obtenido correctamente:', currentToken.substring(0, 15) + '...');
 
-          // Si el usuario está autenticado, registrar/actualizar el token en Supabase
+          // Guardar o actualizar en la tabla 'user_fcm_tokens' de Supabase
           if (user?.uid) {
             const { error } = await supabase
               .from('user_fcm_tokens')
@@ -53,66 +108,77 @@ export function useFCMNotifications() {
               });
 
             if (error) {
-              console.error('Error al guardar el token de FCM en Supabase:', error);
+              console.error('[FCM] Error al guardar token en Supabase:', error.message);
             } else {
-              console.log('Token de FCM sincronizado con éxito en Supabase.');
+              console.log('[FCM] Token de usuario sincronizado en Supabase con éxito.');
             }
           }
-        } else {
-          console.warn('No se pudo generar un token de registro FCM.');
         }
 
-        // Escuchar mensajes entrantes en primer plano (foreground)
-        const unsubscribe = onMessage(messaging, (payload) => {
-          console.log('Mensaje recibido en primer plano (foreground):', payload);
-          setNotification(payload);
-          
-          if (payload.notification) {
-            const { title, body } = payload.notification;
-            
-            // Establecer estado de notificación flotante (toast en-pantalla)
+        // Escuchar notificaciones en primer plano
+        unsubscribeMessage = onMessage(messaging, (payload) => {
+          console.log('[FCM] Mensaje recibido en primer plano:', payload);
+
+          const title = payload.notification?.title || payload.data?.title || 'Starryz 5';
+          const body = payload.notification?.body || payload.data?.body || 'Tienes una nueva interacción';
+          const linkUrl = payload.data?.link_url || payload.data?.url || payload.fcmOptions?.link;
+
+          // Reproducir sonido
+          try {
+            const audio = new Audio('/sonidos/noti.mp3');
+            audio.play().catch(e => console.log('Audio playback info:', e));
+          } catch (audioErr) {
+            console.error('Error al reproducir audio FCM:', audioErr);
+          }
+
+          // Mostrar Toast en pantalla
+          if (isMounted) {
             setToastNotification({
-              title: title || 'Starryz 5',
-              body: body || 'Tienes una nueva actualización'
+              title,
+              body,
+              linkUrl
             });
 
-            // Auto-ocultar el toast después de 6 segundos
             setTimeout(() => {
-              setToastNotification(null);
+              if (isMounted) setToastNotification(null);
             }, 6000);
+          }
 
-            // Intentar mostrar notificación nativa
-            try {
-              new Notification(title || 'Starryz 5', {
-                body: body || 'Tienes una nueva actualización',
-                icon: '/Logo/logo.jpg'
-              });
-            } catch (err) {
-              console.warn('No se pudo disparar la notificación nativa en primer plano (común en iFrames):', err);
-            }
+          // Notificación del sistema si está permitido
+          try {
+            new Notification(title, {
+              body,
+              icon: '/icon-192.png'
+            });
+          } catch (nativeErr) {
+            console.warn('[FCM] No se pudo lanzar la notificación nativa en primer plano:', nativeErr);
           }
         });
 
-        return unsubscribe;
       } catch (err) {
-        console.error('Error durante la inicialización de FCM:', err);
+        console.error('[FCM] Error durante la inicialización de FCM:', err);
       }
     };
 
-    let unsubscribeFn: (() => void) | undefined;
-    
-    initFCM().then(unsub => {
-      if (unsub) {
-        unsubscribeFn = unsub;
-      }
-    });
+    setupFCM();
 
     return () => {
-      if (unsubscribeFn) unsubscribeFn();
+      isMounted = false;
+      if (unsubscribeMessage) {
+        unsubscribeMessage();
+      }
     };
   }, [user?.uid]);
 
-  const closeToast = () => setToastNotification(null);
+  const closeToast = useCallback(() => {
+    setToastNotification(null);
+  }, []);
 
-  return { token, notification, toastNotification, closeToast };
+  return {
+    token,
+    permission,
+    toastNotification,
+    closeToast,
+    requestPermission
+  };
 }
