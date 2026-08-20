@@ -1,5 +1,4 @@
 import { supabase } from '@/src/lib/supabase';
-import { sendPushNotification } from '@/src/lib/pushNotifications';
 
 export type ConfessionCategory = 'all' | 'crush' | 'professors' | 'exams' | 'anecdotes';
 export type CardStyle = 'dark' | 'pink' | 'fire';
@@ -401,15 +400,6 @@ export async function toggleConfessionReaction(
             link_url: `/educational_centers/${confession.center_id}?show_confession=${confessionId}`,
             is_read: false
           }]);
-
-          // Despachar Push Notification Web en segundo plano
-          sendPushNotification({
-            recipientUid: confession.firebase_uid,
-            title: senderName,
-            body: bodyText,
-            linkUrl: `/educational_centers/${confession.center_id}?show_confession=${confessionId}`,
-            confessionId
-          }).catch(pushErr => console.log('Push dispatch note:', pushErr));
         }
       } catch (err) {
         console.warn('No se pudo enviar la notificación de reacción:', err);
@@ -541,16 +531,6 @@ export async function createConfessionComment(payload: {
           link_url: `/educational_centers/${conf.center_id}?show_confession=${payload.confession_id}&comment_id=${data.id}`,
           is_read: false
         }]);
-
-        // Despachar Push Notification Web en segundo plano
-        sendPushNotification({
-          recipientUid: conf.firebase_uid,
-          title: senderName,
-          body: bodyText,
-          linkUrl: `/educational_centers/${conf.center_id}?show_confession=${payload.confession_id}&comment_id=${data.id}`,
-          confessionId: payload.confession_id,
-          commentId: data.id
-        }).catch(pushErr => console.log('Push dispatch note:', pushErr));
       }
     }
   } catch (e) {

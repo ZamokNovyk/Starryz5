@@ -19,14 +19,12 @@ export function useFCMNotifications() {
   const [toastNotification, setToastNotification] = useState<FCMToastData | null>(null);
   const isInitializingRef = useRef(false);
 
-  // Función para guardar token en Supabase con logs detallados
+  // Función nativa para guardar/actualizar token en 'user_fcm_tokens' de Supabase
   const saveTokenToSupabase = useCallback(async (fcmToken: string, userUid: string) => {
     if (!fcmToken || !userUid) return;
 
     try {
-      console.log(`[FCM] Guardando token en Supabase para el usuario: ${userUid}...`);
-      
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('user_fcm_tokens')
         .upsert({
           user_uid: userUid,
@@ -34,14 +32,12 @@ export function useFCMNotifications() {
           updated_at: new Date().toISOString()
         }, {
           onConflict: 'user_uid'
-        })
-        .select();
+        });
 
       if (error) {
-        console.error('[FCM] Error al registrar token en tabla user_fcm_tokens:', error.message, error.details);
+        console.error('[FCM] Error al guardar en user_fcm_tokens:', error.message);
       } else {
-        console.log(`%c[FCM] Token FCM registrado con éxito: ${fcmToken}`, 'color: #22c55e; font-weight: bold; font-size: 13px;');
-        console.log('[FCM] Datos guardados en Supabase:', data);
+        console.log(`%c[FCM] Token FCM registrado con éxito: ${fcmToken}`, 'color: #22c55e; font-weight: bold;');
       }
     } catch (err) {
       console.error('[FCM] Excepción al guardar token FCM en Supabase:', err);
@@ -51,60 +47,49 @@ export function useFCMNotifications() {
   // Función para registrar Service Worker y obtener Token de FCM
   const initializeFCM = useCallback(async (currentUserId?: string) => {
     if (typeof window === 'undefined' || !('Notification' in window) || !('serviceWorker' in navigator)) {
-      console.warn('[FCM] Las notificaciones o Service Workers no están soportados en este navegador/dispositivo.');
       setPermission('unsupported');
       return null;
     }
 
     try {
       const supported = await isSupported();
-      if (!supported) {
-        console.warn('[FCM] Firebase Messaging no está soportado en este entorno.');
-        return null;
-      }
+      if (!supported) return null;
 
-      // 1. Verificar o solicitar permisos
       let currentPermission = Notification.permission;
-      console.log(`[FCM] Estado actual de permisos de notificación: "${currentPermission}"`);
       setPermission(currentPermission);
 
       if (currentPermission === 'default') {
         try {
-          console.log('[FCM] Solicitando permisos de notificación al usuario...');
           currentPermission = await Notification.requestPermission();
           setPermission(currentPermission);
-          console.log(`[FCM] Respuesta del usuario a la solicitud de permisos: "${currentPermission}"`);
         } catch (permErr) {
-          console.warn('[FCM] Error al solicitar permisos de notificación:', permErr);
+          console.warn('[FCM] Permiso no concedido:', permErr);
         }
       }
 
       if (currentPermission !== 'granted') {
-        console.warn(`[FCM] No se pueden generar tokens porque los permisos están en estado: "${currentPermission}"`);
         return null;
       }
 
-      // 2. Registrar el Service Worker explícitamente y esperar a que esté listo
-      console.log('[FCM] Registrando Service Worker /firebase-messaging-sw.js...');
+      // Registrar Service Worker
       let swRegistration: ServiceWorkerRegistration;
       try {
         swRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
           scope: '/'
         });
         await navigator.serviceWorker.ready;
-        console.log('[FCM] Service Worker activo y listo con scope:', swRegistration.scope);
+        console.log('[FCM] Service Worker registrado con éxito: /firebase-messaging-sw.js');
       } catch (swErr) {
-        console.error('[FCM] Error crítico al registrar el Service Worker:', swErr);
+        console.error('[FCM] Error al registrar Service Worker:', swErr);
         return null;
       }
 
-      // 3. Obtener el Token FCM
+      // Obtener el Token FCM
       const messaging = getMessaging(app);
       const vapidKey = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_VAPID_KEY) 
         ? import.meta.env.VITE_FIREBASE_VAPID_KEY 
         : DEFAULT_VAPID_KEY;
 
-      console.log('[FCM] Solicitando token a Firebase Cloud Messaging con VAPID Key...');
       const currentToken = await getToken(messaging, {
         vapidKey,
         serviceWorkerRegistration: swRegistration
@@ -112,22 +97,16 @@ export function useFCMNotifications() {
 
       if (currentToken) {
         setToken(currentToken);
-        console.log(`%c[FCM] Token obtenido de Firebase: ${currentToken}`, 'color: #3b82f6; font-weight: bold;');
 
-        // Si tenemos el UID del usuario, guardarlo inmediatamente en Supabase
         const targetUid = currentUserId || user?.uid;
         if (targetUid) {
           await saveTokenToSupabase(currentToken, targetUid);
-        } else {
-          console.log('[FCM] Token guardado en memoria local. Esperando autenticación para asociar a user_uid...');
         }
 
         return currentToken;
-      } else {
-        console.warn('[FCM] No se pudo generar token de registro. Permisos o configuración VAPID requeridos.');
       }
     } catch (err: any) {
-      console.error('[FCM] Error durante la inicialización de Firebase Messaging:', err);
+      console.error('[FCM] Error durante la inicialización de FCM:', err);
     }
     return null;
   }, [user?.uid, saveTokenToSupabase]);
@@ -148,7 +127,7 @@ export function useFCMNotifications() {
       }
       return false;
     } catch (e) {
-      console.warn('[FCM] Error al solicitar permiso manual de notificación:', e);
+      console.warn('[FCM] Error al solicitar permiso de notificación:', e);
       return false;
     }
   }, [initializeFCM]);
@@ -173,8 +152,6 @@ export function useFCMNotifications() {
           if (supported) {
             const messaging = getMessaging(app);
             unsubscribeMessage = onMessage(messaging, (payload) => {
-              console.log('[FCM] Mensaje recibido en primer plano (Foreground):', payload);
-
               const title = payload.notification?.title || payload.data?.title || 'Starryz 5';
               const body = payload.notification?.body || payload.data?.body || 'Tienes una nueva interacción';
               const linkUrl = payload.data?.link_url || payload.data?.url || payload.fcmOptions?.link;
@@ -182,10 +159,8 @@ export function useFCMNotifications() {
               // Reproducir sonido
               try {
                 const audio = new Audio('/sonidos/noti.mp3');
-                audio.play().catch(e => console.log('[FCM Audio] Reproducción bloqueada:', e));
-              } catch (audioErr) {
-                console.error('[FCM] Error reproduciendo sonido:', audioErr);
-              }
+                audio.play().catch(() => {});
+              } catch {}
 
               // Mostrar Toast
               if (isMounted) {
@@ -201,9 +176,7 @@ export function useFCMNotifications() {
               }
             });
           }
-        } catch (msgErr) {
-          console.warn('[FCM] Error configurando onMessage listener:', msgErr);
-        }
+        } catch {}
       } finally {
         isInitializingRef.current = false;
       }
@@ -219,7 +192,7 @@ export function useFCMNotifications() {
     };
   }, [user?.uid, initializeFCM]);
 
-  // Efecto secundario: Garantizar sincronización en Supabase si el token ya existe y el usuario inicia sesión
+  // Sincronización en Supabase si el token existe y el usuario inicia sesión
   useEffect(() => {
     if (user?.uid && token) {
       saveTokenToSupabase(token, user.uid);
