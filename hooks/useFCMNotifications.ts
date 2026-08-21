@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { getMessaging, getToken, onMessage, isSupported } from 'firebase/messaging';
 import { app } from '@/src/lib/firebase';
 import { supabase } from '@/src/lib/supabase';
+import { apiFetch } from '@/src/lib/api';
 import { useAuth } from '@/src/context/AuthContext';
 
 const DEFAULT_VAPID_KEY = "BB6-Vfe1DmpPKhZU_CDp2tyFvM2q8i_eXbzEWgZhF2uC3fV2zKaRcGlhy1u_AaLPRiyOsK-tnLQ0Zj_GDG82P9c";
@@ -19,9 +20,26 @@ export function useFCMNotifications() {
   const [toastNotification, setToastNotification] = useState<FCMToastData | null>(null);
   const isInitializingRef = useRef(false);
 
-  // Función nativa para guardar/actualizar token en 'user_fcm_tokens' de Supabase
+  // Función nativa para guardar/actualizar token en 'user_fcm_tokens' de Supabase vía backend proxy (0 MAU)
   const saveTokenToSupabase = useCallback(async (fcmToken: string, userUid: string) => {
     if (!fcmToken || !userUid) return;
+
+    try {
+      const res = await apiFetch<{ success: boolean }>('/api/fcm/token', {
+        method: 'POST',
+        body: JSON.stringify({
+          user_uid: userUid,
+          fcm_token: fcmToken,
+        }),
+      });
+
+      if (res && res.success) {
+        console.log(`%c[FCM] Token FCM registrado con éxito vía API: ${fcmToken}`, 'color: #22c55e; font-weight: bold;');
+        return;
+      }
+    } catch (apiErr) {
+      console.warn('[FCM Proxy] API fcm/token failed, falling back:', apiErr);
+    }
 
     try {
       const { error } = await supabase

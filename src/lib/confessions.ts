@@ -1,4 +1,5 @@
 import { supabase } from '@/src/lib/supabase';
+import { apiFetch } from '@/src/lib/api';
 
 export type ConfessionCategory = 'all' | 'crush' | 'professors' | 'exams' | 'anecdotes';
 export type CardStyle = 'dark' | 'pink' | 'fire';
@@ -181,6 +182,25 @@ export async function getCenterConfessions(
 ): Promise<{ data: CenterConfession[]; isTableMissing: boolean }> {
   const effectiveUserId = currentUserId || getDeviceId();
 
+  // 1. Intentar obtener vía Backend API Proxy (0 MAU)
+  try {
+    const params = new URLSearchParams({
+      centerId,
+      category,
+      sortBy,
+      userId: effectiveUserId,
+    });
+    const res = await apiFetch<{ data: CenterConfession[]; isTableMissing: boolean }>(
+      `/api/confessions?${params.toString()}`
+    );
+    if (res && Array.isArray(res.data)) {
+      return res;
+    }
+  } catch (apiErr) {
+    console.warn('[Confessions Proxy] API unavailable, falling back to direct Supabase client:', apiErr);
+  }
+
+  // 2. Fallback de cliente directo
   try {
     let query = supabase
       .from('center_confessions')
@@ -283,6 +303,30 @@ export async function getCenterConfessions(
  * Publica una nueva confesión en 'center_confessions' de Supabase
  */
 export async function createCenterConfession(payload: CreateConfessionPayload): Promise<CenterConfession> {
+  // 1. Intentar publicar vía Backend API Proxy (0 MAU)
+  try {
+    const res = await apiFetch<CenterConfession>('/api/confessions', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+
+    if (res && res.id) {
+      if (typeof window !== 'undefined') {
+        try {
+          const myConfessions = JSON.parse(localStorage.getItem('starryz_my_confessions') || '[]');
+          if (!myConfessions.includes(res.id)) {
+            myConfessions.push(res.id);
+            localStorage.setItem('starryz_my_confessions', JSON.stringify(myConfessions));
+          }
+        } catch (e) {}
+      }
+      return res;
+    }
+  } catch (apiErr) {
+    console.warn('[Confessions Proxy] API create confession failed, falling back:', apiErr);
+  }
+
+  // 2. Fallback de cliente directo
   const record = {
     center_id: payload.center_id,
     firebase_uid: payload.firebase_uid,
@@ -341,6 +385,24 @@ export async function toggleConfessionReaction(
 ): Promise<{ added: boolean }> {
   const effectiveUserId = currentUserId || getDeviceId();
 
+  // 1. Intentar vía Backend API Proxy (0 MAU)
+  try {
+    const res = await apiFetch<{ added: boolean }>(`/api/confessions/${confessionId}/reactions`, {
+      method: 'POST',
+      body: JSON.stringify({
+        reactionType,
+        userId: effectiveUserId,
+        userName: currentUserName,
+      }),
+    });
+    if (res && typeof res.added === 'boolean') {
+      return res;
+    }
+  } catch (apiErr) {
+    console.warn('[Reactions Proxy] API reaction failed, falling back:', apiErr);
+  }
+
+  // 2. Fallback de cliente directo
   try {
     // Buscar todas las reacciones de este usuario en esta confesión
     const { data: existingReactions, error: selectErr } = await supabase
@@ -455,6 +517,27 @@ export async function toggleConfessionReaction(
  * Elimina una confesión propia de Supabase y quita su ID de localStorage
  */
 export async function deleteCenterConfession(confessionId: string): Promise<{ success: boolean; error?: string }> {
+  // 1. Intentar eliminar vía Backend API Proxy (0 MAU)
+  try {
+    const res = await apiFetch<{ success: boolean; error?: string }>(`/api/confessions/${confessionId}`, {
+      method: 'DELETE',
+    });
+
+    if (res && res.success) {
+      if (typeof window !== 'undefined') {
+        try {
+          const myConfessions = JSON.parse(localStorage.getItem('starryz_my_confessions') || '[]');
+          const updated = myConfessions.filter((id: string) => id !== confessionId);
+          localStorage.setItem('starryz_my_confessions', JSON.stringify(updated));
+        } catch (e) {}
+      }
+      return { success: true };
+    }
+  } catch (apiErr) {
+    console.warn('[Confessions Proxy] API delete failed, falling back:', apiErr);
+  }
+
+  // 2. Fallback de cliente directo
   try {
     // 1. Eliminar reacciones asociadas
     await supabase
@@ -499,6 +582,17 @@ export async function deleteCenterConfession(confessionId: string): Promise<{ su
  * Obtiene las respuestas / comentarios de una confesión
  */
 export async function getConfessionComments(confessionId: string): Promise<ConfessionComment[]> {
+  // 1. Intentar obtener vía Backend API Proxy (0 MAU)
+  try {
+    const res = await apiFetch<ConfessionComment[]>(`/api/confessions/${confessionId}/comments`);
+    if (Array.isArray(res)) {
+      return res;
+    }
+  } catch (apiErr) {
+    console.warn('[Comments Proxy] API get comments failed, falling back:', apiErr);
+  }
+
+  // 2. Fallback de cliente directo
   try {
     const { data, error } = await supabase
       .from('confession_comments')
@@ -523,6 +617,20 @@ export async function createConfessionComment(payload: {
   content: string;
   is_anonymous: boolean;
 }): Promise<ConfessionComment> {
+  // 1. Intentar crear vía Backend API Proxy (0 MAU)
+  try {
+    const res = await apiFetch<ConfessionComment>(`/api/confessions/${payload.confession_id}/comments`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (res && res.id) {
+      return res;
+    }
+  } catch (apiErr) {
+    console.warn('[Comments Proxy] API create comment failed, falling back:', apiErr);
+  }
+
+  // 2. Fallback de cliente directo
   const record = {
     confession_id: payload.confession_id,
     firebase_uid: payload.firebase_uid,
@@ -610,6 +718,22 @@ export async function createConfessionComment(payload: {
  * Elimina una respuesta / comentario propio y decrementa el conteo de comentarios en la confesión
  */
 export async function deleteConfessionComment(commentId: string, confessionId: string): Promise<{ success: boolean; error?: string }> {
+  // 1. Intentar eliminar vía Backend API Proxy (0 MAU)
+  try {
+    const res = await apiFetch<{ success: boolean; error?: string }>(
+      `/api/confessions/${confessionId}/comments/${commentId}`,
+      {
+        method: 'DELETE',
+      }
+    );
+    if (res && res.success) {
+      return { success: true };
+    }
+  } catch (apiErr) {
+    console.warn('[Comments Proxy] API delete comment failed, falling back:', apiErr);
+  }
+
+  // 2. Fallback de cliente directo
   try {
     const { error: deleteErr } = await supabase
       .from('confession_comments')
