@@ -117,37 +117,37 @@ export default function Header({
 
     fetchNotifications();
 
-    const channel = supabase
-      .channel('realtime_notifications')
-      .on(
-        'postgres_changes',
-        { 
-          event: 'INSERT', 
-          schema: 'public', 
-          table: 'notifications', 
-          filter: `user_uid=eq.${user.uid}` 
-        }, 
-        (payload) => {
-          const newNotif = payload.new as NotificationItem;
-          
-          // Reproducir sonido de notificación en vivo
-          try {
-            const audio = new Audio('/sonidos/noti.mp3');
-            audio.play().catch(e => console.log('Audio playback blocked or failed:', e));
-          } catch (audioErr) {
-            console.error('Error al reproducir el sonido de notificación:', audioErr);
-          }
+    // 1. Manejo en tiempo real vía Firebase Cloud Messaging (onMessage) - 0 Supabase Realtime
+    const handleFCMNotification = (e: any) => {
+      const detail = e.detail;
+      if (!detail) return;
 
-          setNotifications((prev) => {
-            if (prev.some(n => n.id === newNotif.id)) return prev;
-            return [newNotif, ...prev];
-          });
-        }
-      )
-      .subscribe();
+      const newNotif: NotificationItem = {
+        id: detail.id || `fcm_${Date.now()}`,
+        user_uid: user.uid,
+        title: detail.title || 'Starryz 5',
+        content: detail.body || 'Tienes una nueva interacción',
+        type: detail.data?.type || 'interaction',
+        reference_id: detail.data?.reference_id || null,
+        is_read: false,
+        created_at: detail.created_at || new Date().toISOString()
+      };
+
+      setNotifications((prev) => {
+        if (prev.some(n => n.id === newNotif.id)) return prev;
+        return [newNotif, ...prev];
+      });
+
+      // Sincronizar con Supabase silenciosamente
+      setTimeout(() => {
+        fetchNotifications();
+      }, 1000);
+    };
+
+    window.addEventListener('starryz_fcm_notification', handleFCMNotification);
 
     return () => {
-      supabase.removeChannel(channel);
+      window.removeEventListener('starryz_fcm_notification', handleFCMNotification);
     };
   }, [user?.uid]);
 

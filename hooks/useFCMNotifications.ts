@@ -3,6 +3,7 @@ import { getMessaging, getToken, onMessage, isSupported } from 'firebase/messagi
 import { app } from '@/src/lib/firebase';
 import { supabase } from '@/src/lib/supabase';
 import { useAuth } from '@/src/context/AuthContext';
+import { dispatchFCMNotificationEvent } from '@/src/lib/notificationHelper';
 
 const DEFAULT_VAPID_KEY = "BB6-Vfe1DmpPKhZU_CDp2tyFvM2q8i_eXbzEWgZhF2uC3fV2zKaRcGlhy1u_AaLPRiyOsK-tnLQ0Zj_GDG82P9c";
 
@@ -45,7 +46,7 @@ export function useFCMNotifications() {
   }, []);
 
   // Función para registrar Service Worker y obtener Token de FCM
-  const initializeFCM = useCallback(async (currentUserId?: string) => {
+  const initializeFCM = useCallback(async (currentUserId?: string, forceRequest: boolean = false) => {
     if (typeof window === 'undefined' || !('Notification' in window) || !('serviceWorker' in navigator)) {
       setPermission('unsupported');
       return null;
@@ -58,7 +59,8 @@ export function useFCMNotifications() {
       let currentPermission = Notification.permission;
       setPermission(currentPermission);
 
-      if (currentPermission === 'default') {
+      // Si forzamos la solicitud (porque el usuario presionó el botón en la UI) y aún está en 'default'
+      if (forceRequest && currentPermission === 'default') {
         try {
           currentPermission = await Notification.requestPermission();
           setPermission(currentPermission);
@@ -67,6 +69,7 @@ export function useFCMNotifications() {
         }
       }
 
+      // Si no ha dado permiso, no forzamos
       if (currentPermission !== 'granted') {
         return null;
       }
@@ -111,7 +114,7 @@ export function useFCMNotifications() {
     return null;
   }, [user?.uid, saveTokenToSupabase]);
 
-  // Función pública para solicitar permisos manualmente
+  // Función pública para solicitar permisos manualmente (al hacer clic en el modal contextual)
   const requestPermission = useCallback(async () => {
     if (typeof window === 'undefined' || !('Notification' in window)) {
       setPermission('unsupported');
@@ -122,7 +125,7 @@ export function useFCMNotifications() {
       const result = await Notification.requestPermission();
       setPermission(result);
       if (result === 'granted') {
-        await initializeFCM();
+        await initializeFCM(user?.uid, true);
         return true;
       }
       return false;
@@ -130,7 +133,7 @@ export function useFCMNotifications() {
       console.warn('[FCM] Error al solicitar permiso de notificación:', e);
       return false;
     }
-  }, [initializeFCM]);
+  }, [initializeFCM, user?.uid]);
 
   // Efecto principal de inicialización al cargar o al cambiar de usuario
   useEffect(() => {
@@ -144,9 +147,14 @@ export function useFCMNotifications() {
       isInitializingRef.current = true;
 
       try {
-        await initializeFCM(user?.uid);
+        // Solo inicializa silenciosamente si el permiso ya fue concedido previamente
+        if (Notification.permission === 'granted') {
+          await initializeFCM(user?.uid, false);
+        } else {
+          setPermission(Notification.permission);
+        }
 
-        // Configurar listener para mensajes en primer plano (Foreground)
+        // Configurar listener para mensajes en primer plano (Foreground FCM onMessage)
         try {
           const supported = await isSupported();
           if (supported) {
@@ -156,13 +164,23 @@ export function useFCMNotifications() {
               const body = payload.notification?.body || payload.data?.body || 'Tienes una nueva interacción';
               const linkUrl = payload.data?.link_url || payload.data?.url || payload.fcmOptions?.link;
 
-              // Reproducir sonido
+              // 1. Reproducir sonido de notificación
               try {
                 const audio = new Audio('/sonidos/noti.mp3');
                 audio.play().catch(() => {});
               } catch {}
 
-              // Mostrar Toast
+              // 2. Disparar evento interno para actualizar la campanita del Header en vivo (0 Realtime Supabase)
+              dispatchFCMNotificationEvent({
+                id: payload.messageId,
+                title,
+                body,
+                linkUrl,
+                data: payload.data,
+                created_at: new Date().toISOString()
+              });
+
+              // 3. Mostrar Toast flotante
               if (isMounted) {
                 setToastNotification({
                   title,

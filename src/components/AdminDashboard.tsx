@@ -24,7 +24,13 @@ import {
   Search,
   AlertTriangle,
   CheckCircle2,
-  X
+  X,
+  Bell,
+  BellRing,
+  Globe,
+  Activity,
+  ExternalLink,
+  Percent
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -198,6 +204,12 @@ export default function AdminDashboard({ onBack, onNavigate }: AdminDashboardPro
     universidades: 0
   };
 
+  const notificationMetrics = metrics?.notificationMetrics || {
+    activePushUsers: 0,
+    adoptionPercentage: 0,
+    unregisteredCount: 0
+  };
+
   const totalUsers = userMetrics.totalUsers || 1;
   const directGooglePct = Math.round((userMetrics.directGoogle / totalUsers) * 100) || 0;
   const activeAnonPct = Math.round((userMetrics.activeAnonymous / totalUsers) * 100) || 0;
@@ -237,7 +249,7 @@ export default function AdminDashboard({ onBack, onNavigate }: AdminDashboardPro
             )}
           </div>
           <p className="text-xs text-zinc-400">
-            Monitor de telemetría y métricas dinámicas de cuentas y centros educativos en Supabase.
+            Monitor de telemetría, adopción de notificaciones push, Google Analytics 4 y métricas de cuentas en Supabase.
           </p>
         </div>
 
@@ -253,6 +265,153 @@ export default function AdminDashboard({ onBack, onNavigate }: AdminDashboardPro
           </button>
         </div>
       </div>
+
+      {/* SECCIÓN 1.5: SEGUIMIENTO DE NOTIFICACIONES PUSH (FCM) */}
+      <section className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <BellRing className="w-5 h-5 text-amber-400" />
+            <h2 className="text-base font-black text-white uppercase tracking-wider">
+              Adopción de Notificaciones Push (FCM)
+            </h2>
+          </div>
+          <span className="text-[11px] font-mono text-zinc-400">
+            Tabla: <span className="text-zinc-200 font-bold">user_fcm_tokens</span>
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          
+          {/* Card 1: Usuarios con Notificaciones Activas */}
+          <div className="p-5 rounded-2xl bg-[#0d0d0d] border border-amber-500/30 space-y-3 relative overflow-hidden shadow-[0_0_20px_rgba(245,158,11,0.08)]">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Notificaciones Activas</span>
+              <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                <BellRing className="w-4 h-4" />
+              </div>
+            </div>
+            <div className="text-3xl font-black text-white tracking-tight font-mono">
+              {notificationMetrics.activePushUsers}
+            </div>
+            <p className="text-[11px] text-zinc-400 leading-tight">
+              Usuarios con token FCM registrado que reciben notificaciones internas y externas.
+            </p>
+          </div>
+
+          {/* Card 2: Tasa de Adopción */}
+          <div className="p-5 rounded-2xl bg-[#0d0d0d] border border-emerald-500/30 space-y-3 relative overflow-hidden shadow-[0_0_20px_rgba(16,185,129,0.08)]">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Tasa de Adopción</span>
+              <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                <Percent className="w-4 h-4" />
+              </div>
+            </div>
+            <div className="text-3xl font-black text-emerald-400 tracking-tight flex items-baseline gap-1 font-mono">
+              <span>{notificationMetrics.adoptionPercentage}%</span>
+              <span className="text-xs font-normal text-zinc-400">del total</span>
+            </div>
+            
+            {/* Barra de progreso */}
+            <div className="w-full bg-zinc-800/80 rounded-full h-2 overflow-hidden">
+              <div 
+                className="bg-gradient-to-r from-emerald-500 to-teal-400 h-full rounded-full transition-all duration-500"
+                style={{ width: `${Math.min(100, Math.max(5, notificationMetrics.adoptionPercentage))}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Card 3: Sin Notificaciones */}
+          <div className="p-5 rounded-2xl bg-[#0d0d0d] border border-zinc-800 space-y-3 relative overflow-hidden">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Pendientes / Sin Activar</span>
+              <div className="p-2 rounded-xl bg-zinc-800 text-zinc-400 border border-zinc-700">
+                <Bell className="w-4 h-4" />
+              </div>
+            </div>
+            <div className="text-3xl font-black text-zinc-300 tracking-tight font-mono">
+              {notificationMetrics.unregisteredCount}
+            </div>
+            <p className="text-[11px] text-zinc-400 leading-tight">
+              Aparecerá el aviso contextual tras su primera acción (reacción, confesión, reseña).
+            </p>
+          </div>
+
+        </div>
+
+        {/* Explicación de la estrategia */}
+        <div className="p-4 rounded-2xl bg-[#141414] border border-[#ffffff0a] flex items-start gap-3">
+          <Sparkles className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+          <div className="text-xs text-zinc-300 space-y-1">
+            <p className="font-bold text-white uppercase tracking-tight">
+              Estrategia Contextual Activa (Sin intrusión al inicio):
+            </p>
+            <p className="text-[11px] text-zinc-400 leading-relaxed">
+              El modal explicativo no interrumpe al entrar a la web. Se muestra automáticamente cuando el usuario interactúa (publicar confesión, responder a comentarios o calificar a un profesor), garantizando mayor conversión voluntaria.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* SECCIÓN 1.6: GOOGLE ANALYTICS 4 & TASA DE REBOTE */}
+      <section className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Globe className="w-5 h-5 text-amber-400" />
+            <h2 className="text-base font-black text-white uppercase tracking-wider">
+              Google Analytics 4 & Tasa de Rebote (Bounce Rate)
+            </h2>
+          </div>
+          <span className="px-2 py-0.5 rounded bg-blue-500/10 border border-blue-500/30 text-blue-400 text-[10px] font-mono font-bold">
+            ID: G-0FL5ZVJG8C
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          
+          {/* Card GA4 Status */}
+          <div className="p-5 rounded-2xl bg-[#0d0d0d] border border-blue-500/30 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-3 h-3 rounded-full bg-emerald-400 animate-ping" />
+                <span className="text-xs font-black text-white uppercase tracking-wider">GA4 Conectado y Activo</span>
+              </div>
+              <span className="text-[10px] font-mono text-zinc-400">gtag.js</span>
+            </div>
+
+            <p className="text-xs text-zinc-300 leading-relaxed">
+              El script oficial de Google Tag Manager con ID <code className="text-amber-400 font-mono font-bold">G-0FL5ZVJG8C</code> está insertado en el <code className="text-zinc-400 font-mono">&lt;head&gt;</code> de Starryz 5.
+            </p>
+
+            <a
+              href="https://analytics.google.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs uppercase tracking-wider transition-colors cursor-pointer"
+            >
+              <span>Abrir Panel de Google Analytics</span>
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
+          </div>
+
+          {/* Card Cómo interpretar la Tasa de Rebote en GA4 */}
+          <div className="p-5 rounded-2xl bg-[#0d0d0d] border border-zinc-800 space-y-3">
+            <h3 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-2">
+              <Activity className="w-4 h-4 text-amber-400" />
+              ¿Cómo calcula GA4 la Tasa de Rebote?
+            </h3>
+            <p className="text-[11px] text-zinc-400 leading-relaxed">
+              En Google Analytics 4, la <strong className="text-zinc-200">Tasa de Rebote (Bounce Rate)</strong> es el porcentaje de sesiones que <em>NO</em> fueron de interacción:
+            </p>
+            <div className="p-3 rounded-xl bg-[#141414] border border-zinc-800 font-mono text-[11px] text-amber-300">
+              Tasa de Rebote = 100% - Tasa de Interacción (Engagement Rate)
+            </div>
+            <p className="text-[10px] text-zinc-500 leading-normal">
+              Una sesión cuenta como interacción si el usuario permanece más de 10 segundos, realiza 2 o más páginas vistas, o dispara un evento de conversión.
+            </p>
+          </div>
+
+        </div>
+      </section>
 
       {/* 2. MÓDULO DE USUARIOS */}
       <section className="space-y-4">

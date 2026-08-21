@@ -34,6 +34,7 @@ import {
 import { useAuth } from '@/src/context/AuthContext';
 import { supabase } from '@/src/lib/supabase';
 import BookmarkButton from '@/components/BookmarkButton';
+import { promptNotificationOnAction } from '@/src/lib/notificationHelper';
 
 interface ProfessorProfileProps {
   slug: string;
@@ -428,6 +429,8 @@ export default function ProfessorProfile({
           ...prev,
           [stars]: (prev[stars] || 0) + 1
         }));
+
+        promptNotificationOnAction('rating');
       }
     } catch (err) {
       console.error('Error al registrar calificación:', err);

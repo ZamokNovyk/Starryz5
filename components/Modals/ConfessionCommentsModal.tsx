@@ -11,6 +11,7 @@ import {
   deleteConfessionComment,
   formatTimeAgo 
 } from '@/src/lib/confessions';
+import { promptNotificationOnAction } from '@/src/lib/notificationHelper';
 
 interface ConfessionCommentsModalProps {
   isOpen: boolean;
@@ -121,6 +122,7 @@ export default function ConfessionCommentsModal({
 
       setComments((prev) => [...prev, newComment]);
       setContent('');
+      promptNotificationOnAction('comment');
       onCommentAdded(confession.id);
     } catch (err: any) {
       console.error('Error al enviar respuesta:', err);

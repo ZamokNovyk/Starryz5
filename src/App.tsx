@@ -10,6 +10,7 @@ import InstitutionModal from '@/components/Modals/InstitutionModal';
 import SupabaseStatusBadge from '@/components/SupabaseStatusBadge';
 import MyProfile from '@/components/MyProfile';
 import CreateCenterModal from '@/components/Modals/CreateCenterModal';
+import ActionNotificationPromptModal from '@/components/Modals/ActionNotificationPromptModal';
 import SearchResultsView from '@/components/SearchResultsView';
 import EducationalCenterProfileView from '@/components/EducationalCenterProfileView';
 import ProfessorProfile from '@/src/pages/ProfessorProfile';
@@ -280,6 +281,11 @@ export default function App() {
               </button>
             </div>
           )
+        ) : route.pathname === '/admin' ? (
+          <AdminDashboard 
+            onBack={() => navigate('/')} 
+            onNavigate={(url) => navigate(url)} 
+          />
         ) : route.pathname === '/perfil' || isUserProfileRoute ? (
           <MyProfile 
             uid={userProfileUid} 
@@ -387,6 +393,8 @@ export default function App() {
         onClose={() => setCreateCenterModalOpen(false)}
         onSuccess={() => setInstitutionsRefreshKey(prev => prev + 1)}
       />
+
+      <ActionNotificationPromptModal />
 
       {/* Notification Toast for Foreground FCM Messages */}
       {toastNotification && (

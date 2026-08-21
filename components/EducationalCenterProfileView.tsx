@@ -37,6 +37,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/src/lib/supabase';
 import { Institution } from '@/lib/mockData';
+import { promptNotificationOnAction } from '@/src/lib/notificationHelper';
 
 const InstagramIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -379,6 +380,7 @@ export default function EducationalCenterProfileView({
 
       // Clear input text
       setCommentInputText((prev) => ({ ...prev, [confessionId]: '' }));
+      promptNotificationOnAction('comment');
     } catch (err) {
       console.error('Error al enviar respuesta:', err);
     } finally {
@@ -507,6 +509,7 @@ export default function EducationalCenterProfileView({
     try {
       const displayName = user ? (user.displayName || user.email?.split('@')[0]) : undefined;
       await toggleConfessionReaction(confessionId, reactionType, user?.uid, displayName);
+      promptNotificationOnAction('reaction');
     } catch (err) {
       console.error('Error al reaccionar:', err);
       loadConfessions();

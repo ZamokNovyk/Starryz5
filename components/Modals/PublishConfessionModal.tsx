@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { X, Send, Building2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '@/src/context/AuthContext';
 import { createCenterConfession, CardStyle } from '@/src/lib/confessions';
+import { promptNotificationOnAction } from '@/src/lib/notificationHelper';
 
 interface PublishConfessionModalProps {
   isOpen: boolean;
@@ -58,6 +59,7 @@ export default function PublishConfessionModal({
       });
 
       setSuccess(true);
+      promptNotificationOnAction('confession');
       setTimeout(() => {
         setSuccess(false);
         setContent('');

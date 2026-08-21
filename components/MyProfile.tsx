@@ -27,13 +27,20 @@ import {
   Heart,
   HeartCrack,
   Star,
-  UserCheck
+  UserCheck,
+  Bell,
+  BellRing,
+  BarChart3,
+  TrendingUp,
+  Activity,
+  Globe
 } from 'lucide-react';
 import { 
   getUserInteractions, 
   removeUserInteraction, 
   UserInteractionItem 
 } from '@/src/lib/professors';
+import { getAdminDashboardMetrics, AdminDashboardData } from '@/src/lib/admin';
 
 interface SupabaseUser {
   id: string;
@@ -68,7 +75,11 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
   }>({ status: 'idle', message: '' });
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [profileTab, setProfileTab] = useState<'info' | 'collections' | 'interactions'>('info');
+  const [profileTab, setProfileTab] = useState<'info' | 'collections' | 'interactions' | 'admin'>('info');
+
+  // Admin Dashboard Metrics State
+  const [adminMetrics, setAdminMetrics] = useState<AdminDashboardData | null>(null);
+  const [loadingAdminMetrics, setLoadingAdminMetrics] = useState(false);
 
   // Colecciones State
   const [collections, setCollections] = useState<any[]>([]);
@@ -330,6 +341,25 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
       console.error('Error al quitar elemento de colección:', err);
     }
   };
+
+  // Cargar métricas del Admin Dashboard
+  const loadAdminMetrics = async () => {
+    try {
+      setLoadingAdminMetrics(true);
+      const data = await getAdminDashboardMetrics();
+      setAdminMetrics(data);
+    } catch (err) {
+      console.error('Error al cargar métricas de administrador:', err);
+    } finally {
+      setLoadingAdminMetrics(false);
+    }
+  };
+
+  useEffect(() => {
+    if (profileTab === 'admin' || (dbUser?.role === 'admin' && !adminMetrics)) {
+      loadAdminMetrics();
+    }
+  }, [profileTab, dbUser?.role]);
 
   // Cargar interacciones en la pestaña 'interactions' o al iniciar
   const loadInteractions = async () => {

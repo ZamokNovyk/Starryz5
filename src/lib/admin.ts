@@ -15,9 +15,16 @@ export interface AdminCentersMetric {
   universidades: number;
 }
 
+export interface AdminNotificationMetric {
+  activePushUsers: number;
+  adoptionPercentage: number;
+  unregisteredCount: number;
+}
+
 export interface AdminDashboardData {
   userMetrics: AdminUserMetric;
   centerMetrics: AdminCentersMetric;
+  notificationMetrics: AdminNotificationMetric;
   recentUsers: Array<{
     id: string;
     firebase_uid: string;
@@ -70,6 +77,27 @@ export async function getAdminDashboardMetrics(): Promise<AdminDashboardData> {
         universidades
       };
 
+      // Conteo de usuarios con notificaciones push activas (FCM)
+      let activePushUsers = 0;
+      try {
+        const { count: fcmCount } = await supabase
+          .from('user_fcm_tokens')
+          .select('*', { count: 'exact', head: true });
+        activePushUsers = Number(fcmCount ?? 0);
+      } catch (fcmErr) {
+        console.warn('Aviso al contar user_fcm_tokens:', fcmErr);
+      }
+
+      const adoptionPercentage = totalUsers > 0 
+        ? Math.min(100, Math.round((activePushUsers / totalUsers) * 100)) 
+        : 0;
+
+      const notificationMetrics: AdminNotificationMetric = {
+        activePushUsers,
+        adoptionPercentage,
+        unregisteredCount: Math.max(0, totalUsers - activePushUsers)
+      };
+
       // Traer una muestra ligera de usuarios recientes (solo 10 para vista previa)
       const { data: recent } = await supabase
         .from('users')
@@ -80,6 +108,7 @@ export async function getAdminDashboardMetrics(): Promise<AdminDashboardData> {
       return {
         userMetrics,
         centerMetrics,
+        notificationMetrics,
         recentUsers: recent || [],
         source: 'platform_stats'
       };
@@ -106,6 +135,20 @@ export async function getAdminDashboardMetrics(): Promise<AdminDashboardData> {
 
     const linkedAnonymous = users.filter(u => Boolean(u.linked_google_at)).length;
     const adminUsers = users.filter(u => (u.role || '').toLowerCase() === 'admin').length;
+    const totalUsersFallback = directGoogle + activeAnonymous + linkedAnonymous;
+
+    // Conteo de usuarios con FCM activo
+    let activePushUsersFallback = 0;
+    try {
+      const { count: fcmCount } = await supabase
+        .from('user_fcm_tokens')
+        .select('*', { count: 'exact', head: true });
+      activePushUsersFallback = Number(fcmCount ?? 0);
+    } catch {}
+
+    const adoptionPercentageFallback = totalUsersFallback > 0
+      ? Math.min(100, Math.round((activePushUsersFallback / totalUsersFallback) * 100))
+      : 0;
 
     const { data: centersData } = await supabase.from('educational_centers').select('*');
     const centers: any[] = centersData || [];
@@ -123,7 +166,7 @@ export async function getAdminDashboardMetrics(): Promise<AdminDashboardData> {
 
     return {
       userMetrics: {
-        totalUsers: directGoogle + activeAnonymous + linkedAnonymous,
+        totalUsers: totalUsersFallback,
         directGoogle,
         activeAnonymous,
         linkedAnonymous,
@@ -134,6 +177,11 @@ export async function getAdminDashboardMetrics(): Promise<AdminDashboardData> {
         colegios,
         institutos,
         universidades
+      },
+      notificationMetrics: {
+        activePushUsers: activePushUsersFallback,
+        adoptionPercentage: adoptionPercentageFallback,
+        unregisteredCount: Math.max(0, totalUsersFallback - activePushUsersFallback)
       },
       recentUsers: users.slice(0, 10),
       source: 'live_count'
@@ -153,6 +201,11 @@ export async function getAdminDashboardMetrics(): Promise<AdminDashboardData> {
         colegios: 0,
         institutos: 0,
         universidades: 0
+      },
+      notificationMetrics: {
+        activePushUsers: 0,
+        adoptionPercentage: 0,
+        unregisteredCount: 0
       },
       recentUsers: [],
       source: 'live_count'
