@@ -32,7 +32,6 @@ import { useTheme } from '@/src/context/ThemeContext';
 import AutocompleteSearchBar from './AutocompleteSearchBar';
 import { SearchSuggestion } from '@/src/lib/search';
 import { supabase } from '@/src/lib/supabase';
-import { apiFetch } from '@/src/lib/api';
 
 interface NotificationItem {
   id: string;
@@ -97,18 +96,6 @@ export default function Header({
   const fetchNotifications = async () => {
     if (!user) return;
     try {
-      // 1. Intentar vía Backend Proxy API (0 MAU)
-      try {
-        const res = await apiFetch<NotificationItem[]>(`/api/notifications?userUid=${user.uid}`);
-        if (Array.isArray(res)) {
-          setNotifications(res);
-          return;
-        }
-      } catch (apiErr) {
-        console.warn('[Notifications Proxy] API notifications failed, falling back:', apiErr);
-      }
-
-      // 2. Fallback de cliente directo
       const { data, error } = await supabase
         .from('notifications')
         .select('*')
@@ -363,35 +350,16 @@ export default function Header({
     setMobileNotificationsOpen(false);
     
     if (!notif.is_read && user) {
-      // 1. Intentar vía Backend Proxy API (0 MAU)
-      let markedViaApi = false;
       try {
-        const res = await apiFetch<{ success: boolean }>('/api/notifications/read', {
-          method: 'PATCH',
-          body: JSON.stringify({
-            userUid: user.uid,
-            notificationId: notif.id,
-          }),
-        });
-        if (res && res.success) {
-          markedViaApi = true;
+        const { error } = await supabase
+          .from('notifications')
+          .update({ is_read: true })
+          .eq('id', notif.id);
+        if (!error) {
           setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, is_read: true } : n));
         }
-      } catch {}
-
-      // 2. Fallback de cliente directo
-      if (!markedViaApi) {
-        try {
-          const { error } = await supabase
-            .from('notifications')
-            .update({ is_read: true })
-            .eq('id', notif.id);
-          if (!error) {
-            setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, is_read: true } : n));
-          }
-        } catch (err) {
-          console.error('Error al marcar notificación como leída:', err);
-        }
+      } catch (err) {
+        console.error('Error al marcar notificación como leída:', err);
       }
     }
 

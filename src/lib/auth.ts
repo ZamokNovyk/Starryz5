@@ -10,7 +10,6 @@ import {
 } from 'firebase/auth';
 import { auth, googleProvider } from './firebase';
 import { supabase } from './supabase';
-import { apiFetch } from './api';
 
 export interface AuthUser {
   uid: string;
@@ -21,30 +20,10 @@ export interface AuthUser {
 }
 
 /**
- * Sincroniza los detalles del usuario autenticado con la tabla 'users' de Supabase vía backend proxy (0 MAU).
+ * Sincroniza los detalles del usuario autenticado con la tabla 'users' de Supabase (0 MAU en Supabase Auth).
  */
 export async function syncUserWithSupabase(user: AuthUser) {
   try {
-    // 1. Intentar sincronizar mediante el backend proxy
-    try {
-      const res = await apiFetch<{ success: boolean; data: any }>('/api/users/sync', {
-        method: 'POST',
-        body: JSON.stringify({
-          uid: user.uid,
-          email: user.email,
-          displayName: user.displayName || (user.isAnonymous ? 'Usuario Anónimo' : 'Usuario'),
-          photoURL: user.photoURL,
-          isAnonymous: user.isAnonymous,
-        }),
-      });
-      if (res && res.success) {
-        return res.data;
-      }
-    } catch (apiErr) {
-      console.warn('[Auth Proxy] Backend API unavailable, falling back to direct client:', apiErr);
-    }
-
-    // 2. Fallback de cliente directo
     const { data, error } = await supabase
       .from('users')
       .upsert(
@@ -264,24 +243,7 @@ export async function checkUsernameAvailable(
     return { available: false, message: 'El nombre no puede superar los 35 caracteres.' };
   }
 
-  // 1. Intentar validar mediante el backend proxy
-  try {
-    const res = await apiFetch<{ available: boolean; message: string }>('/api/users/check-username', {
-      method: 'POST',
-      body: JSON.stringify({
-        username: clean,
-        currentUserId,
-        currentFirebaseUid,
-      }),
-    });
-    if (res && typeof res.available === 'boolean') {
-      return res;
-    }
-  } catch (apiErr) {
-    console.warn('[Auth Proxy] Backend API check-username unavailable, falling back:', apiErr);
-  }
-
-  // 2. Invocar la función RPC 'check_username_available' en Supabase como respaldo
+  // 1. Invocar la función RPC 'check_username_available' en Supabase
   try {
     const { data, error } = await supabase.rpc('check_username_available', {
       p_username: clean,
@@ -299,7 +261,7 @@ export async function checkUsernameAvailable(
     console.warn('Aviso: RPC check_username_available:', rpcErr);
   }
 
-  // 3. Consulta de respaldo directo en la tabla 'users' de Supabase
+  // 2. Consulta de respaldo directo en la tabla 'users' de Supabase
   try {
     let query = supabase
       .from('users')

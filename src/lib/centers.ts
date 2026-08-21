@@ -1,5 +1,4 @@
 import { supabase } from './supabase';
-import { apiFetch } from './api';
 
 export interface EducationalCenter {
   id: string;
@@ -22,32 +21,13 @@ export interface CreateCenterData {
 }
 
 /**
- * Inserta un nuevo centro educativo en la tabla 'educational_centers' vía backend API proxy (0 MAU).
+ * Inserta un nuevo centro educativo en la tabla 'educational_centers' de Supabase (0 MAU en Supabase Auth).
  */
 export async function createEducationalCenter(data: CreateCenterData, firebaseUid: string): Promise<EducationalCenter> {
   if (!data.name || !data.name.trim()) {
     throw new Error('El nombre del centro educativo es requerido.');
   }
 
-  // 1. Intentar vía Backend Proxy API
-  try {
-    const res = await apiFetch<EducationalCenter>('/api/educational-centers', {
-      method: 'POST',
-      body: JSON.stringify({
-        name: data.name.trim(),
-        type: data.type,
-        photoUrl: data.photoUrl?.trim() || null,
-        firebaseUid,
-      }),
-    });
-    if (res && res.id) {
-      return res;
-    }
-  } catch (apiErr) {
-    console.warn('[Centers Proxy] API create center failed, falling back:', apiErr);
-  }
-
-  // 2. Fallback de cliente directo
   const { data: inserted, error } = await supabase
     .from('educational_centers')
     .insert([
@@ -73,17 +53,6 @@ export async function createEducationalCenter(data: CreateCenterData, firebaseUi
  * Recupera todos los centros educativos creados por los usuarios en Supabase.
  */
 export async function getEducationalCenters(): Promise<EducationalCenter[]> {
-  // 1. Intentar vía Backend Proxy API
-  try {
-    const res = await apiFetch<EducationalCenter[]>('/api/educational-centers');
-    if (Array.isArray(res)) {
-      return res;
-    }
-  } catch (apiErr) {
-    console.warn('[Centers Proxy] API get centers failed, falling back:', apiErr);
-  }
-
-  // 2. Fallback de cliente directo
   try {
     const { data, error } = await supabase
       .from('educational_centers')
