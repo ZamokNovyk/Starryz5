@@ -611,43 +611,45 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
             )}
           </div>
 
-          <div className="w-full border-t border-[#ffffff10] pt-4 space-y-3 text-left">
-            <div className="flex items-center justify-between text-[11px]">
-              <span className="text-zinc-500 font-medium">Rol de Cuenta</span>
-              {dbUser?.role === 'admin' ? (
-                <span className="inline-flex items-center gap-1 font-black text-amber-400 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-md text-[10px] tracking-wider uppercase shadow-[0_0_10px_rgba(245,158,11,0.2)]">
-                  <ShieldCheck className="w-3 h-3 text-amber-400" /> ADMIN VERIFICADO
-                </span>
-              ) : (
-                <span className="font-bold text-zinc-400 uppercase font-mono text-[10px] bg-[#141414] px-1.5 py-0.5 rounded border border-[#ffffff05]">
-                  {dbUser?.role === 'student' ? 'Estudiante' : (dbUser?.role || 'Estudiante')}
-                </span>
-              )}
-            </div>
-
-            <div className="flex items-center justify-between text-[11px]">
-              <span className="text-zinc-500 font-medium">Proveedor Auth</span>
-              <span className="font-bold text-zinc-300 uppercase font-mono">
-                {dbUser?.is_anonymous ? 'Firebase Anon' : 'Google OAuth'}
-              </span>
-            </div>
-            
-            {isOwnProfile && (
+          {dbUser?.role === 'admin' && (
+            <div className="w-full border-t border-[#ffffff10] pt-4 space-y-3 text-left">
               <div className="flex items-center justify-between text-[11px]">
-                <span className="text-zinc-500 font-medium">ID en Supabase</span>
-                <span className="font-mono text-zinc-400 text-[10px] bg-[#141414] px-1.5 py-0.5 rounded border border-[#ffffff05] truncate max-w-[110px]" title={dbUser?.id}>
-                  {dbUser?.id ? `${dbUser.id.substring(0, 8)}...` : '...'}
+                <span className="text-zinc-500 font-medium">Rol de Cuenta</span>
+                {dbUser?.role === 'admin' ? (
+                  <span className="inline-flex items-center gap-1 font-black text-amber-400 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-md text-[10px] tracking-wider uppercase shadow-[0_0_10px_rgba(245,158,11,0.2)]">
+                    <ShieldCheck className="w-3 h-3 text-amber-400" /> ADMIN VERIFICADO
+                  </span>
+                ) : (
+                  <span className="font-bold text-zinc-400 uppercase font-mono text-[10px] bg-[#141414] px-1.5 py-0.5 rounded border border-[#ffffff05]">
+                    {dbUser?.role === 'student' ? 'Estudiante' : (dbUser?.role || 'Estudiante')}
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-zinc-500 font-medium">Proveedor Auth</span>
+                <span className="font-bold text-zinc-300 uppercase font-mono">
+                  {dbUser?.is_anonymous ? 'Firebase Anon' : 'Google OAuth'}
                 </span>
               </div>
-            )}
+              
+              {isOwnProfile && (
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="text-zinc-500 font-medium">ID en Supabase</span>
+                  <span className="font-mono text-zinc-400 text-[10px] bg-[#141414] px-1.5 py-0.5 rounded border border-[#ffffff05] truncate max-w-[110px]" title={dbUser?.id}>
+                    {dbUser?.id ? `${dbUser.id.substring(0, 8)}...` : '...'}
+                  </span>
+                </div>
+              )}
 
-            <div className="flex items-center justify-between text-[11px]">
-              <span className="text-zinc-500 font-medium">Sincronización</span>
-              <span className="text-emerald-400 font-bold flex items-center gap-1">
-                <Database className="w-3 h-3" /> Activa
-              </span>
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-zinc-500 font-medium">Sincronización</span>
+                <span className="text-emerald-400 font-bold flex items-center gap-1">
+                  <Database className="w-3 h-3" /> Activa
+                </span>
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* LADO DERECHO: Formulario y Consulta Base de Datos */}
