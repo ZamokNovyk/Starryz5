@@ -260,15 +260,41 @@ export default function Header({
           }
         }
 
-        // 3. Obtener todas las respuestas / comentarios ordenadas por fecha más reciente
-        const { data: comments } = await supabase
-          .from('confession_comments')
-          .select('*')
-          .eq('confession_id', confessionId)
-          .order('created_at', { ascending: false });
+        // 3. Obtener únicamente la respuesta específica que generó la notificación
+        if (commentId) {
+          const { data: targetComment } = await supabase
+            .from('confession_comments')
+            .select('*')
+            .eq('id', commentId)
+            .maybeSingle();
 
-        if (comments) {
-          setModalComments(comments);
+          if (targetComment) {
+            setModalComments([targetComment]);
+          } else {
+            // Fallback: si no se encontró por ID directo, buscar en los comentarios de la confesión
+            const { data: comments } = await supabase
+              .from('confession_comments')
+              .select('*')
+              .eq('confession_id', confessionId)
+              .order('created_at', { ascending: false });
+
+            if (comments && comments.length > 0) {
+              const matched = comments.find(c => c.id === commentId);
+              setModalComments(matched ? [matched] : [comments[0]]);
+            }
+          }
+        } else {
+          // Si no viene comment_id específico, obtener solo la respuesta más reciente
+          const { data: comments } = await supabase
+            .from('confession_comments')
+            .select('*')
+            .eq('confession_id', confessionId)
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+          if (comments && comments.length > 0) {
+            setModalComments([comments[0]]);
+          }
         }
       }
     } catch (err) {
@@ -1166,47 +1192,40 @@ export default function Header({
                     <div className="flex items-center gap-5 pt-3 border-t border-zinc-800/80 text-xs text-zinc-400">
                       <div className="flex items-center gap-1.5 text-zinc-400 font-medium">
                         <MessageSquare className="w-3.5 h-3.5 text-zinc-400" />
-                        <span>{modalComments.length} {modalComments.length === 1 ? 'respuesta' : 'respuestas'}</span>
+                        <span>{modalConfession.comments_count || modalComments.length || 1} {modalConfession.comments_count === 1 ? 'respuesta' : 'respuestas'}</span>
                       </div>
                       <div className="flex items-center gap-1.5 text-zinc-500 ml-auto font-normal">
                         <Eye className="w-3.5 h-3.5 text-zinc-500" />
-                        <span>{Math.max(modalComments.length * 14 + 32, 45)} vistas</span>
+                        <span>{Math.max((modalConfession.comments_count || 1) * 14 + 32, 45)} vistas</span>
                       </div>
                     </div>
 
                   </div>
 
-                  {/* Respuestas Recibidas */}
+                  {/* Respuesta Recibida */}
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
                       <h4 className="text-xs font-black text-[#eab308] uppercase tracking-wider flex items-center gap-2">
-                        <span>Respuestas / Comentarios</span>
-                        <span className="text-xs bg-[#eab308]/20 text-[#eab308] border border-[#eab308]/30 px-2 py-0.5 rounded-full font-bold">
+                        <MessageSquare className="w-3.5 h-3.5 text-[#eab308]" />
+                        <span>Respuesta Recibida</span>
+                        <span className="text-[10px] bg-[#eab308]/20 text-[#eab308] border border-[#eab308]/30 px-2 py-0.5 rounded-full font-bold">
                           {modalComments.length}
                         </span>
                       </h4>
-                      <span className="text-[11px] text-zinc-500 font-medium">
-                        Ordenado por más reciente
-                      </span>
                     </div>
 
                     {modalComments.length === 0 ? (
                       <div className="p-8 rounded-xl bg-[#121317] border border-zinc-800/60 text-center">
-                        <p className="text-zinc-500 text-xs italic">No hay comentarios en esta confesión aún.</p>
+                        <p className="text-zinc-500 text-xs italic">No se encontró el comentario o ha sido eliminado.</p>
                       </div>
                     ) : (
                       <div className="space-y-3">
                         {modalComments.map((comment: any) => {
-                          const isTarget = targetCommentId === comment.id;
                           const dateInfo = formatFullDateWithRelative(comment.created_at);
                           return (
                             <div 
                               key={comment.id}
-                              className={`p-4 rounded-xl border transition-all ${
-                                isTarget 
-                                  ? 'border-l-4 border-l-amber-500 bg-[#16171e] border-zinc-800/90 shadow-md ring-1 ring-amber-500/20' 
-                                  : 'border-l-4 border-l-transparent bg-[#111216] border-zinc-800/60 hover:border-zinc-700/80'
-                              }`}
+                              className="p-4 rounded-xl border border-l-4 border-l-amber-500 bg-[#16171e] border-zinc-800/90 shadow-md ring-1 ring-amber-500/20 transition-all"
                             >
                               <div className="flex items-start gap-3">
                                 {/* Avatar */}
@@ -1240,7 +1259,7 @@ export default function Header({
                                     )}
                                   </div>
 
-                                  <p className="text-xs sm:text-sm text-zinc-200 leading-relaxed pt-0.5 whitespace-pre-wrap">
+                                  <p className="text-xs sm:text-sm text-zinc-100 font-medium leading-relaxed pt-0.5 whitespace-pre-wrap">
                                     {comment.content}
                                   </p>
                                 </div>
