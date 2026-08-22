@@ -17,6 +17,7 @@ import {
   Moon,
   Palette,
   Bell,
+  BellRing,
   Smartphone,
   Download,
   Heart,
@@ -28,6 +29,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
+import { useFCMNotifications } from '@/hooks/useFCMNotifications';
 import AutocompleteSearchBar from './AutocompleteSearchBar';
 import { SearchSuggestion } from '@/src/lib/search';
 import { supabase } from '@/src/lib/supabase';
@@ -69,6 +71,7 @@ export default function Header({
   const settingsRef = useRef<HTMLDivElement>(null);
   const { user, logout } = useAuth();
   const { theme, toggleTheme, setTheme } = useTheme();
+  const { permission, requestPermission } = useFCMNotifications();
 
   // Lógica de PWA (deferredPrompt y comprobación de instalabilidad)
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -849,6 +852,22 @@ export default function Header({
                            </div>
                          </div>
 
+                         {/* OPCIÓN: ACTIVAR NOTIFICACIONES */}
+                         {permission !== 'granted' && permission !== 'unsupported' && (
+                           <div className="px-3 py-2 border-b border-zinc-800/80 mb-1">
+                             <button
+                               onClick={async () => {
+                                 setSettingsOpen(false);
+                                 await requestPermission();
+                               }}
+                               className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[10px] font-black text-amber-400 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/15 border border-amber-500/25 hover:border-amber-500/40 transition-all cursor-pointer text-left shadow-[0_0_10px_rgba(234,179,8,0.05)] animate-pulse"
+                             >
+                               <BellRing className="w-3.5 h-3.5 text-amber-400 animate-bounce" />
+                               <span>Activar Notificaciones</span>
+                             </button>
+                           </div>
+                         )}
+
                         {/* OPCIÓN 2: CERRAR SESIÓN */}
                         {!user.isAnonymous && (
                           <button
@@ -974,6 +993,21 @@ export default function Header({
                 </button>
               </div>
             </div>
+
+            {/* ACTIVAR NOTIFICACIONES EN MÓVIL */}
+            {permission !== 'granted' && permission !== 'unsupported' && (
+              <button
+                type="button"
+                onClick={async () => {
+                  setMobileMenuOpen(false);
+                  await requestPermission();
+                }}
+                className="w-full py-3 px-4 rounded-xl border border-amber-500/30 text-amber-400 font-extrabold text-xs tracking-wider uppercase bg-amber-500/10 hover:bg-amber-500/15 flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(234,179,8,0.05)] animate-pulse"
+              >
+                <BellRing className="w-4 h-4 text-amber-400 animate-bounce" />
+                <span>Activar Notificaciones</span>
+              </button>
+            )}
 
             {user ? (
               !user.isAnonymous && (
