@@ -21,7 +21,6 @@ import {
   Download,
   Heart,
   MessageSquare,
-  Eye,
   MoreVertical,
   ExternalLink,
   Share2,
@@ -1193,10 +1192,6 @@ export default function Header({
                       <div className="flex items-center gap-1.5 text-zinc-400 font-medium">
                         <MessageSquare className="w-3.5 h-3.5 text-zinc-400" />
                         <span>{modalConfession.comments_count || modalComments.length || 1} {modalConfession.comments_count === 1 ? 'respuesta' : 'respuestas'}</span>
-                      </div>
-                      <div className="flex items-center gap-1.5 text-zinc-500 ml-auto font-normal">
-                        <Eye className="w-3.5 h-3.5 text-zinc-500" />
-                        <span>{Math.max((modalConfession.comments_count || 1) * 14 + 32, 45)} vistas</span>
                       </div>
                     </div>
 
