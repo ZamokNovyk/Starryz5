@@ -10,7 +10,7 @@ import InstitutionModal from '@/components/Modals/InstitutionModal';
 import SupabaseStatusBadge from '@/components/SupabaseStatusBadge';
 import MyProfile from '@/components/MyProfile';
 import CreateCenterModal from '@/components/Modals/CreateCenterModal';
-import ToolsModal from '@/components/Modals/ToolsModal';
+import ToolsView from '@/components/ToolsView';
 import ActionNotificationPromptModal from '@/components/Modals/ActionNotificationPromptModal';
 import SearchResultsView from '@/components/SearchResultsView';
 import EducationalCenterProfileView from '@/components/EducationalCenterProfileView';
@@ -74,7 +74,6 @@ export default function App() {
   // Modals state
   const [installModalOpen, setInstallModalOpen] = useState(false);
   const [joinModalOpen, setJoinModalOpen] = useState(false);
-  const [toolsModalOpen, setToolsModalOpen] = useState(false);
   const [createCenterModalOpen, setCreateCenterModalOpen] = useState(false);
   const [institutionsRefreshKey, setInstitutionsRefreshKey] = useState(0);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
@@ -240,6 +239,7 @@ export default function App() {
   const userProfileUid = isUserProfileRoute ? route.pathname.replace('/perfil/', '') : '';
 
   const isAdminRoute = route.pathname === '/admin';
+  const isToolsRoute = route.pathname === '/herramientas';
 
   const isSearchRoute = route.pathname === '/search' || (route.pathname === '/' && new URLSearchParams(route.search).has('q'));
   const currentQuery = new URLSearchParams(route.search).get('q') || searchQuery;
@@ -322,6 +322,11 @@ export default function App() {
             onBackToHome={() => navigate('/')} 
             onNavigate={(url) => navigate(url)}
           />
+        ) : isToolsRoute ? (
+          <ToolsView
+            onBack={() => navigate('/')}
+            onNavigate={(url) => navigate(url)}
+          />
         ) : isSearchRoute ? (
           <SearchResultsView
             query={currentQuery}
@@ -375,9 +380,9 @@ export default function App() {
 
         {userRole === 'admin' && (
           <button
-            onClick={() => setToolsModalOpen(true)}
+            onClick={() => navigate('/herramientas')}
             className={`px-5 py-2.5 rounded-full flex items-center gap-2 text-xs font-black transition-all duration-300 cursor-pointer ${
-              toolsModalOpen
+              isToolsRoute
                 ? 'bg-[#eab308] text-black shadow-[0_0_15px_rgba(234,179,8,0.3)]'
                 : 'text-zinc-400 hover:text-white'
             }`}
@@ -436,11 +441,6 @@ export default function App() {
         isOpen={createCenterModalOpen}
         onClose={() => setCreateCenterModalOpen(false)}
         onSuccess={() => setInstitutionsRefreshKey(prev => prev + 1)}
-      />
-
-      <ToolsModal
-        isOpen={toolsModalOpen}
-        onClose={() => setToolsModalOpen(false)}
       />
 
       <ActionNotificationPromptModal />
