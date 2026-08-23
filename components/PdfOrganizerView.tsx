@@ -17,12 +17,7 @@ import {
   Check,
   CheckCircle,
   AlertCircle,
-  Info,
-  ChevronLeft,
-  ChevronRight,
-  MoveHorizontal,
-  MoveLeft,
-  MoveRight
+  Info
 } from 'lucide-react';
 import { PDFDocument, degrees } from 'pdf-lib';
 import { supabase } from '@/src/lib/supabase';
@@ -77,6 +72,10 @@ export default function PdfOrganizerView({ onBack }: PdfOrganizerViewProps) {
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const [previewZoom, setPreviewZoom] = useState(1.0);
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  // File naming and Download Modal
+  const [namingModalOpen, setNamingModalOpen] = useState(false);
+  const [exportFileName, setExportFileName] = useState('Documento_Organizado');
 
   // Download Fallback Modal
   const [downloadModalOpen, setDownloadModalOpen] = useState(false);
@@ -253,6 +252,10 @@ export default function PdfOrganizerView({ onBack }: PdfOrganizerViewProps) {
         });
       }
 
+      // Default export filename from the original first PDF
+      const rawName = file.name.replace(/\.[^/.]+$/, '');
+      setExportFileName(rawName || 'Documento_Organizado');
+
       setPages(newPages);
       showToast('PDF Cargado', `Se importaron ${total} páginas correctamente.`, 'success');
     } catch (err) {
@@ -365,17 +368,6 @@ export default function PdfOrganizerView({ onBack }: PdfOrganizerViewProps) {
     setPages(updated);
   };
 
-  // Move page left/right
-  const handleMovePage = (index: number, direction: 'left' | 'right') => {
-    const targetIdx = direction === 'left' ? index - 1 : index + 1;
-    if (targetIdx < 0 || targetIdx >= pages.length) return;
-
-    const updated = [...pages];
-    const [moved] = updated.splice(index, 1);
-    updated.splice(targetIdx, 0, moved);
-    setPages(updated);
-  };
-
   // Delete page
   const handleDeletePage = (index: number) => {
     const updated = [...pages];
@@ -450,9 +442,10 @@ export default function PdfOrganizerView({ onBack }: PdfOrganizerViewProps) {
   };
 
   // Export & Download PDF Final
-  const handleDownloadFinalPdf = async () => {
+  const handleDownloadFinalPdf = async (customName?: string) => {
     if (pages.length === 0) return;
 
+    setNamingModalOpen(false);
     showLoader(true, 'Generando PDF Final...', 'Uniendo páginas y aplicando rotaciones...');
 
     try {
@@ -482,14 +475,18 @@ export default function PdfOrganizerView({ onBack }: PdfOrganizerViewProps) {
 
       showLoader(false);
 
+      const rawInput = (customName || exportFileName || 'Documento_Organizado').trim();
+      const sanitizedName = rawInput.replace(/[/\\?%*:|"<>]/g, '_') || 'Documento_Organizado';
+      const finalFileName = sanitizedName.toLowerCase().endsWith('.pdf') ? sanitizedName : `${sanitizedName}.pdf`;
+
       try {
         const a = document.createElement('a');
         a.href = downloadUrl;
-        a.download = 'Starryz_Documento_Organizado.pdf';
+        a.download = finalFileName;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        showToast('¡Éxito!', 'Tu archivo PDF ha sido descargado.', 'success');
+        showToast('¡Éxito!', `Descargando "${finalFileName}"`, 'success');
       } catch (e) {
         setDownloadBlobUrl(downloadUrl);
         setDownloadModalOpen(true);
@@ -587,7 +584,7 @@ export default function PdfOrganizerView({ onBack }: PdfOrganizerViewProps) {
 
             {pages.length > 0 && (
               <button
-                onClick={handleDownloadFinalPdf}
+                onClick={() => setNamingModalOpen(true)}
                 className="bg-gradient-to-r from-[#7d2ae8] to-indigo-600 hover:from-[#6720c8] hover:to-indigo-700 text-white px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold shadow-lg shadow-purple-900/30 transition flex items-center gap-2 cursor-pointer"
               >
                 <Download className="w-4 h-4" />
@@ -701,33 +698,13 @@ export default function PdfOrganizerView({ onBack }: PdfOrganizerViewProps) {
                 {/* Actions Footer */}
                 <div className="p-2 bg-[#141518] border-t border-zinc-800/80 flex items-center justify-between text-zinc-400 text-xs gap-1">
                   
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => handleRotatePage(index)}
-                      title="Rotar 90°"
-                      className="p-1.5 hover:bg-zinc-800 hover:text-purple-400 rounded-lg transition cursor-pointer"
-                    >
-                      <RotateCw className="w-3.5 h-3.5" />
-                    </button>
-
-                    <button
-                      onClick={() => handleMovePage(index, 'left')}
-                      disabled={index === 0}
-                      title="Mover a la izquierda"
-                      className="p-1.5 hover:bg-zinc-800 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed rounded-lg transition cursor-pointer"
-                    >
-                      <ChevronLeft className="w-3.5 h-3.5" />
-                    </button>
-
-                    <button
-                      onClick={() => handleMovePage(index, 'right')}
-                      disabled={index === pages.length - 1}
-                      title="Mover a la derecha"
-                      className="p-1.5 hover:bg-zinc-800 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed rounded-lg transition cursor-pointer"
-                    >
-                      <ChevronRight className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => handleRotatePage(index)}
+                    title="Rotar 90°"
+                    className="p-1.5 hover:bg-zinc-800 hover:text-purple-400 rounded-lg transition cursor-pointer"
+                  >
+                    <RotateCw className="w-3.5 h-3.5" />
+                  </button>
 
                   {/* Direct button to insert PDF right after this page */}
                   <button
@@ -967,6 +944,83 @@ export default function PdfOrganizerView({ onBack }: PdfOrganizerViewProps) {
         </div>
       )}
 
+      {/* Modal Nombrar y Descargar PDF */}
+      {namingModalOpen && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
+          <div className="bg-[#121316] border border-zinc-800 rounded-2xl p-6 shadow-2xl max-w-md w-full space-y-5">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-[#00c4cc]">
+                  <Download className="w-5 h-5 text-[#7d2ae8]" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-white text-sm">Descargar PDF Organizado</h3>
+                  <p className="text-[11px] text-zinc-400">Personaliza el nombre de tu archivo final</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setNamingModalOpen(false)}
+                className="text-zinc-500 hover:text-white transition p-1 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleDownloadFinalPdf(exportFileName);
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                  Nombre del archivo:
+                </label>
+                <div className="relative flex items-center">
+                  <input
+                    type="text"
+                    autoFocus
+                    value={exportFileName}
+                    onChange={(e) => setExportFileName(e.target.value)}
+                    placeholder="Ej. Mi_Documento_Organizado"
+                    className="w-full pl-3.5 pr-14 py-2.5 bg-zinc-900 border border-zinc-700 rounded-xl focus:border-[#7d2ae8] focus:ring-1 focus:ring-[#7d2ae8] focus:outline-none text-sm font-semibold text-white transition-all placeholder:text-zinc-600"
+                  />
+                  <span className="absolute right-2.5 text-[11px] font-mono font-bold text-zinc-400 bg-zinc-800 px-2 py-0.5 rounded-lg border border-zinc-700 pointer-events-none select-none">
+                    .pdf
+                  </span>
+                </div>
+                <p className="text-[11px] text-zinc-500 mt-1.5">
+                  Se guardará como: <span className="text-zinc-300 font-mono font-medium">{(exportFileName.trim() || 'Documento_Organizado')}.pdf</span>
+                </p>
+              </div>
+
+              <div className="bg-purple-950/20 border border-purple-500/20 rounded-xl p-3 flex items-center gap-2.5 text-xs text-purple-300">
+                <Info className="w-4 h-4 text-[#00c4cc] shrink-0" />
+                <span className="leading-snug">El documento final incluirá todas las páginas ordenadas, rotadas y hojas añadidas.</span>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-zinc-800">
+                <button
+                  type="button"
+                  onClick={() => setNamingModalOpen(false)}
+                  className="px-4 py-2.5 rounded-xl border border-zinc-800 text-zinc-400 hover:bg-zinc-800 text-xs font-semibold transition cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#7d2ae8] to-indigo-600 hover:from-[#6720c8] hover:to-indigo-700 text-white text-xs font-extrabold transition flex items-center gap-2 shadow-lg shadow-purple-900/30 cursor-pointer"
+                >
+                  <Download className="w-4 h-4" />
+                  Descargar PDF
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Fallback Download Modal */}
       {downloadModalOpen && downloadBlobUrl && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 z-50">
@@ -979,7 +1033,7 @@ export default function PdfOrganizerView({ onBack }: PdfOrganizerViewProps) {
             <div className="flex flex-col gap-2 pt-2">
               <a
                 href={downloadBlobUrl}
-                download="Starryz_Documento_Consolidado.pdf"
+                download={`${(exportFileName.trim() || 'Documento_Organizado')}.pdf`}
                 className="w-full py-2.5 rounded-xl bg-[#7d2ae8] hover:bg-[#6720c8] text-white text-xs font-semibold transition flex items-center justify-center gap-2 shadow-lg shadow-purple-900/30"
               >
                 <Download className="w-4 h-4" />

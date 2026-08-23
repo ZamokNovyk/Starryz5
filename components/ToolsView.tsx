@@ -10,7 +10,8 @@ import {
   ChevronRight,
   Maximize2,
   Lock,
-  Plus
+  Plus,
+  Scissors
 } from 'lucide-react';
 import { supabase } from '@/src/lib/supabase';
 import { useAuth } from '@/src/context/AuthContext';
@@ -27,6 +28,7 @@ interface WindowTool {
   category: string;
   url: string;
   brandColor: string;
+  buttonGradient?: string;
   isAvailable: boolean;
   isExternal?: boolean;
   icon: React.ReactNode;
@@ -75,9 +77,22 @@ export default function ToolsView({ onBack, onNavigate }: ToolsViewProps) {
       category: 'Edición & Organización',
       url: '/herramientas/organizadorpdf',
       brandColor: 'from-[#7d2ae8] to-[#00c4cc]',
+      buttonGradient: 'bg-gradient-to-r from-[#7d2ae8] to-[#00c4cc] shadow-[0_4px_16px_rgba(125,42,232,0.25)]',
       isAvailable: true,
       isExternal: false,
       icon: <Layers className="w-8 h-8 text-white" />
+    },
+    {
+      id: 'dividir-pdf',
+      title: 'Dividir PDF',
+      description: 'Separa por rangos de páginas personalizados, extrae hojas individuales o divide en bloques de tamaño fijo.',
+      category: 'Corte & Extracción',
+      url: '/herramientas/dividirpdf',
+      brandColor: 'from-[#e11d48] to-[#f59e0b]',
+      buttonGradient: 'bg-gradient-to-r from-[#e11d48] to-[#be123c] shadow-[0_4px_16px_rgba(225,29,72,0.25)]',
+      isAvailable: true,
+      isExternal: false,
+      icon: <Scissors className="w-8 h-8 text-white" />
     },
     {
       id: 'word-to-pdf',
@@ -203,7 +218,7 @@ export default function ToolsView({ onBack, onNavigate }: ToolsViewProps) {
                 ) : (
                   <button 
                     onClick={() => onNavigate(tool.url)}
-                    className="w-full py-3 bg-gradient-to-r from-[#7d2ae8] to-[#00c4cc] hover:opacity-90 text-white font-extrabold text-xs uppercase tracking-wider rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-[0_4px_16px_rgba(125,42,232,0.25)]"
+                    className={`w-full py-3 ${tool.buttonGradient || 'bg-gradient-to-r from-[#7d2ae8] to-[#00c4cc] shadow-[0_4px_16px_rgba(125,42,232,0.25)]'} hover:opacity-90 text-white font-extrabold text-xs uppercase tracking-wider rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer`}
                   >
                     <span>Abrir Ventana</span>
                     <ChevronRight className="w-4 h-4" />

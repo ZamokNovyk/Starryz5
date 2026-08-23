@@ -222,13 +222,96 @@ export async function deleteCollection(firebaseUid: string, collectionId: string
 }
 
 /**
+ * Filter out collection items that refer to deleted professors or educational centers,
+ * and clean them up from the database/localStorage in the background.
+ */
+async function filterOrphanCollectionItems(items: CollectionItem[], firebaseUid: string, isLocal: boolean): Promise<CollectionItem[]> {
+  if (!items || items.length === 0) return [];
+
+  try {
+    const professorIds = items.filter(i => i.item_type === 'professor').map(i => i.item_id);
+    const centerIds = items.filter(i => i.item_type === 'center').map(i => i.item_id);
+
+    const existingProfSet = new Set<string>();
+    const existingCenterSet = new Set<string>();
+
+    if (professorIds.length > 0) {
+      const { data: profs, error: profsErr } = await supabase
+        .from('professors')
+        .select('id')
+        .in('id', professorIds);
+      if (!profsErr && profs) {
+        profs.forEach(p => existingProfSet.add(p.id));
+      }
+    }
+
+    if (centerIds.length > 0) {
+      const { data: centers, error: centersErr } = await supabase
+        .from('educational_centers')
+        .select('id')
+        .in('id', centerIds);
+      if (!centersErr && centers) {
+        centers.forEach(c => existingCenterSet.add(c.id));
+      }
+    }
+
+    const validItems: CollectionItem[] = [];
+    const orphanItemIds: string[] = [];
+
+    for (const item of items) {
+      const isProfessor = item.item_type === 'professor';
+      const exists = isProfessor
+        ? existingProfSet.has(item.item_id)
+        : existingCenterSet.has(item.item_id);
+
+      if (exists) {
+        validItems.push(item);
+      } else {
+        orphanItemIds.push(item.id);
+      }
+    }
+
+    // Clean up orphans
+    if (orphanItemIds.length > 0) {
+      if (isLocal) {
+        if (typeof window !== 'undefined') {
+          try {
+            const allLocalItems = JSON.parse(localStorage.getItem(LOCAL_STORAGE_ITEMS_KEY) || '[]') as CollectionItem[];
+            const filtered = allLocalItems.filter(i => !orphanItemIds.includes(i.id));
+            localStorage.setItem(LOCAL_STORAGE_ITEMS_KEY, JSON.stringify(filtered));
+            console.log(`[Collections] Cleaned up ${orphanItemIds.length} orphan local collection items.`);
+          } catch (e) {
+            console.warn('Error cleaning up local orphans:', e);
+          }
+        }
+      } else {
+        supabase
+          .from('collection_items')
+          .delete()
+          .in('id', orphanItemIds)
+          .then(({ error }) => {
+            if (error) console.warn('[Collections] Error cleaning up orphan collection items from Supabase:', error);
+            else console.log(`[Collections] Cleaned up ${orphanItemIds.length} orphan collection items from Supabase.`);
+          });
+      }
+    }
+
+    return validItems;
+  } catch (err) {
+    console.warn('[Collections] Error filtering orphan collection items:', err);
+    return items;
+  }
+}
+
+/**
  * Fetch all items across all collections of a user
  */
 export async function getAllCollectionItems(firebaseUid: string): Promise<CollectionItem[]> {
   if (!firebaseUid) return [];
 
   if (useLocalStorageFallback) {
-    return getLocalItems(firebaseUid);
+    const localItems = getLocalItems(firebaseUid);
+    return filterOrphanCollectionItems(localItems, firebaseUid, true);
   }
 
   try {
@@ -240,16 +323,19 @@ export async function getAllCollectionItems(firebaseUid: string): Promise<Collec
     if (error) {
       if (error.code === '42P01' || error.message?.includes('does not exist')) {
         useLocalStorageFallback = true;
-        return getLocalItems(firebaseUid);
+        const localItems = getLocalItems(firebaseUid);
+        return filterOrphanCollectionItems(localItems, firebaseUid, true);
       }
       throw error;
     }
 
-    return (data as CollectionItem[]) || [];
+    const items = (data as CollectionItem[]) || [];
+    return filterOrphanCollectionItems(items, firebaseUid, false);
   } catch (err) {
     console.warn('Error fetching items, falling back to localStorage:', err);
     useLocalStorageFallback = true;
-    return getLocalItems(firebaseUid);
+    const localItems = getLocalItems(firebaseUid);
+    return filterOrphanCollectionItems(localItems, firebaseUid, true);
   }
 }
 
