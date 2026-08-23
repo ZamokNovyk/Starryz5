@@ -6,6 +6,7 @@ import {
   ArrowLeft,
   FileText,
   ExternalLink,
+  Layers,
   ChevronRight,
   Maximize2,
   Lock,
@@ -27,6 +28,7 @@ interface WindowTool {
   url: string;
   brandColor: string;
   isAvailable: boolean;
+  isExternal?: boolean;
   icon: React.ReactNode;
 }
 
@@ -67,6 +69,17 @@ export default function ToolsView({ onBack, onNavigate }: ToolsViewProps) {
   // List of Window Tools
   const tools: WindowTool[] = [
     {
+      id: 'organizador-pdf',
+      title: 'Organizador de PDF',
+      description: 'Combina, organiza, rota, extrae y añade hojas en blanco a tus documentos PDF estilo Canva.',
+      category: 'Edición & Organización',
+      url: '/herramientas/organizadorpdf',
+      brandColor: 'from-[#7d2ae8] to-[#00c4cc]',
+      isAvailable: true,
+      isExternal: false,
+      icon: <Layers className="w-8 h-8 text-white" />
+    },
+    {
       id: 'word-to-pdf',
       title: 'Convertidor Word a PDF',
       description: 'Convierte tus documentos .docx a archivos PDF de forma rápida, precisa y con el formato intacto.',
@@ -74,6 +87,7 @@ export default function ToolsView({ onBack, onNavigate }: ToolsViewProps) {
       url: 'https://www.ilovepdf.com/word_to_pdf',
       brandColor: 'from-[#e11d48] to-[#be123c]', // iLovePDF theme reddish
       isAvailable: true,
+      isExternal: true,
       icon: <FileText className="w-8 h-8 text-white" />
     }
   ];
@@ -176,15 +190,25 @@ export default function ToolsView({ onBack, onNavigate }: ToolsViewProps) {
 
               {/* Action Button */}
               {tool.isAvailable ? (
-                <a 
-                  href={tool.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full py-3 bg-[#eab308] hover:bg-white text-black font-extrabold text-xs uppercase tracking-wider rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-[0_4px_12px_rgba(234,179,8,0.1)]"
-                >
-                  <span>Abrir Ventana</span>
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </a>
+                tool.isExternal ? (
+                  <a 
+                    href={tool.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full py-3 bg-[#eab308] hover:bg-white text-black font-extrabold text-xs uppercase tracking-wider rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-[0_4px_12px_rgba(234,179,8,0.1)]"
+                  >
+                    <span>Abrir Ventana</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                ) : (
+                  <button 
+                    onClick={() => onNavigate(tool.url)}
+                    className="w-full py-3 bg-gradient-to-r from-[#7d2ae8] to-[#00c4cc] hover:opacity-90 text-white font-extrabold text-xs uppercase tracking-wider rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-[0_4px_16px_rgba(125,42,232,0.25)]"
+                  >
+                    <span>Abrir Ventana</span>
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                )
               ) : (
                 <button 
                   disabled
