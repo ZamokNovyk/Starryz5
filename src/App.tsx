@@ -10,16 +10,18 @@ import InstitutionModal from '@/components/Modals/InstitutionModal';
 import SupabaseStatusBadge from '@/components/SupabaseStatusBadge';
 import MyProfile from '@/components/MyProfile';
 import CreateCenterModal from '@/components/Modals/CreateCenterModal';
+import ToolsModal from '@/components/Modals/ToolsModal';
 import ActionNotificationPromptModal from '@/components/Modals/ActionNotificationPromptModal';
 import SearchResultsView from '@/components/SearchResultsView';
 import EducationalCenterProfileView from '@/components/EducationalCenterProfileView';
 import ProfessorProfile from '@/src/pages/ProfessorProfile';
 import AdminDashboard from '@/src/components/AdminDashboard';
 import { useAuth } from '@/src/context/AuthContext';
-import { LayoutGrid, User, Plus, Bell, X } from 'lucide-react';
+import { LayoutGrid, User, Plus, Bell, X, Wrench } from 'lucide-react';
 import { useFCMNotifications } from '@/hooks/useFCMNotifications';
 import { Institution, Student } from '@/lib/mockData';
 import { getEducationalCenters, EducationalCenter } from '@/src/lib/centers';
+import { supabase } from '@/src/lib/supabase';
 
 function generateAcronym(name: string): string {
   const cleanWords = name
@@ -67,14 +69,42 @@ export default function App() {
   // DB Centers state
   const [dbCenters, setDbCenters] = useState<EducationalCenter[]>([]);
   const [dbCentersLoading, setDbCentersLoading] = useState(false);
+  const [userRole, setUserRole] = useState<string | null>(null);
 
   // Modals state
   const [installModalOpen, setInstallModalOpen] = useState(false);
   const [joinModalOpen, setJoinModalOpen] = useState(false);
+  const [toolsModalOpen, setToolsModalOpen] = useState(false);
   const [createCenterModalOpen, setCreateCenterModalOpen] = useState(false);
   const [institutionsRefreshKey, setInstitutionsRefreshKey] = useState(0);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [selectedInstitution, setSelectedInstitution] = useState<Institution | null>(null);
+
+  // Fetch user role on user state change
+  useEffect(() => {
+    async function fetchUserRole() {
+      if (!user) {
+        setUserRole(null);
+        return;
+      }
+      try {
+        const { data, error } = await supabase
+          .from('users')
+          .select('role')
+          .eq('firebase_uid', user.uid)
+          .maybeSingle();
+        if (!error && data) {
+          setUserRole(data.role);
+        } else {
+          setUserRole(null);
+        }
+      } catch (err) {
+        console.error('Error fetching user role in App:', err);
+        setUserRole(null);
+      }
+    }
+    fetchUserRole();
+  }, [user]);
 
   // Sync route popstate events
   useEffect(() => {
@@ -333,7 +363,7 @@ export default function App() {
           onClick={() => {
             navigate('/');
           }}
-          className={`px-6 py-2.5 rounded-full flex items-center gap-2.5 text-xs font-black transition-all duration-300 cursor-pointer ${
+          className={`px-5 py-2.5 rounded-full flex items-center gap-2 text-xs font-black transition-all duration-300 cursor-pointer ${
             route.pathname === '/' || isSearchRoute || isProfileRoute || isProfessorRoute
               ? 'bg-[#eab308] text-black shadow-[0_0_15px_rgba(234,179,8,0.3)]'
               : 'text-zinc-400 hover:text-white'
@@ -342,10 +372,24 @@ export default function App() {
           <LayoutGrid className="w-4 h-4" />
           <span>Home</span>
         </button>
+
+        {userRole === 'admin' && (
+          <button
+            onClick={() => setToolsModalOpen(true)}
+            className={`px-5 py-2.5 rounded-full flex items-center gap-2 text-xs font-black transition-all duration-300 cursor-pointer ${
+              toolsModalOpen
+                ? 'bg-[#eab308] text-black shadow-[0_0_15px_rgba(234,179,8,0.3)]'
+                : 'text-zinc-400 hover:text-white'
+            }`}
+          >
+            <Wrench className="w-4 h-4" />
+            <span>Herramientas</span>
+          </button>
+        )}
         
         <button
           onClick={handleProfileTabClick}
-          className={`px-6 py-2.5 rounded-full flex items-center gap-2.5 text-xs font-black transition-all duration-300 cursor-pointer ${
+          className={`px-5 py-2.5 rounded-full flex items-center gap-2 text-xs font-black transition-all duration-300 cursor-pointer ${
             route.pathname === '/perfil' || isUserProfileRoute
               ? 'bg-[#eab308] text-black shadow-[0_0_15px_rgba(234,179,8,0.3)]'
               : 'text-zinc-400 hover:text-white'
@@ -392,6 +436,11 @@ export default function App() {
         isOpen={createCenterModalOpen}
         onClose={() => setCreateCenterModalOpen(false)}
         onSuccess={() => setInstitutionsRefreshKey(prev => prev + 1)}
+      />
+
+      <ToolsModal
+        isOpen={toolsModalOpen}
+        onClose={() => setToolsModalOpen(false)}
       />
 
       <ActionNotificationPromptModal />
