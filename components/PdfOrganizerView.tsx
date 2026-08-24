@@ -601,17 +601,13 @@ export default function PdfOrganizerView({ onBack }: PdfOrganizerViewProps) {
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
           
           <div className="flex items-center flex-wrap gap-2">
-            <label className="cursor-pointer bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-white px-4 py-2 rounded-xl text-xs font-semibold shadow-sm transition flex items-center gap-2">
-              <FileUp className="w-4 h-4 text-[#00c4cc]" />
-              <span>1. Cargar PDF Principal</span>
-              <input
-                ref={fileInputMainRef}
-                type="file"
-                accept="application/pdf"
-                className="hidden"
-                onChange={handleLoadMainPdf}
-              />
-            </label>
+            <input
+              ref={fileInputMainRef}
+              type="file"
+              accept="application/pdf"
+              className="hidden"
+              onChange={handleLoadMainPdf}
+            />
 
             <button
               onClick={handleOpenBlankModal}
