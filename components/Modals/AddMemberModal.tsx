@@ -1,14 +1,17 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X, User, Award, ShieldAlert, CheckCircle2 } from 'lucide-react';
+import { X, ShieldAlert, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '@/src/context/AuthContext';
 import { createProfessor } from '@/src/lib/professors';
+import { createStudent } from '@/src/lib/students';
 
 interface AddMemberModalProps {
   isOpen: boolean;
   onClose: () => void;
   instituteId: string; // The slug/id of the current educational center
+  defaultRole?: 'Alumno' | 'Profesor';
+  mode?: 'professor' | 'student';
   onSuccess: () => void; // Refresh callback
 }
 
@@ -16,15 +19,29 @@ export default function AddMemberModal({
   isOpen,
   onClose,
   instituteId,
+  defaultRole = 'Profesor',
+  mode,
   onSuccess,
 }: AddMemberModalProps) {
   const { user } = useAuth();
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
-  const [role, setRole] = useState<'Alumno' | 'Profesor'>('Profesor');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+
+  // Determine if adding student or professor
+  const isStudent = mode === 'student' || defaultRole === 'Alumno';
+
+  // Reset form when modal opens
+  React.useEffect(() => {
+    if (isOpen) {
+      setError(null);
+      setSuccess(false);
+      setFirstName('');
+      setLastName('');
+    }
+  }, [isOpen, isStudent]);
 
   if (!isOpen) return null;
 
@@ -45,20 +62,28 @@ export default function AddMemberModal({
     try {
       setSubmitting(true);
       
-      // Use our backend service
-      await createProfessor({
-        nombre: firstName.trim(),
-        apellidos: lastName.trim(),
-        role,
-        instituteId,
-      }, user.uid);
+      if (isStudent) {
+        // Guarda en la tabla 'students' de Supabase
+        await createStudent({
+          nombre: firstName.trim(),
+          apellidos: lastName.trim(),
+          instituteId,
+        }, user.uid);
+      } else {
+        // Guarda en la tabla 'professors' de Supabase
+        await createProfessor({
+          nombre: firstName.trim(),
+          apellidos: lastName.trim(),
+          role: 'Profesor',
+          instituteId,
+        }, user.uid);
+      }
 
       setSuccess(true);
       setTimeout(() => {
         setSuccess(false);
         setFirstName('');
         setLastName('');
-        setRole('Profesor');
         onSuccess();
         onClose();
       }, 1500);
@@ -88,10 +113,12 @@ export default function AddMemberModal({
         {/* Encabezado */}
         <div className="space-y-1">
           <h2 className="text-xl font-black text-[#eab308] uppercase tracking-wide">
-            Añadir Miembro
+            {isStudent ? 'Añadir Estudiante' : 'Añadir Profesor'}
           </h2>
           <p className="text-xs text-zinc-400">
-            Añade un nuevo estudiante o profesor a esta institución.
+            {isStudent 
+              ? 'Añade un nuevo estudiante a esta institución.' 
+              : 'Añade un nuevo profesor a esta institución.'}
           </p>
         </div>
 
@@ -100,8 +127,14 @@ export default function AddMemberModal({
             <div className="w-12 h-12 bg-emerald-500/10 border border-emerald-500/30 rounded-full flex items-center justify-center text-emerald-400 mx-auto">
               <CheckCircle2 className="w-6 h-6" />
             </div>
-            <p className="text-sm font-bold text-white uppercase tracking-wider">¡Miembro añadido con éxito!</p>
-            <p className="text-xs text-zinc-400">Se generó el enlace permanente para su perfil.</p>
+            <p className="text-sm font-bold text-white uppercase tracking-wider">
+              {isStudent ? '¡Estudiante añadido con éxito!' : '¡Profesor añadido con éxito!'}
+            </p>
+            <p className="text-xs text-zinc-400">
+              {isStudent 
+                ? 'Se guardó correctamente en la tabla de estudiantes.' 
+                : 'Se guardó correctamente en la tabla de profesores.'}
+            </p>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-5">
@@ -143,67 +176,15 @@ export default function AddMemberModal({
               </div>
             </div>
 
-            {/* Selector de Rol */}
-            <div className="space-y-2.5">
-              <label className="block text-xs font-bold text-zinc-300 uppercase tracking-wider">
-                Rol
-              </label>
-              <div className="flex items-center gap-6">
-                {/* Alumno Radio */}
-                <label className="flex items-center gap-2.5 cursor-pointer group">
-                  <input
-                    type="radio"
-                    name="role"
-                    checked={role === 'Alumno'}
-                    onChange={() => setRole('Alumno')}
-                    className="sr-only"
-                  />
-                  <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-all ${
-                    role === 'Alumno' 
-                      ? 'border-[#eab308]' 
-                      : 'border-zinc-700 group-hover:border-zinc-500'
-                  }`}>
-                    {role === 'Alumno' && (
-                      <div className="w-2 h-2 rounded-full bg-[#eab308]" />
-                    )}
-                  </div>
-                  <span className="text-xs font-extrabold text-zinc-300 group-hover:text-white transition-colors">
-                    Alumno
-                  </span>
-                </label>
-
-                {/* Profesor Radio */}
-                <label className="flex items-center gap-2.5 cursor-pointer group">
-                  <input
-                    type="radio"
-                    name="role"
-                    checked={role === 'Profesor'}
-                    onChange={() => setRole('Profesor')}
-                    className="sr-only"
-                  />
-                  <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-all ${
-                    role === 'Profesor' 
-                      ? 'border-[#eab308]' 
-                      : 'border-zinc-700 group-hover:border-zinc-500'
-                  }`}>
-                    {role === 'Profesor' && (
-                      <div className="w-2 h-2 rounded-full bg-[#eab308]" />
-                    )}
-                  </div>
-                  <span className="text-xs font-extrabold text-zinc-300 group-hover:text-white transition-colors">
-                    Profesor
-                  </span>
-                </label>
-              </div>
-            </div>
-
             {/* Botón de Envío */}
             <button
               type="submit"
               disabled={submitting}
               className="w-full py-3.5 rounded-xl bg-[#eab308] hover:bg-[#d9a307] disabled:bg-zinc-800 disabled:text-zinc-600 text-black font-black text-xs uppercase tracking-widest shadow-lg hover:shadow-[#eab308]/15 transition-all cursor-pointer"
             >
-              {submitting ? 'Añadiendo Miembro...' : 'Añadir Miembro'}
+              {submitting
+                ? (isStudent ? 'Añadiendo Estudiante...' : 'Añadiendo Profesor...')
+                : (isStudent ? 'Añadir Estudiante' : 'Añadir Profesor')}
             </button>
           </form>
         )}

@@ -33,7 +33,8 @@ import {
   CornerDownRight,
   Trash2,
   AlertTriangle,
-  Settings
+  Settings,
+  GraduationCap
 } from 'lucide-react';
 import { supabase } from '@/src/lib/supabase';
 import { Institution } from '@/lib/mockData';
@@ -65,6 +66,7 @@ const TwitterXIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
   </svg>
 );
 import { getProfessorsByInstitute, Professor as DbProfessor } from '@/src/lib/professors';
+import { getStudentsByInstitute, Student as DbStudent } from '@/src/lib/students';
 import { 
   getCenterConfessions, 
   toggleConfessionReaction, 
@@ -89,9 +91,10 @@ interface EducationalCenterProfileViewProps {
   institution: Institution;
   onBack: () => void;
   onSelectProfessor?: (slug: string) => void;
+  onSelectStudent?: (slug: string) => void;
 }
 
-type TabType = 'Wiki' | 'Profesores' | 'Confesiones' | 'Galeria';
+type TabType = 'Wiki' | 'Profesores' | 'Estudiantes' | 'Confesiones' | 'Galeria';
 type ViewMode = 'list' | 'grid';
 type SortOption = 'alphabetical' | 'score_desc' | 'score_asc' | 'fans_desc' | 'knows_desc' | 'crushes_desc';
 
@@ -127,7 +130,9 @@ export default function EducationalCenterProfileView({
   const [copied, setCopied] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [addMemberOpen, setAddMemberOpen] = useState(false);
+  const [addMemberRole, setAddMemberRole] = useState<'Profesor' | 'Alumno'>('Profesor');
   const [dbProfessors, setDbProfessors] = useState<DbProfessor[]>([]);
+  const [dbStudents, setDbStudents] = useState<DbStudent[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
 
   // Confessions state
@@ -176,6 +181,13 @@ export default function EducationalCenterProfileView({
   const [editTwitter, setEditTwitter] = useState('');
 
   const isAdmin = (user as any)?.role === 'admin' || user?.email === 'wikistars12@gmail.com';
+
+  // Guard: if user is not admin and activeTab is 'Estudiantes', reset to 'Profesores'
+  useEffect(() => {
+    if (!isAdmin && activeTab === 'Estudiantes') {
+      setActiveTab('Profesores');
+    }
+  }, [isAdmin, activeTab]);
 
   // Photo URL Validation Helper
   const photoUrlError = (() => {
@@ -422,8 +434,13 @@ export default function EducationalCenterProfileView({
   const loadMembers = async () => {
     try {
       setLoadingMembers(true);
-      const data = await getProfessorsByInstitute(institution.id || institution.slug || '');
-      setDbProfessors(data);
+      const instituteId = institution.id || institution.slug || '';
+      const [profs, studs] = await Promise.all([
+        getProfessorsByInstitute(instituteId),
+        getStudentsByInstitute(instituteId),
+      ]);
+      setDbProfessors(profs);
+      setDbStudents(studs);
     } catch (err) {
       console.error('Error al cargar miembros de Supabase:', err);
     } finally {
@@ -538,19 +555,33 @@ export default function EducationalCenterProfileView({
   };
 
   // Convert real database payload into member list UI format
-  const mappedMembers: MemberItem[] = dbProfessors.map((dp) => ({
+  const mappedProfessors: MemberItem[] = dbProfessors.map((dp) => ({
     id: dp.id,
-    name: dp.nombre_completo || `${dp.nombre || ''} ${dp.apellidos || ''}`.trim() || 'Miembro',
+    name: dp.nombre_completo || `${dp.nombre || ''} ${dp.apellidos || ''}`.trim() || 'Profesor',
     avatar: dp.avatar_url || '',
     fans: typeof dp.fans_count === 'number' ? dp.fans_count : 0,
     knows: typeof dp.knows_count === 'number' ? dp.knows_count : 0,
     crushes: typeof dp.crushes_count === 'number' ? dp.crushes_count : 0,
     score: typeof dp.score === 'number' ? Number(dp.score) : 0.0,
-    role: dp.role || 'Profesor',
+    role: 'Profesor',
   }));
 
+  const mappedStudents: MemberItem[] = dbStudents.map((ds) => ({
+    id: ds.id,
+    name: ds.nombre_completo || `${ds.nombre || ''} ${ds.apellidos || ''}`.trim() || 'Estudiante',
+    avatar: ds.avatar_url || '',
+    fans: typeof ds.fans_count === 'number' ? ds.fans_count : 0,
+    knows: typeof ds.knows_count === 'number' ? ds.knows_count : 0,
+    crushes: typeof ds.crushes_count === 'number' ? ds.crushes_count : 0,
+    score: typeof ds.score === 'number' ? Number(ds.score) : 0.0,
+    role: 'Alumno',
+  }));
+
+  // Selected list based on active tab
+  const currentMemberList = activeTab === 'Estudiantes' ? mappedStudents : mappedProfessors;
+
   // Filter list with searchTerm
-  const filteredMembers = mappedMembers.filter((p) =>
+  const filteredMembers = currentMemberList.filter((p) =>
     p.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -693,7 +724,15 @@ export default function EducationalCenterProfileView({
           type="text"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder="Buscar estudiante o profesor..."
+          placeholder={
+            activeTab === 'Estudiantes'
+              ? 'Buscar estudiante...'
+              : activeTab === 'Profesores'
+              ? 'Buscar profesor...'
+              : activeTab === 'Confesiones'
+              ? 'Buscar en confesiones...'
+              : 'Buscar en el centro...'
+          }
           className="w-full bg-[#0d0d0d] border border-zinc-800/80 rounded-full py-3.5 pl-14 pr-6 text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-[#eab308]/40 transition-all font-medium"
         />
       </div>
@@ -728,6 +767,30 @@ export default function EducationalCenterProfileView({
             <span>Profesores</span>
           </button>
 
+          {/* TAB ESTUDIANTES (VISIBLE SOLO PARA ADMIN) */}
+          {isAdmin && (
+            <button
+              onClick={() => setActiveTab('Estudiantes')}
+              className={`px-5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+                activeTab === 'Estudiantes'
+                  ? 'bg-[#eab308] text-black font-extrabold shadow-sm'
+                  : 'text-zinc-400 hover:text-white hover:bg-[#151515]'
+              }`}
+            >
+              <GraduationCap className="w-4 h-4" />
+              <span>Estudiantes</span>
+              <span
+                className={`px-1.5 py-0.5 text-[9px] font-black rounded-full uppercase tracking-tighter ${
+                  activeTab === 'Estudiantes'
+                    ? 'bg-black/20 text-black border border-black/30'
+                    : 'bg-[#eab308]/15 text-[#eab308] border border-[#eab308]/30'
+                }`}
+              >
+                Admin
+              </span>
+            </button>
+          )}
+
           {/* TAB CONFESIONES */}
           <button
             onClick={() => setActiveTab('Confesiones')}
@@ -758,7 +821,7 @@ export default function EducationalCenterProfileView({
       </div>
 
       {/* CONTROLES DE ORDEN / VISTA (Lista, Mosaico y Menú Ordenar) */}
-      {activeTab === 'Profesores' && (
+      {(activeTab === 'Profesores' || activeTab === 'Estudiantes') && (
         <div className="flex items-center justify-end gap-3 pt-1 relative">
           
           {/* Toggle Lista / Mosaico */}
@@ -841,18 +904,20 @@ export default function EducationalCenterProfileView({
 
       {/* RENDERIZADO DE CONTENIDOS SEGÚN LA TAB ACTIVA */}
       
-      {/* 1. PROFESORES TAB */}
-      {activeTab === 'Profesores' && (
+      {/* 1. PROFESORES / ESTUDIANTES TAB */}
+      {(activeTab === 'Profesores' || activeTab === 'Estudiantes') && (
         <>
           {rankedMembers.length === 0 ? (
             <div className="bg-[#0d0d0d] border border-zinc-800/40 rounded-2xl p-12 text-center text-zinc-500 text-sm">
               {loadingMembers ? (
                 <div className="flex flex-col items-center gap-3">
                   <div className="w-8 h-8 border-2 border-[#eab308] border-t-transparent rounded-full animate-spin"></div>
-                  <span>Cargando miembros...</span>
+                  <span>Cargando {activeTab === 'Estudiantes' ? 'estudiantes' : 'profesores'}...</span>
                 </div>
               ) : (
-                'No se encontraron miembros con la búsqueda actual.'
+                activeTab === 'Estudiantes'
+                  ? 'No se encontraron estudiantes con la búsqueda actual.'
+                  : 'No se encontraron profesores con la búsqueda actual.'
               )}
             </div>
           ) : viewMode === 'list' ? (
@@ -862,15 +927,23 @@ export default function EducationalCenterProfileView({
                 <div
                   key={p.id}
                   onClick={() => {
-                    if (onSelectProfessor) {
-                      onSelectProfessor(p.id);
+                    if (activeTab === 'Estudiantes') {
+                      if (onSelectStudent) {
+                        onSelectStudent(p.id);
+                      } else if (onSelectProfessor) {
+                        onSelectProfessor(p.id);
+                      }
+                    } else {
+                      if (onSelectProfessor) {
+                        onSelectProfessor(p.id);
+                      }
                     }
                   }}
                   className="group flex items-center justify-between gap-4 bg-[#0d0d0d] border border-zinc-800/40 hover:border-[#eab308]/30 hover:bg-[#121212] rounded-2xl p-4 transition-all duration-300 cursor-pointer shadow-sm"
                 >
                   <div className="flex items-center gap-4 min-w-0">
                     {/* Rank circular */}
-                    <div className="w-8 h-8 rounded-full bg-[#131313] border border-zinc-800/80 flex items-center justify-center text-xs font-black text-zinc-500 group-hover:text-[#eab308] transition-colors flex-shrink-0">
+                    <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-[#131313] border border-slate-200 dark:border-zinc-800/80 flex items-center justify-center text-xs font-black text-slate-600 dark:text-zinc-500 group-hover:text-[#eab308] group-hover:border-[#eab308]/40 transition-all flex-shrink-0">
                       {p.rank}
                     </div>
 
@@ -879,10 +952,10 @@ export default function EducationalCenterProfileView({
                       <img
                         src={p.avatar}
                         alt={p.name}
-                        className="w-11 h-11 rounded-full object-cover border border-zinc-800 flex-shrink-0"
+                        className="w-11 h-11 rounded-full object-cover border border-slate-200 dark:border-zinc-800 flex-shrink-0"
                       />
                     ) : (
-                      <div className="w-11 h-11 rounded-full bg-[#1e1e1e] border border-zinc-800 flex items-center justify-center text-white font-black text-sm uppercase flex-shrink-0">
+                      <div className="w-11 h-11 rounded-full bg-amber-500/10 dark:bg-zinc-800 border border-amber-500/30 dark:border-zinc-700 flex items-center justify-center text-amber-600 dark:text-[#eab308] font-black text-sm uppercase flex-shrink-0 shadow-sm">
                         {p.name.charAt(0)}
                       </div>
                     )}
@@ -924,25 +997,33 @@ export default function EducationalCenterProfileView({
                 <div
                   key={p.id}
                   onClick={() => {
-                    if (onSelectProfessor) {
-                      onSelectProfessor(p.id);
+                    if (activeTab === 'Estudiantes') {
+                      if (onSelectStudent) {
+                        onSelectStudent(p.id);
+                      } else if (onSelectProfessor) {
+                        onSelectProfessor(p.id);
+                      }
+                    } else {
+                      if (onSelectProfessor) {
+                        onSelectProfessor(p.id);
+                      }
                     }
                   }}
                   className="group relative bg-[#0d0d0d] border border-zinc-800/60 hover:border-[#eab308]/50 hover:bg-[#121212] rounded-2xl overflow-hidden transition-all duration-300 cursor-pointer flex flex-col justify-between shadow-md hover:shadow-[0_8px_30px_rgba(234,179,8,0.12)] hover:-translate-y-0.5"
                 >
                   {/* Top Badges (Rank y Score) */}
                   <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between z-10 pointer-events-none">
-                    <span className="w-6 h-6 rounded-full bg-black/75 backdrop-blur-md border border-white/10 text-white font-black text-[11px] flex items-center justify-center shadow">
+                    <span className="w-6 h-6 rounded-full bg-black/75 dark:bg-black/75 backdrop-blur-md border border-white/20 text-white font-black text-[11px] flex items-center justify-center shadow">
                       {p.rank}
                     </span>
-                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-black/75 backdrop-blur-md border border-[#eab308]/30 text-[#eab308] font-black text-[11px] shadow">
+                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-black/75 dark:bg-black/75 backdrop-blur-md border border-[#eab308]/40 text-[#eab308] font-black text-[11px] shadow">
                       <Star className="w-3 h-3 fill-[#eab308] text-[#eab308]" />
                       <span>{p.score.toFixed(1)}</span>
                     </span>
                   </div>
 
                   {/* Imagen / Avatar Header */}
-                  <div className="relative w-full aspect-square bg-[#151515] overflow-hidden flex items-center justify-center">
+                  <div className="relative w-full aspect-square bg-slate-100 dark:bg-[#151515] overflow-hidden flex items-center justify-center">
                     {p.avatar ? (
                       <img
                         src={p.avatar}
@@ -950,8 +1031,8 @@ export default function EducationalCenterProfileView({
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                       />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-b from-[#181818] to-[#121212]">
-                        <User className="w-14 h-14 text-zinc-700 stroke-[1.25] group-hover:text-zinc-500 transition-colors" />
+                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-b from-slate-100 to-slate-200 dark:from-[#181818] dark:to-[#121212]">
+                        <User className="w-14 h-14 text-slate-400 dark:text-zinc-700 stroke-[1.25] group-hover:text-amber-500 dark:group-hover:text-zinc-500 transition-colors" />
                       </div>
                     )}
                   </div>
@@ -1858,15 +1939,30 @@ export default function EducationalCenterProfileView({
         </div>
       )}
 
-      {/* Botón flotante para Añadir Miembro / Nueva Confesión según tab activa */}
-      {activeTab === 'Profesores' ? (
+      {/* Botón flotante para Añadir Miembro / Estudiante / Nueva Confesión según tab activa */}
+      {activeTab === 'Estudiantes' ? (
         <button
-          onClick={() => setAddMemberOpen(true)}
+          onClick={() => {
+            setAddMemberRole('Alumno');
+            setAddMemberOpen(true);
+          }}
           className="fixed bottom-24 right-6 sm:right-8 z-40 flex items-center gap-2 px-5 py-3.5 bg-[#eab308] text-black font-black text-xs uppercase tracking-widest rounded-2xl shadow-[0_4px_25px_rgba(234,179,8,0.45)] hover:scale-105 active:scale-95 transition-all cursor-pointer border-none"
-          title="Añadir Miembro (Profesor / Alumno)"
+          title="Añadir Estudiante"
         >
           <Plus className="w-4 h-4 stroke-[3]" />
-          <span>Añadir Miembro</span>
+          <span>Añadir Estudiante</span>
+        </button>
+      ) : activeTab === 'Profesores' ? (
+        <button
+          onClick={() => {
+            setAddMemberRole('Profesor');
+            setAddMemberOpen(true);
+          }}
+          className="fixed bottom-24 right-6 sm:right-8 z-40 flex items-center gap-2 px-5 py-3.5 bg-[#eab308] text-black font-black text-xs uppercase tracking-widest rounded-2xl shadow-[0_4px_25px_rgba(234,179,8,0.45)] hover:scale-105 active:scale-95 transition-all cursor-pointer border-none"
+          title="Añadir Profesor"
+        >
+          <Plus className="w-4 h-4 stroke-[3]" />
+          <span>Añadir Profesor</span>
         </button>
       ) : activeTab === 'Confesiones' ? (
         <button
@@ -1879,11 +1975,13 @@ export default function EducationalCenterProfileView({
         </button>
       ) : null}
 
-      {/* Modal de Añadir Miembro */}
+      {/* Modal de Añadir Miembro / Estudiante */}
       <AddMemberModal
         isOpen={addMemberOpen}
         onClose={() => setAddMemberOpen(false)}
         instituteId={institution.id || institution.slug || ''}
+        mode={activeTab === 'Estudiantes' ? 'student' : 'professor'}
+        defaultRole={addMemberRole}
         onSuccess={loadMembers}
       />
 

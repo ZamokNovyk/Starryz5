@@ -19,6 +19,7 @@ import ActionNotificationPromptModal from '@/components/Modals/ActionNotificatio
 import SearchResultsView from '@/components/SearchResultsView';
 import EducationalCenterProfileView from '@/components/EducationalCenterProfileView';
 import ProfessorProfile from '@/src/pages/ProfessorProfile';
+import StudentProfile from '@/src/pages/StudentProfile';
 import AdminDashboard from '@/src/components/AdminDashboard';
 import { useAuth } from '@/src/context/AuthContext';
 import { LayoutGrid, User, Plus, Bell, X, Wrench } from 'lucide-react';
@@ -239,6 +240,9 @@ export default function App() {
   const isProfessorRoute = route.pathname.startsWith('/profesores/');
   const professorSlug = isProfessorRoute ? route.pathname.replace('/profesores/', '') : '';
 
+  const isStudentRoute = route.pathname.startsWith('/estudiantes/');
+  const studentSlug = isStudentRoute ? route.pathname.replace('/estudiantes/', '') : '';
+
   const isUserProfileRoute = route.pathname.startsWith('/perfil/');
   const userProfileUid = isUserProfileRoute ? route.pathname.replace('/perfil/', '') : '';
 
@@ -300,12 +304,25 @@ export default function App() {
             }}
             onRequireAuth={() => setJoinModalOpen(true)}
           />
+        ) : isStudentRoute ? (
+          <StudentProfile
+            slug={studentSlug}
+            onBack={() => {
+              if (window.history.length > 1) {
+                window.history.back();
+              } else {
+                navigate('/');
+              }
+            }}
+            onRequireAuth={() => setJoinModalOpen(true)}
+          />
         ) : isProfileRoute ? (
           currentProfileInstitution ? (
             <EducationalCenterProfileView
               institution={currentProfileInstitution}
               onBack={() => navigate('/')}
               onSelectProfessor={(slug) => navigate(`/profesores/${slug}`)}
+              onSelectStudent={(slug) => navigate(`/estudiantes/${slug}`)}
             />
           ) : (
             <div className="max-w-md mx-auto py-24 text-center space-y-4">
