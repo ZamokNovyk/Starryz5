@@ -11,7 +11,9 @@ import {
   Maximize2,
   Lock,
   Plus,
-  Scissors
+  Scissors,
+  Disc,
+  Users
 } from 'lucide-react';
 import { supabase } from '@/src/lib/supabase';
 import { useAuth } from '@/src/context/AuthContext';
@@ -93,6 +95,30 @@ export default function ToolsView({ onBack, onNavigate }: ToolsViewProps) {
       isAvailable: true,
       isExternal: false,
       icon: <Scissors className="w-8 h-8 text-white" />
+    },
+    {
+      id: 'ruleta',
+      title: 'Ruleta de Nombres',
+      description: 'Sorteos y selecciones aleatorias en vivo para participación en clase o dinámicas de grupo.',
+      category: 'Dinámicas & Sorteos',
+      url: '/herramientas/ruleta',
+      brandColor: 'from-[#6366F1] to-[#EC4899]',
+      buttonGradient: 'bg-gradient-to-r from-[#6366F1] to-[#EC4899] shadow-[0_4px_16px_rgba(99,102,241,0.25)]',
+      isAvailable: true,
+      isExternal: false,
+      icon: <Disc className="w-8 h-8 text-white" />
+    },
+    {
+      id: 'formador-grupos',
+      title: 'Formador de Grupos',
+      description: 'Generador de equipos y grupos aleatorios por número total de grupos o por integrantes.',
+      category: 'Dinámicas & Equipos',
+      url: '/herramientas/grupos',
+      brandColor: 'from-[#6366F1] via-[#8B5CF6] to-[#EC4899]',
+      buttonGradient: 'bg-gradient-to-r from-[#6366F1] via-[#8B5CF6] to-[#EC4899] shadow-[0_4px_16px_rgba(99,102,241,0.25)]',
+      isAvailable: true,
+      isExternal: false,
+      icon: <Users className="w-8 h-8 text-white" />
     },
     {
       id: 'word-to-pdf',

@@ -13,6 +13,8 @@ import CreateCenterModal from '@/components/Modals/CreateCenterModal';
 import ToolsView from '@/components/ToolsView';
 import PdfOrganizerView from '@/components/PdfOrganizerView';
 import PdfSplitterView from '@/components/PdfSplitterView';
+import RuletaView from '@/components/RuletaView';
+import FormadorGruposView from '@/components/FormadorGruposView';
 import ActionNotificationPromptModal from '@/components/Modals/ActionNotificationPromptModal';
 import SearchResultsView from '@/components/SearchResultsView';
 import EducationalCenterProfileView from '@/components/EducationalCenterProfileView';
@@ -243,6 +245,8 @@ export default function App() {
   const isAdminRoute = route.pathname === '/admin';
   const isPdfOrganizerRoute = route.pathname === '/herramientas/organizadorpdf' || route.pathname === '/herramientas/organizador-pdf';
   const isPdfSplitterRoute = route.pathname === '/herramientas/dividirpdf' || route.pathname === '/herramientas/dividir-pdf';
+  const isRuletaRoute = route.pathname === '/herramientas/ruleta';
+  const isFormadorGruposRoute = route.pathname === '/herramientas/grupos' || route.pathname === '/herramientas/formador-grupos';
   const isToolsRoute = route.pathname === '/herramientas';
 
   const isSearchRoute = route.pathname === '/search' || (route.pathname === '/' && new URLSearchParams(route.search).has('q'));
@@ -336,6 +340,16 @@ export default function App() {
             onBack={() => navigate('/herramientas')}
             onNavigate={(url) => navigate(url)}
           />
+        ) : isRuletaRoute ? (
+          <RuletaView
+            onBack={() => navigate('/herramientas')}
+            onNavigate={(url) => navigate(url)}
+          />
+        ) : isFormadorGruposRoute ? (
+          <FormadorGruposView
+            onBack={() => navigate('/herramientas')}
+            onNavigate={(url) => navigate(url)}
+          />
         ) : isToolsRoute ? (
           <ToolsView
             onBack={() => navigate('/')}
@@ -396,7 +410,7 @@ export default function App() {
           <button
             onClick={() => navigate('/herramientas')}
             className={`px-5 py-2.5 rounded-full flex items-center gap-2 text-xs font-black transition-all duration-300 cursor-pointer ${
-              isToolsRoute || isPdfOrganizerRoute || isPdfSplitterRoute
+              isToolsRoute || isPdfOrganizerRoute || isPdfSplitterRoute || isRuletaRoute || isFormadorGruposRoute
                 ? 'bg-[#eab308] text-black shadow-[0_0_15px_rgba(234,179,8,0.3)]'
                 : 'text-zinc-400 hover:text-white'
             }`}
