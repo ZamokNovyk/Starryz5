@@ -546,7 +546,7 @@ export default function FormadorGruposView({ onBack }: FormadorGruposViewProps) 
                   {/* Card Header */}
                   <div 
                     className="p-4 border-b border-zinc-800 flex items-center justify-between"
-                    style={{ background: `linear-gradient(135deg, ${g.color}33, rgba(12, 13, 16, 0.95))` }}
+                    style={{ background: `linear-gradient(135deg, ${g.color}30, ${g.color}08)` }}
                   >
                     <div className="flex items-center gap-3">
                       <span 

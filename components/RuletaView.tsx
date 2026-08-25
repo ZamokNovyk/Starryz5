@@ -22,6 +22,7 @@ import {
 import confetti from 'canvas-confetti';
 import { supabase } from '@/src/lib/supabase';
 import { useAuth } from '@/src/context/AuthContext';
+import { useTheme } from '@/src/context/ThemeContext';
 
 interface RuletaViewProps {
   onBack: () => void;
@@ -41,6 +42,7 @@ const COLOR_PALETTE = [
 
 export default function RuletaView({ onBack }: RuletaViewProps) {
   const { user } = useAuth();
+  const { theme } = useTheme();
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
   const [loadingCheck, setLoadingCheck] = useState(true);
 
@@ -108,10 +110,10 @@ export default function RuletaView({ onBack }: RuletaViewProps) {
     setNames([]);
   }, []);
 
-  // Update canvas when names or rotation angle changes
+  // Update canvas when names, rotation angle, or theme changes
   useEffect(() => {
     drawWheel();
-  }, [names]);
+  }, [names, theme]);
 
   // Handle keyboard events (Space key)
   useEffect(() => {
@@ -226,20 +228,21 @@ export default function RuletaView({ onBack }: RuletaViewProps) {
     const radius = width / 2 - 20;
 
     ctx.clearRect(0, 0, width, height);
+    const isLight = typeof document !== 'undefined' && (document.body.classList.contains('light-theme') || document.documentElement.classList.contains('light-theme'));
 
     if (names.length === 0) {
       ctx.save();
       ctx.translate(centerX, centerY);
       ctx.beginPath();
       ctx.arc(0, 0, radius, 0, 2 * Math.PI);
-      ctx.fillStyle = '#1e293b';
+      ctx.fillStyle = isLight ? '#f1f5f9' : '#1e293b';
       ctx.fill();
       ctx.lineWidth = 8;
-      ctx.strokeStyle = '#334155';
+      ctx.strokeStyle = isLight ? '#cbd5e1' : '#334155';
       ctx.stroke();
 
-      ctx.fillStyle = '#94a3b8';
-      ctx.font = "bold 32px 'Plus Jakarta Sans', sans-serif";
+      ctx.fillStyle = isLight ? '#64748b' : '#94a3b8';
+      ctx.font = "bold 30px 'Plus Jakarta Sans', sans-serif";
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText('Ingresa nombres abajo', 0, 0);
@@ -268,7 +271,7 @@ export default function RuletaView({ onBack }: RuletaViewProps) {
 
       // Slice divider
       ctx.lineWidth = 3;
-      ctx.strokeStyle = 'rgba(15, 23, 42, 0.4)';
+      ctx.strokeStyle = isLight ? 'rgba(255, 255, 255, 0.6)' : 'rgba(15, 23, 42, 0.4)';
       ctx.stroke();
 
       // Text label
@@ -296,7 +299,7 @@ export default function RuletaView({ onBack }: RuletaViewProps) {
     ctx.beginPath();
     ctx.arc(0, 0, radius, 0, 2 * Math.PI);
     ctx.lineWidth = 12;
-    ctx.strokeStyle = '#0F172A';
+    ctx.strokeStyle = isLight ? '#94a3b8' : '#0F172A';
     ctx.stroke();
 
     ctx.restore();

@@ -100,8 +100,28 @@ body.light-theme header {
 .light-theme .bg-\[\#0a0a0a\],
 .light-theme .bg-\[\#0d0d0d\],
 .light-theme .bg-\[\#0f0f0f\],
+.light-theme .bg-\[\#0a0a0c\],
+.light-theme .bg-\[\#0c0d10\],
+.light-theme .bg-\[\#090a0d\],
+.light-theme .bg-\[\#0e1117\],
+.light-theme .bg-\[\#121316\],
+.light-theme .bg-\[\#111215\],
+.light-theme .bg-\[\#14151a\],
+.light-theme .bg-\[\#11131a\],
 .light-theme .bg-black,
-.light-theme .bg-zinc-950 {
+.light-theme .bg-zinc-950,
+.light-theme .bg-slate-950 {
+  background-color: #ffffff !important;
+}
+
+.light-theme .bg-\[\#09090b\] {
+  background-color: #f8fafc !important;
+}
+
+.light-theme .bg-\[\#1e1f24\],
+.light-theme .bg-black\/40,
+.light-theme .bg-zinc-950\/70,
+.light-theme .bg-zinc-950\/80 {
   background-color: #ffffff !important;
 }
 
@@ -112,10 +132,36 @@ body.light-theme header {
 .light-theme .bg-\[\#121212\],
 .light-theme .bg-\[\#111111\],
 .light-theme .bg-\[\#050505\],
+.light-theme .bg-\[\#0e0e11\],
+.light-theme .bg-\[\#0e1318\],
+.light-theme .bg-\[\#0e1318\]\/90,
+.light-theme .bg-\[\#16171b\],
+.light-theme .bg-\[\#141518\],
+.light-theme .bg-\[\#0f1117\],
+.light-theme .bg-\[\#131722\],
+.light-theme .bg-\[\#181c28\],
 .light-theme .bg-zinc-900,
 .light-theme .bg-zinc-800,
-.light-theme .bg-zinc-850 {
+.light-theme .bg-zinc-850,
+.light-theme .bg-slate-900,
+.light-theme .bg-slate-900\/40,
+.light-theme .bg-slate-900\/60,
+.light-theme .bg-slate-800,
+.light-theme .bg-zinc-900\/80,
+.light-theme .bg-zinc-900\/40,
+.light-theme .bg-zinc-900\/60 {
   background-color: #f1f5f9 !important;
+}
+
+.light-theme header.bg-\[\#0e1318\]\/90,
+.light-theme header.bg-\[\#0e1318\] {
+  background-color: rgba(255, 255, 255, 0.95) !important;
+  border-bottom-color: #e2e8f0 !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.light-theme .border-\[\#09090b\] {
+  border-color: #ffffff !important;
 }
 
 /* Bordes en Modo Día */
@@ -127,13 +173,17 @@ body.light-theme header {
 .light-theme .border-\[\#ffffff30\],
 .light-theme .border-\[\#ffffff05\],
 .light-theme .border-zinc-900,
+.light-theme .border-zinc-900\/60,
 .light-theme .border-zinc-800,
 .light-theme .border-zinc-800\/80,
 .light-theme .border-zinc-800\/60,
 .light-theme .border-zinc-800\/20,
 .light-theme .border-zinc-800\/40,
 .light-theme .border-zinc-700,
-.light-theme .border-zinc-700\/50 {
+.light-theme .border-zinc-700\/50,
+.light-theme .border-slate-800,
+.light-theme .border-slate-800\/80,
+.light-theme .border-slate-700 {
   border-color: #cbd5e1 !important;
 }
 
@@ -214,11 +264,14 @@ body.light-theme header {
 }
 
 /* Inputs y Buscadores */
-.light-theme input {
+.light-theme input,
+.light-theme textarea,
+.light-theme select {
   color: #0f172a !important;
 }
 
-.light-theme input::placeholder {
+.light-theme input::placeholder,
+.light-theme textarea::placeholder {
   color: #94a3b8 !important;
 }
 
@@ -306,8 +359,18 @@ body.iesppu-theme header {
 .iesppu-theme .bg-\[\#0a0a0a\],
 .iesppu-theme .bg-\[\#0d0d0d\],
 .iesppu-theme .bg-\[\#0f0f0f\],
+.iesppu-theme .bg-\[\#09090b\],
+.iesppu-theme .bg-\[\#0a0a0c\],
+.iesppu-theme .bg-\[\#0c0d10\],
+.iesppu-theme .bg-\[\#090a0d\],
+.iesppu-theme .bg-\[\#0e1117\],
+.iesppu-theme .bg-\[\#1e1f24\],
+.iesppu-theme .bg-black\/40,
+.iesppu-theme .bg-zinc-950\/70,
+.iesppu-theme .bg-zinc-950\/80,
 .iesppu-theme .bg-black,
-.iesppu-theme .bg-zinc-950 {
+.iesppu-theme .bg-zinc-950,
+.iesppu-theme .bg-slate-950 {
   background-color: #0c122c !important;
 }
 
@@ -318,9 +381,28 @@ body.iesppu-theme header {
 .iesppu-theme .bg-\[\#121212\],
 .iesppu-theme .bg-\[\#111111\],
 .iesppu-theme .bg-\[\#050505\],
+.iesppu-theme .bg-\[\#0e0e11\],
+.iesppu-theme .bg-\[\#0e1318\],
+.iesppu-theme .bg-\[\#0e1318\]\/90,
+.iesppu-theme .bg-\[\#121316\],
+.iesppu-theme .bg-\[\#111215\],
+.iesppu-theme .bg-\[\#16171b\],
+.iesppu-theme .bg-\[\#141518\],
+.iesppu-theme .bg-\[\#14151a\],
+.iesppu-theme .bg-\[\#11131a\],
+.iesppu-theme .bg-\[\#0f1117\],
+.iesppu-theme .bg-\[\#131722\],
+.iesppu-theme .bg-\[\#181c28\],
 .iesppu-theme .bg-zinc-900,
 .iesppu-theme .bg-zinc-800,
-.iesppu-theme .bg-zinc-850 {
+.iesppu-theme .bg-zinc-850,
+.iesppu-theme .bg-slate-900,
+.iesppu-theme .bg-slate-900\/40,
+.iesppu-theme .bg-slate-900\/60,
+.iesppu-theme .bg-slate-800,
+.iesppu-theme .bg-zinc-900\/80,
+.iesppu-theme .bg-zinc-900\/40,
+.iesppu-theme .bg-zinc-900\/60 {
   background-color: #111a3e !important;
 }
 
@@ -333,13 +415,17 @@ body.iesppu-theme header {
 .iesppu-theme .border-\[\#ffffff30\],
 .iesppu-theme .border-\[\#ffffff05\],
 .iesppu-theme .border-zinc-900,
+.iesppu-theme .border-zinc-900\/60,
 .iesppu-theme .border-zinc-800,
 .iesppu-theme .border-zinc-800\/80,
 .iesppu-theme .border-zinc-800\/60,
 .iesppu-theme .border-zinc-800\/20,
 .iesppu-theme .border-zinc-800\/40,
 .iesppu-theme .border-zinc-700,
-.iesppu-theme .border-zinc-700\/50 {
+.iesppu-theme .border-zinc-700\/50,
+.iesppu-theme .border-slate-800,
+.iesppu-theme .border-slate-800\/80,
+.iesppu-theme .border-slate-700 {
   border-color: rgba(14, 165, 233, 0.2) !important;
 }
 
