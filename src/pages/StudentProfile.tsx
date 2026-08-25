@@ -9,15 +9,12 @@ import {
   Heart, 
   Users, 
   Sparkles, 
-  MessageSquare, 
   BarChart3, 
   Star, 
-  ThumbsUp, 
   Plus, 
-  CheckCircle2,
-  Calendar,
-  Loader2,
-  GraduationCap
+  CheckCircle2, 
+  Calendar, 
+  Loader2 
 } from 'lucide-react';
 import { 
   getStudentById, 
@@ -107,17 +104,21 @@ export default function StudentProfile({
           setStudentScore(data.score || 0.0);
           setStudentTotalRatings(data.total_ratings || 0);
           
+          // Cargar conteos totales de interacción de la BD
           const counts = await getStudentInteractionCounts(data.id || slug);
           setKnowCount(counts.knows);
           setFanCount(counts.fan);
 
+          // Cargar distribución (breakdown) de calificaciones
           const breakdown = await getStudentRatingBreakdown(data.id || slug);
           setRatingBreakdown(breakdown);
 
+          // Cargar estado inicial de crushes
           const crushStatus = await getStudentCrushStatus(data.id || slug, user?.uid || '');
           setCrushCount(crushStatus.count);
           setHasCrushed(crushStatus.hasCrushed);
 
+          // Cargar interacciones y votos del usuario si está logueado
           if (user) {
             const todayV = await getTodayStudentVotes(data.id || slug, user.uid);
             setTodayVotes(todayV);
@@ -139,13 +140,110 @@ export default function StudentProfile({
           setStudent(null);
         }
       } catch (err) {
-        console.error('Error al cargar datos del estudiante:', err);
+        console.error('Error al cargar datos del estudiante e interacciones:', err);
       } finally {
         setLoading(false);
       }
     }
     loadStudentAndInteractions();
   }, [slug, user]);
+
+  // Suscribirse a Supabase Realtime para cambios en los votos, interacciones y crushes del estudiante
+  useEffect(() => {
+    if (!student) return;
+
+    const studentId = student.id || slug;
+
+    const refreshVotesData = async () => {
+      try {
+        const updatedStud = await getStudentById(slug);
+        if (updatedStud) {
+          setStudentScore(updatedStud.score || 0.0);
+          setStudentTotalRatings(updatedStud.total_ratings || 0);
+        }
+
+        const breakdown = await getStudentRatingBreakdown(studentId);
+        setRatingBreakdown(breakdown);
+
+        if (user) {
+          const todayV = await getTodayStudentVotes(studentId, user.uid);
+          setTodayVotes(todayV);
+        }
+      } catch (err) {
+        console.error('Error al refrescar votos de estudiante en tiempo real:', err);
+      }
+    };
+
+    const channel = supabase
+      .channel(`student-profile-realtime-${studentId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'student_votes'
+        },
+        (payload) => {
+          if (payload.eventType === 'DELETE' || (payload.new && (payload.new as any).student_id === studentId)) {
+            refreshVotesData();
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'student_interactions'
+        },
+        async (payload) => {
+          if (payload.eventType === 'DELETE' || (payload.new && (payload.new as any).student_id === studentId)) {
+            try {
+              const counts = await getStudentInteractionCounts(studentId);
+              setKnowCount(counts.knows);
+              setFanCount(counts.fan);
+
+              if (user) {
+                const userInteraction = await getUserStudentInteraction(studentId, user.uid);
+                if (userInteraction) {
+                  setHasVotedKnow(userInteraction.interaction_type === 'knows');
+                  setHasVotedFan(userInteraction.interaction_type === 'fan');
+                } else {
+                  setHasVotedKnow(false);
+                  setHasVotedFan(false);
+                }
+              }
+            } catch (err) {
+              console.error('Error al refrescar interacciones de estudiante en tiempo real:', err);
+            }
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'student_crushes'
+        },
+        async (payload) => {
+          if (payload.eventType === 'DELETE' || (payload.new && (payload.new as any).student_id === studentId)) {
+            try {
+              const crushStatus = await getStudentCrushStatus(studentId, user?.uid || '');
+              setCrushCount(crushStatus.count);
+              setHasCrushed(crushStatus.hasCrushed);
+            } catch (err) {
+              console.error('Error al refrescar crushes de estudiante en tiempo real:', err);
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [student?.id, slug, user?.uid]);
 
   const handleToggleCrush = async () => {
     if (!user) {
@@ -159,6 +257,7 @@ export default function StudentProfile({
     const previousHasCrushed = hasCrushed;
     const previousCount = crushCount;
 
+    // Actualización optimista en la UI (sumar/restar 1 al instante)
     const nextHasCrushed = !previousHasCrushed;
     const nextCount = nextHasCrushed ? previousCount + 1 : Math.max(0, previousCount - 1);
 
@@ -171,7 +270,7 @@ export default function StudentProfile({
       setHasCrushed(result.hasCrushed);
       setCrushCount(result.count);
     } catch (err) {
-      console.error('Error al alternar voto de crush:', err);
+      console.error('Error al alternar voto de crush de estudiante:', err);
       setHasCrushed(previousHasCrushed);
       setCrushCount(previousCount);
     } finally {
@@ -191,7 +290,7 @@ export default function StudentProfile({
     return (
       <div className="max-w-4xl mx-auto px-6 py-24 text-center">
         <div className="w-10 h-10 border-2 border-[#eab308] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-        <p className="text-zinc-400 text-xs font-bold uppercase tracking-wider">Cargando perfil de estudiante...</p>
+        <p className="text-zinc-400 text-xs font-bold uppercase tracking-wider">Cargando perfil...</p>
       </div>
     );
   }
@@ -199,11 +298,11 @@ export default function StudentProfile({
   if (!student) {
     return (
       <div className="max-w-md mx-auto py-24 text-center space-y-4">
-        <h3 className="text-xl font-black text-white uppercase">Estudiante no encontrado</h3>
-        <p className="text-xs text-zinc-400">El estudiante solicitado no se encuentra registrado en nuestra base de datos.</p>
+        <h3 className="text-xl font-black text-white uppercase">Perfil no encontrado</h3>
+        <p className="text-xs text-zinc-400">El miembro solicitado no se encuentra registrado en nuestra base de datos.</p>
         <button
           onClick={onBack}
-          className="px-6 py-2.5 rounded-xl bg-[#eab308] text-black font-extrabold text-xs uppercase"
+          className="px-6 py-2.5 rounded-xl bg-[#eab308] text-black font-extrabold text-xs uppercase cursor-pointer"
         >
           Volver
         </button>
@@ -263,7 +362,7 @@ export default function StudentProfile({
         setFanCount(counts.fan);
       }
     } catch (err) {
-      console.error('Error al guardar la interacción:', err);
+      console.error('Error al guardar la interacción del estudiante:', err);
       setHasVotedKnow(prevVotedKnow);
       setHasVotedFan(prevVotedFan);
       setKnowCount(prevKnowCount);
@@ -312,315 +411,1004 @@ export default function StudentProfile({
         promptNotificationOnAction('rating');
       }
     } catch (err) {
-      console.error('Error al registrar calificación:', err);
+      console.error('Error al registrar calificación del estudiante:', err);
     } finally {
       setVotingInProgress(false);
     }
   };
 
-  const studentName = student.nombre_completo || `${student.nombre} ${student.apellidos}`;
+  const validateSocialUrl = (url: string, platform: 'Instagram' | 'YouTube' | 'Facebook' | 'Twitter') => {
+    if (!url.trim()) return '';
+    const lowerUrl = url.toLowerCase();
+    if (platform === 'Instagram' && !lowerUrl.includes('instagram.com')) {
+      return 'El enlace ingresado no corresponde a Instagram';
+    }
+    if (platform === 'YouTube' && !lowerUrl.includes('youtube.com') && !lowerUrl.includes('youtu.be')) {
+      return 'El enlace ingresado no corresponde a YouTube';
+    }
+    if (platform === 'Facebook' && !lowerUrl.includes('facebook.com') && !lowerUrl.includes('web.facebook.com')) {
+      return 'El enlace ingresado no corresponde a Facebook';
+    }
+    if (platform === 'Twitter' && !lowerUrl.includes('twitter.com') && !lowerUrl.includes('x.com')) {
+      return 'El enlace ingresado no corresponde a Twitter / X';
+    }
+    return '';
+  };
+
+  const enterEditWikiMode = () => {
+    if (!user) {
+      if (onRequireAuth) onRequireAuth();
+      return;
+    }
+    if (!student) return;
+    setWikiAvatarUrl(student.avatar_url || '');
+    setWikiHeightCm(student.height_cm ? student.height_cm.toString() : '');
+    setWikiMaritalStatus(student.marital_status || 'No especificado');
+    setWikiGender(student.gender || 'No especificado');
+    
+    if (student.birth_date) {
+      const parts = student.birth_date.split('-');
+      setWikiBirthYear(parts[0] || '');
+      setWikiBirthMonth(parts[1] || '');
+      setWikiBirthDay(parts[2] || '');
+    } else {
+      setWikiBirthYear('');
+      setWikiBirthMonth('');
+      setWikiBirthDay('');
+    }
+    
+    setWikiInstagram(student.instagram_url || '');
+    setWikiYoutube(student.youtube_url || '');
+    setWikiFacebook(student.facebook_url || '');
+    setWikiTwitter(student.twitter_url || '');
+    setWikiBiography(student.biography || '');
+    setSocialErrors({});
+    setIsEditingWiki(true);
+  };
+
+  const handleSaveWiki = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!student) return;
+
+    const instagramError = validateSocialUrl(wikiInstagram, 'Instagram');
+    const youtubeError = validateSocialUrl(wikiYoutube, 'YouTube');
+    const facebookError = validateSocialUrl(wikiFacebook, 'Facebook');
+    const twitterError = validateSocialUrl(wikiTwitter, 'Twitter');
+
+    if (instagramError || youtubeError || facebookError || twitterError) {
+      setSocialErrors({
+        instagram: instagramError,
+        youtube: youtubeError,
+        facebook: facebookError,
+        twitter: twitterError
+      });
+      return;
+    }
+
+    try {
+      setSavingWiki(true);
+      const formattedBirthDate = (wikiBirthYear && wikiBirthMonth && wikiBirthDay)
+        ? `${wikiBirthYear}-${wikiBirthMonth}-${wikiBirthDay}`
+        : null;
+
+      await updateStudentWiki(student.id, {
+        avatar_url: wikiAvatarUrl,
+        height_cm: wikiHeightCm ? parseInt(wikiHeightCm) : undefined,
+        marital_status: wikiMaritalStatus,
+        gender: wikiGender,
+        birth_date: formattedBirthDate || undefined,
+        instagram_url: wikiInstagram,
+        youtube_url: wikiYoutube,
+        facebook_url: wikiFacebook,
+        twitter_url: wikiTwitter,
+        biography: wikiBiography
+      });
+
+      setStudent(prev => prev ? {
+        ...prev,
+        avatar_url: wikiAvatarUrl || undefined,
+        height_cm: wikiHeightCm ? parseInt(wikiHeightCm) : undefined,
+        marital_status: wikiMaritalStatus,
+        gender: wikiGender,
+        birth_date: formattedBirthDate || undefined,
+        instagram_url: wikiInstagram || undefined,
+        youtube_url: wikiYoutube || undefined,
+        facebook_url: wikiFacebook || undefined,
+        twitter_url: wikiTwitter || undefined,
+        biography: wikiBiography || undefined
+      } : null);
+
+      setIsEditingWiki(false);
+    } catch (err) {
+      console.error('Error al guardar la wiki de estudiante:', err);
+    } finally {
+      setSavingWiki(false);
+    }
+  };
+
+  const studentFullName = student.nombre_completo || `${student.nombre} ${student.apellidos}`;
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-8 animate-in fade-in duration-300">
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 space-y-6 animate-in fade-in duration-300">
       
-      {/* Botón Volver */}
+      {/* Volver y Compartir */}
       <div className="flex items-center justify-between">
         <button
           onClick={onBack}
-          className="flex items-center gap-2 px-4 py-2 bg-zinc-900/80 hover:bg-zinc-800 text-zinc-300 hover:text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer border border-zinc-800/80"
+          className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-zinc-500 hover:text-[#eab308] transition-colors cursor-pointer"
         >
           <ArrowLeft className="w-4 h-4" />
-          <span>Volver</span>
+          <span>Volver al Centro</span>
         </button>
 
         <div className="flex items-center gap-2">
-          <BookmarkButton 
-            item={{
-              id: student.id,
-              type: 'student',
-              title: studentName,
-              category: 'Estudiante',
-              url: `/estudiantes/${student.id}`,
-              avatar: student.avatar_url,
-              score: studentScore
-            }} 
-          />
+          {student && (
+            <BookmarkButton
+              itemId={student.id || slug}
+              itemType="student"
+              itemName={studentFullName}
+              itemImage={student.avatar_url || null}
+              itemSubtitle="Estudiante"
+              onRequireAuth={onRequireAuth}
+            />
+          )}
+
           <button
             onClick={handleShare}
-            className="flex items-center gap-2 px-4 py-2 bg-zinc-900/80 hover:bg-zinc-800 text-zinc-300 hover:text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer border border-zinc-800/80"
+            className="p-3 rounded-full bg-[#151515] hover:bg-[#202020] border border-zinc-800 text-zinc-400 hover:text-[#eab308] transition-all cursor-pointer shadow-md"
           >
             <Share2 className="w-4 h-4" />
-            <span>{copied ? '¡Copiado!' : 'Compartir'}</span>
           </button>
         </div>
       </div>
 
-      {/* Tarjeta Principal de Cabecera del Estudiante */}
-      <div className="bg-[#0f0f0f] border border-zinc-800/60 rounded-3xl p-6 sm:p-8 space-y-6 relative overflow-hidden">
-        <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
-          
-          {/* Avatar */}
-          <div className="w-28 h-28 sm:w-36 sm:h-36 rounded-2xl bg-zinc-800 border-2 border-[#eab308]/30 overflow-hidden flex-shrink-0 flex items-center justify-center relative shadow-lg">
+      {copied && (
+        <p className="text-right text-xs text-[#eab308] font-bold tracking-wide animate-pulse">
+          ✓ ¡Enlace copiado al portapapeles!
+        </p>
+      )}
+
+      {/* SECCIÓN DEL AVATAR CON EL RATING RING (Diseño idéntico a imagen) */}
+      <div className="flex flex-col items-center text-center space-y-4 py-4">
+        <div className="relative">
+          {/* Avatar circular */}
+          <div className="w-28 h-28 rounded-full overflow-hidden border-2 border-zinc-800 bg-[#181818] shadow-2xl flex items-center justify-center">
             {student.avatar_url ? (
               <img
                 src={student.avatar_url}
-                alt={studentName}
+                alt={studentFullName}
                 className="w-full h-full object-cover"
                 referrerPolicy="no-referrer"
               />
             ) : (
-              <div className="text-4xl font-black text-zinc-600">
-                {student.nombre ? student.nombre.charAt(0).toUpperCase() : 'E'}
+              <div className="w-full h-full flex items-center justify-center text-white font-black text-4xl uppercase">
+                {student.nombre ? student.nombre.charAt(0) : 'E'}
               </div>
             )}
-            <span className="absolute bottom-2 right-2 px-2 py-0.5 bg-black/80 backdrop-blur-md rounded-md text-[10px] font-black text-[#eab308] border border-[#eab308]/20 uppercase">
-              Estudiante
-            </span>
+          </div>
+          {/* Rating badge en la parte inferior derecha del avatar */}
+          <div className="absolute -bottom-1 right-2 bg-[#eab308] text-black font-black text-xs px-2 py-1 rounded-full shadow-lg border border-black flex items-center gap-0.5">
+            <span>{studentScore.toFixed(1)}</span>
+          </div>
+        </div>
+
+        {/* Nombre completo */}
+        <h1 className="text-2xl sm:text-3xl font-black text-white leading-tight uppercase tracking-tight">
+          {studentFullName}
+        </h1>
+        <p className="px-3 py-1 rounded-full bg-[#181818] border border-zinc-800 text-zinc-400 text-[10px] uppercase font-bold tracking-widest">
+          ESTUDIANTE
+        </p>
+      </div>
+
+      {/* METRIC CARDS (Yo te conozco / Fan - Diseñados en grilla de 2 columnas) */}
+      <div className="grid grid-cols-2 gap-4">
+        {/* Yo te conozco */}
+        <div 
+          onClick={() => handleInteractionToggle('knows')}
+          className={`bg-[#0d0d0d] border rounded-2xl p-6 text-center transition-all cursor-pointer select-none active:scale-[0.98] duration-200 ${
+            hasVotedKnow 
+              ? 'border-[#eab308] bg-[#eab308]/5 shadow-[0_0_15px_rgba(234,179,8,0.15)]' 
+              : 'border-zinc-800/80 hover:border-zinc-700 hover:bg-[#121212]'
+          }`}
+        >
+          <div className="flex justify-center mb-1">
+            <Users className={`w-6 h-6 transition-transform ${hasVotedKnow ? 'text-[#eab308] scale-110' : 'text-zinc-600'}`} />
+          </div>
+          <span className="block text-2xl font-black text-white tracking-tight">
+            {knowCount}
+          </span>
+          <span className={`block text-[10px] uppercase font-extrabold tracking-widest mt-1 transition-colors ${hasVotedKnow ? 'text-[#eab308]' : 'text-zinc-500'}`}>
+            {hasVotedKnow ? '✓ Yo te conozco' : 'Yo te conozco'}
+          </span>
+        </div>
+
+        {/* Fan */}
+        <div 
+          onClick={() => handleInteractionToggle('fan')}
+          className={`bg-[#0d0d0d] border rounded-2xl p-6 text-center transition-all cursor-pointer select-none active:scale-[0.98] duration-200 ${
+            hasVotedFan 
+              ? 'border-pink-500 bg-pink-500/5 shadow-[0_0_15px_rgba(236,72,153,0.15)]' 
+              : 'border-zinc-800/80 hover:border-zinc-700 hover:bg-[#121212]'
+          }`}
+        >
+          <div className="flex justify-center mb-1">
+            <Heart className={`w-6 h-6 transition-transform ${hasVotedFan ? 'text-pink-500 fill-pink-500 scale-110' : 'text-zinc-600'}`} />
+          </div>
+          <span className="block text-2xl font-black text-white tracking-tight">
+            {fanCount}
+          </span>
+          <span className={`block text-[10px] uppercase font-extrabold tracking-widest mt-1 transition-colors ${hasVotedFan ? 'text-pink-500' : 'text-zinc-500'}`}>
+            {hasVotedFan ? '✓ Fan' : 'Fan'}
+          </span>
+        </div>
+      </div>
+
+      {/* PESTAÑAS (Wiki, Reseñas, Crushes, Ship, Estadística - idéntico a Profesores) */}
+      <div className="bg-[#0d0d0d] border border-zinc-800/80 rounded-xl p-1 overflow-x-auto scrollbar-none">
+        <div className="flex items-center gap-1.5 min-w-max">
+          
+          {/* Wiki */}
+          <button
+            onClick={() => setActiveTab('Wiki')}
+            className={`px-4.5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'Wiki'
+                ? 'bg-[#eab308] text-black font-extrabold'
+                : 'text-zinc-400 hover:text-white hover:bg-[#151515]'
+            }`}
+          >
+            <BookOpen className="w-4 h-4" />
+            <span>Wiki</span>
+          </button>
+
+          {/* Reseñas */}
+          <button
+            onClick={() => setActiveTab('Reseñas')}
+            className={`px-4.5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'Reseñas'
+                ? 'bg-[#eab308] text-black font-extrabold'
+                : 'text-zinc-400 hover:text-white hover:bg-[#151515]'
+            }`}
+          >
+            <Star className="w-4 h-4" />
+            <span>Reseñas</span>
+          </button>
+
+          {/* Crushes */}
+          <button
+            onClick={() => setActiveTab('Crushes')}
+            className={`px-4.5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'Crushes'
+                ? 'bg-[#eab308] text-black font-extrabold'
+                : 'text-zinc-400 hover:text-white hover:bg-[#151515]'
+            }`}
+          >
+            <Heart className={`w-4 h-4 ${hasCrushed ? 'fill-pink-500 text-pink-500' : ''}`} />
+            <span>Crushes</span>
+            {crushCount > 0 && (
+              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${
+                activeTab === 'Crushes' ? 'bg-black/20 text-black' : 'bg-pink-500/20 text-pink-400 border border-pink-500/30'
+              }`}>
+                {crushCount}
+              </span>
+            )}
+          </button>
+
+          {/* Ship */}
+          <button
+            onClick={() => setActiveTab('Ship')}
+            className={`px-4.5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'Ship'
+                ? 'bg-[#eab308] text-black font-extrabold'
+                : 'text-zinc-400 hover:text-white hover:bg-[#151515]'
+            }`}
+          >
+            <Sparkles className="w-4 h-4" />
+            <span>Ship</span>
+          </button>
+
+          {/* Estadística */}
+          <button
+            onClick={() => setActiveTab('Estadística')}
+            className={`px-4.5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'Estadística'
+                ? 'bg-[#eab308] text-black font-extrabold'
+                : 'text-zinc-400 hover:text-white hover:bg-[#151515]'
+            }`}
+          >
+            <BarChart3 className="w-4 h-4" />
+            <span>Estadística</span>
+          </button>
+
+        </div>
+      </div>
+
+      {/* RENDERIZADO DE CONTENIDOS SEGÚN LA PESTAÑA SELECCIONADA */}
+
+      {/* 1. PESTAÑA RESEÑAS */}
+      {activeTab === 'Reseñas' && (() => {
+        const totalVotesCount = Object.values(ratingBreakdown).reduce((a, b) => a + b, 0);
+
+        return (
+          <div className="space-y-6">
+            <div className="bg-[#0d0d0d] border border-zinc-800/40 rounded-2xl p-6 space-y-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-black text-white uppercase tracking-wide">
+                  Resumen de Estrellas
+                </h2>
+                <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all ${
+                  opportunitiesLeft === 0
+                    ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                    : 'bg-[#eab308]/10 text-[#eab308] border-[#eab308]/20'
+                }`}>
+                  OPORTUNIDADES: {opportunitiesLeft}/6
+                </div>
+              </div>
+
+              <div className="flex flex-col md:flex-row items-center gap-8">
+                {/* Bloque Izquierdo con el puntaje general promedio */}
+                <div className="bg-[#050505] border border-zinc-800/20 rounded-2xl p-6 text-center w-full md:w-48 space-y-3">
+                  <span className="block text-5xl font-black text-[#eab308] tracking-tighter">
+                    {studentScore.toFixed(1)}
+                  </span>
+                  
+                  {/* Estrellas visuales */}
+                  <div className="flex items-center justify-center gap-1">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <Star 
+                        key={star} 
+                        className={`w-5 h-5 ${
+                          star <= Math.round(studentScore)
+                            ? 'fill-[#eab308] text-[#eab308]' 
+                            : 'text-zinc-700'
+                        }`} 
+                      />
+                    ))}
+                  </div>
+
+                  <span className="block text-[10px] uppercase text-zinc-500 font-extrabold tracking-widest">
+                    {studentTotalRatings} VOTOS TOTALES
+                  </span>
+                </div>
+
+                {/* Distribución de Estrellas (Progress Bars) */}
+                <div className="flex-1 w-full space-y-2.5">
+                  {[5, 4, 3, 2, 1].map((stars) => {
+                    const count = ratingBreakdown[stars] || 0;
+                    const percent = totalVotesCount > 0 ? `${((count / totalVotesCount) * 100).toFixed(0)}%` : '0%';
+
+                    return (
+                      <div key={stars} className="flex items-center gap-3">
+                        <span className="text-xs font-bold text-zinc-400 w-3 text-right">
+                          {stars}
+                        </span>
+                        <div className="flex-1 h-2 bg-[#121212] rounded-full overflow-hidden border border-zinc-800/40">
+                          <div 
+                            className="h-full bg-[#eab308] transition-all duration-500" 
+                            style={{ width: percent }}
+                          />
+                        </div>
+                        <span className="text-xs font-bold text-zinc-500 w-4 text-right">
+                          {count}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Formulario rápido para dejar reseña */}
+              <div className="pt-4 border-t border-zinc-800/40 space-y-3">
+                <p className="text-xs font-bold uppercase text-zinc-400 tracking-wider text-center">
+                  ¿Conoces a {student.nombre}? ¡Deja tu calificación de estrellas!
+                </p>
+
+                {opportunitiesLeft === 0 ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-center gap-2 opacity-30 select-none">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <div
+                          key={star}
+                          className="p-2 bg-[#121212] border border-zinc-800 rounded-lg text-zinc-700"
+                        >
+                          <Star className="w-6 h-6" />
+                        </div>
+                      ))}
+                    </div>
+                    <div className="bg-rose-500/10 border border-rose-500/20 rounded-xl p-3 text-center">
+                      <p className="text-rose-400 text-xs font-black uppercase tracking-wider">
+                        ¡VUELVE MAÑANA PARA MÁS VOTOS!
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center gap-2">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <button
+                        key={star}
+                        disabled={votingInProgress}
+                        onClick={() => handleStarVote(star)}
+                        className="p-2 bg-[#121212] hover:bg-[#eab308]/10 border border-zinc-800 rounded-lg text-zinc-500 hover:text-[#eab308] transition-all cursor-pointer disabled:opacity-50"
+                      >
+                        <Star className="w-6 h-6 hover:scale-110 active:scale-95 transition-transform" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Sección "TUS VOTOS DE HOY" */}
+              {todayVotes.length > 0 && (
+                <div className="pt-4 border-t border-zinc-800/40 space-y-2">
+                  <span className="block text-xs font-bold uppercase text-zinc-500 tracking-wider text-center">
+                    Tus votos de hoy para este estudiante:
+                  </span>
+                  <div className="flex flex-wrap items-center justify-center gap-2">
+                    {todayVotes.map((v, idx) => (
+                      <div 
+                        key={idx} 
+                        className="flex items-center gap-1.5 bg-[#121212] border border-zinc-800/60 rounded-full px-3 py-1.5 text-xs text-zinc-300 font-extrabold shadow-sm animate-in fade-in zoom-in duration-300"
+                      >
+                        <Star className="w-3.5 h-3.5 fill-[#eab308] text-[#eab308]" />
+                        <span>{v} {v === 1 ? 'Estrella' : 'Estrellas'}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* 2. WIKI TAB */}
+      {activeTab === 'Wiki' && (() => {
+        const getMaxDays = (yearStr: string, monthStr: string) => {
+          const year = parseInt(yearStr) || 2000;
+          const month = parseInt(monthStr) || 1;
+          return new Date(year, month, 0).getDate();
+        };
+
+        return (
+          <div className="bg-[#0d0d0d] border border-zinc-800/40 rounded-2xl p-6 space-y-6">
+            {!isEditingWiki ? (
+              // VIEW WIKI MODE
+              <div className="space-y-6">
+                <div className="flex items-center justify-between border-b border-zinc-800/40 pb-4">
+                  <h2 className="text-xl font-black text-white uppercase tracking-wide flex items-center gap-2">
+                    <BookOpen className="w-5 h-5 text-[#eab308]" />
+                    <span>Biografía y Trayectoria</span>
+                  </h2>
+                  <button
+                    onClick={enterEditWikiMode}
+                    className="px-4.5 py-2 bg-[#eab308] text-black text-xs font-black uppercase tracking-wider rounded-lg hover:bg-[#eab308]/90 transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
+                  >
+                    <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                    <span>Editar Wiki</span>
+                  </button>
+                </div>
+
+                {/* Biography content */}
+                {student.biography && (
+                  <div className="space-y-3">
+                    <p className="text-sm text-zinc-300 leading-relaxed whitespace-pre-wrap">
+                      {student.biography}
+                    </p>
+                  </div>
+                )}
+
+                {/* Personal Info Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-zinc-800/40">
+                  <div className="bg-[#050505] p-4 rounded-xl border border-zinc-800/20 space-y-1">
+                    <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider block">Altura</span>
+                    <span className="text-sm font-bold text-white block">
+                      {student.height_cm ? `${student.height_cm} cm` : 'No especificada'}
+                    </span>
+                  </div>
+
+                  <div className="bg-[#050505] p-4 rounded-xl border border-zinc-800/20 space-y-1">
+                    <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider block">Estado Civil</span>
+                    <span className="text-sm font-bold text-white block">
+                      {student.marital_status || 'No especificado'}
+                    </span>
+                  </div>
+
+                  <div className="bg-[#050505] p-4 rounded-xl border border-zinc-800/20 space-y-1">
+                    <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider block">Sexo</span>
+                    <span className="text-sm font-bold text-white block">
+                      {student.gender || 'No especificado'}
+                    </span>
+                  </div>
+
+                  <div className="bg-[#050505] p-4 rounded-xl border border-zinc-800/20 space-y-1">
+                    <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider block">Fecha de Nacimiento</span>
+                    <span className="text-sm font-bold text-white block">
+                      {student.birth_date ? (() => {
+                        const dateObj = new Date(student.birth_date + 'T00:00:00');
+                        return dateObj.toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' });
+                      })() : 'No especificada'}
+                    </span>
+                  </div>
+
+                  {student.birth_date && (
+                    <div className="bg-[#050505] p-4 rounded-xl border border-zinc-800/20 space-y-1">
+                      <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider block">Edad</span>
+                      <span className="text-sm font-bold text-white block">
+                        {(() => {
+                          const birthDate = new Date(student.birth_date + 'T00:00:00');
+                          const today = new Date();
+                          let age = today.getFullYear() - birthDate.getFullYear();
+                          const m = today.getMonth() - birthDate.getMonth();
+                          if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+                            age--;
+                          }
+                          return `${age} años`;
+                        })()}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Social Media Links if present */}
+                {(student.instagram_url || student.youtube_url || student.facebook_url || student.twitter_url) && (
+                  <div className="pt-4 border-t border-zinc-800/40 space-y-3">
+                    <h3 className="text-xs font-black uppercase text-zinc-400 tracking-wider">Redes Sociales Oficiales</h3>
+                    <div className="flex flex-wrap gap-3">
+                      {student.instagram_url && (
+                        <a
+                          href={student.instagram_url.startsWith('http') ? student.instagram_url : `https://${student.instagram_url}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-2 bg-[#121212] border border-zinc-800 hover:border-pink-500/50 hover:text-pink-500 px-4 py-2 rounded-xl text-xs font-bold text-zinc-300 transition-all cursor-pointer"
+                        >
+                          <Heart className="w-4 h-4 fill-current text-pink-500" />
+                          <span>Instagram</span>
+                        </a>
+                      )}
+                      {student.youtube_url && (
+                        <a
+                          href={student.youtube_url.startsWith('http') ? student.youtube_url : `https://${student.youtube_url}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-2 bg-[#121212] border border-zinc-800 hover:border-red-500/50 hover:text-red-500 px-4 py-2 rounded-xl text-xs font-bold text-zinc-300 transition-all cursor-pointer"
+                        >
+                          <Award className="w-4 h-4 text-red-500" />
+                          <span>YouTube</span>
+                        </a>
+                      )}
+                      {student.facebook_url && (
+                        <a
+                          href={student.facebook_url.startsWith('http') ? student.facebook_url : `https://${student.facebook_url}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-2 bg-[#121212] border border-zinc-800 hover:border-blue-500/50 hover:text-blue-500 px-4 py-2 rounded-xl text-xs font-bold text-zinc-300 transition-all cursor-pointer"
+                        >
+                          <Users className="w-4 h-4 text-blue-500" />
+                          <span>Facebook</span>
+                        </a>
+                      )}
+                      {student.twitter_url && (
+                        <a
+                          href={student.twitter_url.startsWith('http') ? student.twitter_url : `https://${student.twitter_url}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-2 bg-[#121212] border border-zinc-800 hover:border-[#1da1f2]/50 hover:text-[#1da1f2] px-4 py-2 rounded-xl text-xs font-bold text-zinc-300 transition-all cursor-pointer"
+                        >
+                          <Sparkles className="w-4 h-4 text-[#1da1f2]" />
+                          <span>Twitter / X</span>
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Created At footer info */}
+                <div className="p-4 bg-[#050505] rounded-xl border border-zinc-800/20 text-xs text-zinc-500 flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-[#eab308]" />
+                  <span>
+                    Miembro registrado el{' '}
+                    {new Date(student.created_at || '').toLocaleDateString('es-ES', {
+                      day: 'numeric',
+                      month: 'long',
+                      year: 'numeric'
+                    })}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              // EDIT WIKI MODE
+              <form onSubmit={handleSaveWiki} className="space-y-6">
+                <div className="border-b border-zinc-800/40 pb-4">
+                  <h2 className="text-xl font-black text-white uppercase tracking-wide">
+                    Editar Perfil Wiki
+                  </h2>
+                </div>
+
+                {/* Foto de perfil input */}
+                <div className="space-y-2.5">
+                  <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider">
+                    Foto de Perfil (URL Directa)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="https://ejemplo.com/imagen.jpg"
+                    value={wikiAvatarUrl}
+                    onChange={(e) => setWikiAvatarUrl(e.target.value)}
+                    className="w-full bg-[#121212] border border-zinc-800 focus:border-[#eab308] rounded-xl px-4 py-3 text-sm text-white font-medium outline-none transition-all placeholder:text-zinc-600"
+                  />
+                </div>
+
+                {/* Altura, Estado Civil, Sexo Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Altura */}
+                  <div className="space-y-2.5">
+                    <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider">
+                      Altura
+                    </label>
+                    <select
+                      value={wikiHeightCm}
+                      onChange={(e) => setWikiHeightCm(e.target.value)}
+                      className="w-full bg-[#121212] border border-zinc-800 focus:border-[#eab308] rounded-xl px-4 py-3 text-sm text-white outline-none transition-all cursor-pointer"
+                    >
+                      <option value="">Selecciona una altura</option>
+                      {Array.from({ length: 61 }, (_, i) => 140 + i).map((h) => (
+                        <option key={h} value={h.toString()}>
+                          {h} cm
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Estado Civil */}
+                  <div className="space-y-2.5">
+                    <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider">
+                      Estado Civil
+                    </label>
+                    <select
+                      value={wikiMaritalStatus}
+                      onChange={(e) => setWikiMaritalStatus(e.target.value)}
+                      className="w-full bg-[#121212] border border-zinc-800 focus:border-[#eab308] rounded-xl px-4 py-3 text-sm text-white outline-none transition-all cursor-pointer"
+                    >
+                      <option value="No especificado">No especificado</option>
+                      <option value="Soltero/a">Soltero/a</option>
+                      <option value="Con novio/a">Con novio/a</option>
+                      <option value="Casado/a">Casado/a</option>
+                    </select>
+                  </div>
+
+                  {/* Sexo */}
+                  <div className="space-y-2.5">
+                    <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider">
+                      Sexo
+                    </label>
+                    <select
+                      value={wikiGender}
+                      onChange={(e) => setWikiGender(e.target.value)}
+                      className="w-full bg-[#121212] border border-zinc-800 focus:border-[#eab308] rounded-xl px-4 py-3 text-sm text-white outline-none transition-all cursor-pointer"
+                    >
+                      <option value="No especificado">No especificado</option>
+                      <option value="HOMBRE">HOMBRE</option>
+                      <option value="MUJER">MUJER</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Fecha de Nacimiento (Año -> Mes -> Día) */}
+                <div className="space-y-2.5">
+                  <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider">
+                    Fecha de Nacimiento
+                  </label>
+                  <div className="grid grid-cols-3 gap-3">
+                    {/* Año */}
+                    <select
+                      value={wikiBirthYear}
+                      onChange={(e) => {
+                        setWikiBirthYear(e.target.value);
+                        setWikiBirthDay('');
+                      }}
+                      className="bg-[#121212] border border-zinc-800 focus:border-[#eab308] rounded-xl px-3 py-3 text-sm text-white outline-none transition-all cursor-pointer"
+                    >
+                      <option value="">Año</option>
+                      {Array.from({ length: 2026 - 1950 + 1 }, (_, i) => 2026 - i).map((y) => (
+                        <option key={y} value={y.toString()}>
+                          {y}
+                        </option>
+                      ))}
+                    </select>
+
+                    {/* Mes */}
+                    <select
+                      value={wikiBirthMonth}
+                      onChange={(e) => {
+                        setWikiBirthMonth(e.target.value);
+                        setWikiBirthDay('');
+                      }}
+                      className="bg-[#121212] border border-zinc-800 focus:border-[#eab308] rounded-xl px-3 py-3 text-sm text-white outline-none transition-all cursor-pointer"
+                    >
+                      <option value="">Mes</option>
+                      {[
+                        { value: '01', label: 'Enero' },
+                        { value: '02', label: 'Febrero' },
+                        { value: '03', label: 'Marzo' },
+                        { value: '04', label: 'Abril' },
+                        { value: '05', label: 'Mayo' },
+                        { value: '06', label: 'Junio' },
+                        { value: '07', label: 'Julio' },
+                        { value: '08', label: 'Agosto' },
+                        { value: '09', label: 'Septiembre' },
+                        { value: '10', label: 'Octubre' },
+                        { value: '11', label: 'Noviembre' },
+                        { value: '12', label: 'Diciembre' }
+                      ].map((m) => (
+                        <option key={m.value} value={m.value}>
+                          {m.label}
+                        </option>
+                      ))}
+                    </select>
+
+                    {/* Día */}
+                    <select
+                      value={wikiBirthDay}
+                      onChange={(e) => setWikiBirthDay(e.target.value)}
+                      className="bg-[#121212] border border-zinc-800 focus:border-[#eab308] rounded-xl px-3 py-3 text-sm text-white outline-none transition-all cursor-pointer"
+                    >
+                      <option value="">Día</option>
+                      {wikiBirthYear && wikiBirthMonth ? (
+                        Array.from({ length: getMaxDays(wikiBirthYear, wikiBirthMonth) }, (_, i) => {
+                          const dNum = i + 1;
+                          const dStr = dNum < 10 ? `0${dNum}` : dNum.toString();
+                          return (
+                            <option key={dStr} value={dStr}>
+                              {dNum}
+                            </option>
+                          );
+                        })
+                      ) : (
+                        Array.from({ length: 31 }, (_, i) => {
+                          const dNum = i + 1;
+                          const dStr = dNum < 10 ? `0${dNum}` : dNum.toString();
+                          return (
+                            <option key={dStr} value={dStr}>
+                              {dNum}
+                            </option>
+                          );
+                        })
+                      )}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Redes Sociales Fields */}
+                <div className="space-y-4 pt-4 border-t border-zinc-800/40">
+                  <h3 className="text-xs font-black uppercase text-zinc-400 tracking-wider">Redes Sociales</h3>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Instagram */}
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider">
+                        Instagram
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="https://instagram.com/nombre"
+                        value={wikiInstagram}
+                        onChange={(e) => {
+                          setWikiInstagram(e.target.value);
+                          setSocialErrors(prev => ({ ...prev, instagram: '' }));
+                        }}
+                        className="w-full bg-[#121212] border border-zinc-800 focus:border-[#eab308] rounded-xl px-4 py-3 text-sm text-white outline-none transition-all placeholder:text-zinc-600"
+                      />
+                      {socialErrors.instagram && (
+                        <p className="text-rose-500 text-[11px] font-bold tracking-wide mt-1">
+                          {socialErrors.instagram}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* YouTube */}
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider">
+                        YouTube
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="https://youtube.com/nombre"
+                        value={wikiYoutube}
+                        onChange={(e) => {
+                          setWikiYoutube(e.target.value);
+                          setSocialErrors(prev => ({ ...prev, youtube: '' }));
+                        }}
+                        className="w-full bg-[#121212] border border-zinc-800 focus:border-[#eab308] rounded-xl px-4 py-3 text-sm text-white outline-none transition-all placeholder:text-zinc-600"
+                      />
+                      {socialErrors.youtube && (
+                        <p className="text-rose-500 text-[11px] font-bold tracking-wide mt-1">
+                          {socialErrors.youtube}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Facebook */}
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider">
+                        Facebook
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="https://facebook.com/nombre"
+                        value={wikiFacebook}
+                        onChange={(e) => {
+                          setWikiFacebook(e.target.value);
+                          setSocialErrors(prev => ({ ...prev, facebook: '' }));
+                        }}
+                        className="w-full bg-[#121212] border border-zinc-800 focus:border-[#eab308] rounded-xl px-4 py-3 text-sm text-white outline-none transition-all placeholder:text-zinc-600"
+                      />
+                      {socialErrors.facebook && (
+                        <p className="text-rose-500 text-[11px] font-bold tracking-wide mt-1">
+                          {socialErrors.facebook}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Twitter / X */}
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider">
+                        Twitter / X
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="https://twitter.com/nombre"
+                        value={wikiTwitter}
+                        onChange={(e) => {
+                          setWikiTwitter(e.target.value);
+                          setSocialErrors(prev => ({ ...prev, twitter: '' }));
+                        }}
+                        className="w-full bg-[#121212] border border-zinc-800 focus:border-[#eab308] rounded-xl px-4 py-3 text-sm text-white outline-none transition-all placeholder:text-zinc-600"
+                      />
+                      {socialErrors.twitter && (
+                        <p className="text-rose-500 text-[11px] font-bold tracking-wide mt-1">
+                          {socialErrors.twitter}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Save / Cancel actions */}
+                <div className="flex items-center gap-3 pt-4 border-t border-zinc-800/40">
+                  <button
+                    type="button"
+                    disabled={savingWiki}
+                    onClick={() => setIsEditingWiki(false)}
+                    className="flex-1 py-3 bg-[#121212] hover:bg-[#181818] border border-zinc-800 rounded-xl text-xs font-black uppercase tracking-wider text-zinc-400 hover:text-white transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingWiki}
+                    className="flex-1 py-3 bg-[#eab308] hover:bg-[#eab308]/90 text-black text-xs font-black uppercase tracking-wider rounded-xl transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {savingWiki ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin"></div>
+                        <span>Guardando...</span>
+                      </>
+                    ) : (
+                      <span>Guardar Cambios</span>
+                    )}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* 3. CRUSHES TAB */}
+      {activeTab === 'Crushes' && (
+        <div className="bg-[#0d0d0d] border border-zinc-800/80 rounded-2xl p-6 sm:p-8 space-y-6 animate-in fade-in duration-300">
+          <div className="text-center max-w-md mx-auto space-y-2">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-pink-500/10 border border-pink-500/20 text-pink-400 text-[10px] font-black uppercase tracking-widest">
+              <Sparkles className="w-3 h-3" />
+              <span>Flechazos del Campus</span>
+            </div>
+            <h3 className="text-xl sm:text-2xl font-black text-white uppercase tracking-tight">
+              ¿Es tu Crush en el Campus?
+            </h3>
+            <p className="text-xs text-zinc-400 leading-relaxed">
+              Los flechazos son 100% confidenciales y anónimos. Nadie sabrá tu identidad, pero sumarás popularidad al perfil.
+            </p>
           </div>
 
-          {/* Información Principal */}
-          <div className="flex-1 text-center sm:text-left space-y-3">
-            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
-              <span className="px-3 py-1 bg-[#eab308]/10 text-[#eab308] border border-[#eab308]/20 rounded-full text-xs font-black uppercase tracking-wider flex items-center gap-1.5">
-                <GraduationCap className="w-3.5 h-3.5" />
-                Estudiante
+          {/* Botón Destacado de Flechazo / Crush */}
+          <div className="flex flex-col items-center justify-center py-4 space-y-4">
+            <button
+              type="button"
+              onClick={handleToggleCrush}
+              disabled={loadingCrush}
+              className={`group relative p-6 sm:p-8 rounded-full border-2 transition-all duration-300 cursor-pointer flex flex-col items-center justify-center shadow-2xl active:scale-95 ${
+                hasCrushed
+                  ? 'bg-gradient-to-b from-pink-500/20 to-rose-600/30 border-pink-500 text-pink-400 shadow-[0_0_40px_rgba(236,72,153,0.45)] ring-4 ring-pink-500/20 scale-105'
+                  : 'bg-[#141414] hover:bg-[#1c1c1c] border-zinc-800 hover:border-pink-500/50 text-zinc-400 hover:text-pink-400 hover:shadow-[0_0_25px_rgba(236,72,153,0.2)]'
+              }`}
+              title={hasCrushed ? 'Retirar flechazo' : 'Dar flechazo'}
+            >
+              {loadingCrush ? (
+                <Loader2 className="w-16 h-16 sm:w-20 sm:h-20 animate-spin text-pink-500" />
+              ) : (
+                <Heart
+                  className={`w-16 h-16 sm:w-20 sm:h-20 transition-transform duration-300 group-hover:scale-110 ${
+                    hasCrushed ? 'fill-pink-500 text-pink-500 animate-pulse' : 'stroke-[1.5]'
+                  }`}
+                />
+              )}
+            </button>
+
+            {/* Contador de Flechazos */}
+            <div className="text-center space-y-1">
+              <div className="flex items-center justify-center gap-2">
+                <span className={`text-4xl sm:text-5xl font-black tracking-tight ${hasCrushed ? 'text-pink-400' : 'text-white'}`}>
+                  {crushCount}
+                </span>
+              </div>
+              <span className="block text-xs font-black uppercase tracking-widest text-zinc-500">
+                {crushCount === 1 ? 'Flechazo Recibido' : 'Flechazos Recibidos'}
               </span>
             </div>
 
-            <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-              {studentName}
-            </h1>
-
-            {/* Métricas destacadas */}
-            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-4 pt-2">
-              {/* Score */}
-              <div className="flex items-center gap-1.5 bg-zinc-900/90 border border-zinc-800 px-3.5 py-2 rounded-xl">
-                <Star className="w-4 h-4 text-[#eab308] fill-[#eab308]" />
-                <span className="text-base font-black text-white">{studentScore.toFixed(1)}</span>
-                <span className="text-xs text-zinc-500 font-bold">({studentTotalRatings} votos)</span>
-              </div>
-
-              {/* Conozco */}
-              <div className="flex items-center gap-1.5 bg-zinc-900/90 border border-zinc-800 px-3.5 py-2 rounded-xl">
-                <Users className="w-4 h-4 text-blue-400" />
-                <span className="text-sm font-black text-white">{knowCount}</span>
-                <span className="text-xs text-zinc-500 font-bold">lo conocen</span>
-              </div>
-
-              {/* Fans */}
-              <div className="flex items-center gap-1.5 bg-zinc-900/90 border border-zinc-800 px-3.5 py-2 rounded-xl">
-                <Award className="w-4 h-4 text-emerald-400" />
-                <span className="text-sm font-black text-white">{fanCount}</span>
-                <span className="text-xs text-zinc-500 font-bold">fans</span>
-              </div>
-
-              {/* Crushes */}
-              <div className="flex items-center gap-1.5 bg-zinc-900/90 border border-zinc-800 px-3.5 py-2 rounded-xl">
-                <Heart className="w-4 h-4 text-pink-500 fill-pink-500/20" />
-                <span className="text-sm font-black text-white">{crushCount}</span>
-                <span className="text-xs text-zinc-500 font-bold">crushes</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Botones de Interacción Rápida: Yo te conozco / Fan / Crush */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-4 border-t border-zinc-800/60">
-          
-          <button
-            onClick={() => handleInteractionToggle('knows')}
-            disabled={loadingInteraction}
-            className={`py-3 px-4 rounded-xl flex items-center justify-center gap-2 text-xs font-black uppercase tracking-wider transition-all cursor-pointer border ${
-              hasVotedKnow
-                ? 'bg-blue-500/20 text-blue-400 border-blue-500/40 shadow-sm'
-                : 'bg-zinc-900/80 hover:bg-zinc-800 text-zinc-400 hover:text-white border-zinc-800'
-            }`}
-          >
-            <Users className="w-4 h-4" />
-            <span>{hasVotedKnow ? '✓ Yo te conozco' : 'Yo te conozco'}</span>
-          </button>
-
-          <button
-            onClick={() => handleInteractionToggle('fan')}
-            disabled={loadingInteraction}
-            className={`py-3 px-4 rounded-xl flex items-center justify-center gap-2 text-xs font-black uppercase tracking-wider transition-all cursor-pointer border ${
-              hasVotedFan
-                ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40 shadow-sm'
-                : 'bg-zinc-900/80 hover:bg-zinc-800 text-zinc-400 hover:text-white border-zinc-800'
-            }`}
-          >
-            <Award className="w-4 h-4" />
-            <span>{hasVotedFan ? '✓ Soy su fan' : 'Soy su fan'}</span>
-          </button>
-
-          <button
-            onClick={handleToggleCrush}
-            disabled={loadingCrush}
-            className={`py-3 px-4 rounded-xl flex items-center justify-center gap-2 text-xs font-black uppercase tracking-wider transition-all cursor-pointer border ${
-              hasCrushed
-                ? 'bg-pink-500/20 text-pink-400 border-pink-500/40 shadow-sm'
-                : 'bg-zinc-900/80 hover:bg-zinc-800 text-zinc-400 hover:text-white border-zinc-800'
-            }`}
-          >
-            <Heart className={`w-4 h-4 ${hasCrushed ? 'fill-pink-400' : ''}`} />
-            <span>{hasCrushed ? '✓ Es mi Crush' : 'Es mi Crush'}</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Navegación por Pestañas */}
-      <div className="flex items-center gap-2 border-b border-zinc-800 pb-2 overflow-x-auto">
-        {(['Reseñas', 'Wiki', 'Crushes', 'Ship', 'Estadística'] as TabType[]).map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer ${
-              activeTab === tab
-                ? 'bg-[#eab308] text-black shadow-sm'
-                : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-            }`}
-          >
-            {tab}
-          </button>
-        ))}
-      </div>
-
-      {/* Contenido según la pestaña */}
-      {activeTab === 'Reseñas' && (
-        <div className="space-y-6">
-          {/* Módulo de Calificación por Estrellas */}
-          <div className="bg-[#0f0f0f] border border-zinc-800/60 rounded-3xl p-6 sm:p-8 space-y-6">
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div>
-                <h3 className="text-lg font-black text-white uppercase tracking-wide">Califica a este Estudiante</h3>
-                <p className="text-xs text-zinc-400">
-                  {opportunitiesLeft > 0 
-                    ? `Tienes ${opportunitiesLeft} ${opportunitiesLeft === 1 ? 'oportunidad' : 'oportunidades'} restantes para votar hoy.`
-                    : 'Has alcanzado el límite diario de votos (6 de 6) para este perfil.'}
-                </p>
-              </div>
-
-              {/* Botones de Estrellas 1 a 5 */}
-              <div className="flex items-center gap-2">
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <button
-                    key={star}
-                    onClick={() => handleStarVote(star)}
-                    disabled={opportunitiesLeft <= 0 || votingInProgress}
-                    className="p-3 bg-zinc-900 hover:bg-[#eab308]/20 border border-zinc-800 hover:border-[#eab308]/50 rounded-2xl transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed group"
-                    title={`Votar con ${star} ${star === 1 ? 'estrella' : 'estrellas'}`}
-                  >
-                    <Star className="w-6 h-6 text-zinc-600 group-hover:text-[#eab308] group-hover:fill-[#eab308] transition-colors" />
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Desglose de estrellas */}
-            <div className="space-y-2 pt-4 border-t border-zinc-800/60">
-              {[5, 4, 3, 2, 1].map((star) => {
-                const count = ratingBreakdown[star] || 0;
-                const total = studentTotalRatings || 1;
-                const percentage = Math.round((count / total) * 100);
-
-                return (
-                  <div key={star} className="flex items-center gap-3 text-xs">
-                    <span className="w-14 text-zinc-400 font-bold">{star} estrellas</span>
-                    <div className="flex-1 h-2.5 bg-zinc-900 rounded-full overflow-hidden border border-zinc-800">
-                      <div 
-                        className="h-full bg-[#eab308] rounded-full transition-all duration-500"
-                        style={{ width: `${studentTotalRatings ? percentage : 0}%` }}
-                      />
-                    </div>
-                    <span className="w-10 text-right text-zinc-500 font-bold">{count}</span>
-                  </div>
-                );
-              })}
+            {/* Estado o Feedback */}
+            <div className="text-center max-w-xs">
+              {hasCrushed ? (
+                <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-pink-950/40 border border-pink-800/40 text-pink-300 text-xs font-bold animate-in fade-in">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-pink-400" />
+                  <span>¡Ya diste tu flechazo anónimo!</span>
+                </div>
+              ) : (
+                <span className="text-[11px] text-zinc-500 font-medium">
+                  Toca el corazón para enviar tu flechazo anónimo
+                </span>
+              )}
             </div>
           </div>
         </div>
       )}
 
-      {activeTab === 'Wiki' && (
-        <div className="bg-[#0f0f0f] border border-zinc-800/60 rounded-3xl p-6 sm:p-8 space-y-6">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-black text-white uppercase tracking-wide">Información de la Wiki</h3>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-            <div className="p-4 bg-zinc-900/60 border border-zinc-800/60 rounded-2xl space-y-1">
-              <span className="text-zinc-500 font-bold uppercase tracking-wider">Nombre Completo</span>
-              <p className="text-white font-black text-sm">{studentName}</p>
-            </div>
-
-            <div className="p-4 bg-zinc-900/60 border border-zinc-800/60 rounded-2xl space-y-1">
-              <span className="text-zinc-500 font-bold uppercase tracking-wider">Rol Institucional</span>
-              <p className="text-[#eab308] font-black text-sm">Estudiante</p>
-            </div>
-
-            <div className="p-4 bg-zinc-900/60 border border-zinc-800/60 rounded-2xl space-y-1 sm:col-span-2">
-              <span className="text-zinc-500 font-bold uppercase tracking-wider">Biografía / Acerca de</span>
-              <p className="text-zinc-300 text-sm leading-relaxed">
-                {student.biography || 'Aún no se ha añadido una biografía para este estudiante.'}
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'Crushes' && (
-        <div className="bg-[#0f0f0f] border border-zinc-800/60 rounded-3xl p-8 text-center space-y-4">
-          <div className="w-16 h-16 bg-pink-500/10 border border-pink-500/30 rounded-full flex items-center justify-center text-pink-400 mx-auto">
-            <Heart className="w-8 h-8 fill-pink-400/30" />
-          </div>
-          <h3 className="text-lg font-black text-white uppercase">Club de Crushes</h3>
-          <p className="text-xs text-zinc-400 max-w-md mx-auto">
-            Este estudiante tiene un total de <span className="text-pink-400 font-black">{crushCount}</span> personas que lo consideran su crush secreto.
-          </p>
-          <button
-            onClick={handleToggleCrush}
-            className="px-6 py-3 bg-pink-500 hover:bg-pink-600 text-white font-black text-xs uppercase tracking-widest rounded-xl transition-all cursor-pointer shadow-lg shadow-pink-500/20"
-          >
-            {hasCrushed ? 'Ya diste tu Crush' : 'Declarar Crush'}
-          </button>
-        </div>
-      )}
-
+      {/* 4. SHIP TAB */}
       {activeTab === 'Ship' && (
-        <div className="bg-[#0f0f0f] border border-zinc-800/60 rounded-3xl p-8 text-center space-y-4">
-          <div className="w-16 h-16 bg-purple-500/10 border border-purple-500/30 rounded-full flex items-center justify-center text-purple-400 mx-auto">
-            <Sparkles className="w-8 h-8" />
-          </div>
-          <h3 className="text-lg font-black text-white uppercase">Simulador de Compatibilidad</h3>
-          <p className="text-xs text-zinc-400 max-w-md mx-auto">
-            Calcula la compatibilidad entre este estudiante y otros miembros del centro educativo.
+        <div className="bg-[#0d0d0d] border border-zinc-800/40 rounded-2xl p-8 text-center text-zinc-500 space-y-3">
+          <Sparkles className="w-10 h-10 text-[#eab308] mx-auto animate-bounce" />
+          <h3 className="text-base font-bold text-white uppercase">Emparejamientos del Campus (Ship)</h3>
+          <p className="text-xs max-w-sm mx-auto">
+            Vota por las parejas más votadas y divertidas del centro educativo creadas por la propia comunidad estudiantil.
           </p>
         </div>
       )}
 
+      {/* 5. ESTADÍSTICA TAB */}
       {activeTab === 'Estadística' && (
-        <div className="bg-[#0f0f0f] border border-zinc-800/60 rounded-3xl p-8 space-y-6">
-          <h3 className="text-lg font-black text-white uppercase">Métricas y Rendimiento</h3>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div className="p-4 bg-zinc-900/60 border border-zinc-800/60 rounded-2xl text-center space-y-1">
-              <span className="text-[10px] text-zinc-500 font-bold uppercase">Calificación</span>
-              <p className="text-2xl font-black text-[#eab308]">{studentScore.toFixed(1)}</p>
+        <div className="bg-[#0d0d0d] border border-zinc-800/40 rounded-2xl p-6 space-y-6">
+          <h2 className="text-lg font-black text-white uppercase tracking-wide">
+            Estadísticas Generales
+          </h2>
+          <div className="grid grid-cols-3 gap-4 text-center">
+            <div className="bg-[#050505] p-4 rounded-xl border border-zinc-800/20">
+              <span className="block text-xs text-zinc-500 font-bold uppercase tracking-wider">Votos</span>
+              <span className="text-xl font-black text-white mt-1 block">{knowCount}</span>
             </div>
-            <div className="p-4 bg-zinc-900/60 border border-zinc-800/60 rounded-2xl text-center space-y-1">
-              <span className="text-[10px] text-zinc-500 font-bold uppercase">Total Votos</span>
-              <p className="text-2xl font-black text-white">{studentTotalRatings}</p>
+            <div className="bg-[#050505] p-4 rounded-xl border border-zinc-800/20">
+              <span className="block text-xs text-zinc-500 font-bold uppercase tracking-wider">Fans</span>
+              <span className="text-xl font-black text-[#eab308] mt-1 block">{fanCount}</span>
             </div>
-            <div className="p-4 bg-zinc-900/60 border border-zinc-800/60 rounded-2xl text-center space-y-1">
-              <span className="text-[10px] text-zinc-500 font-bold uppercase">Lo Conocen</span>
-              <p className="text-2xl font-black text-blue-400">{knowCount}</p>
-            </div>
-            <div className="p-4 bg-zinc-900/60 border border-zinc-800/60 rounded-2xl text-center space-y-1">
-              <span className="text-[10px] text-zinc-500 font-bold uppercase">Fans</span>
-              <p className="text-2xl font-black text-emerald-400">{fanCount}</p>
+            <div className="bg-[#050505] p-4 rounded-xl border border-zinc-800/20">
+              <span className="block text-xs text-zinc-500 font-bold uppercase tracking-wider">Puntaje</span>
+              <span className="text-xl font-black text-emerald-400 mt-1 block">
+                {studentScore.toFixed(1)}
+              </span>
             </div>
           </div>
         </div>
       )}
+
     </div>
   );
 }

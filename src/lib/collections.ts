@@ -12,7 +12,7 @@ export interface CollectionItem {
   collection_id: string;
   firebase_uid: string;
   item_id: string;
-  item_type: 'professor' | 'center';
+  item_type: 'professor' | 'center' | 'student';
   item_name: string;
   item_image: string | null;
   item_subtitle: string | null;

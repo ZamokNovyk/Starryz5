@@ -14,7 +14,7 @@ import {
 
 interface BookmarkButtonProps {
   itemId: string;
-  itemType: 'professor' | 'center';
+  itemType: 'professor' | 'center' | 'student';
   itemName: string;
   itemImage: string | null;
   itemSubtitle: string | null;
