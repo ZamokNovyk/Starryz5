@@ -121,6 +121,7 @@ export default function EducationalCenterProfileView({
   institution,
   onBack,
   onSelectProfessor,
+  onSelectStudent,
 }: EducationalCenterProfileViewProps) {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<TabType>('Profesores');
