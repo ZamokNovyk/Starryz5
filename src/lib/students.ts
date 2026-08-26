@@ -508,3 +508,332 @@ export async function updateStudentWiki(
     return { success: false, error: err.message };
   }
 }
+
+export interface StudentLoveMessage {
+  id: number | string;
+  student_id: string;
+  user_uid: string;
+  author_name: string;
+  author_avatar?: string | null;
+  message: string;
+  created_at: string;
+  hearts_count?: number;
+  has_hearted?: boolean;
+}
+
+/**
+ * Obtiene los mensajes de amor / confesiones crush para un estudiante.
+ */
+export async function getStudentLoveMessages(studentId: string, currentUserUid?: string): Promise<StudentLoveMessage[]> {
+  try {
+    const { data, error } = await supabase
+      .from('student_love_messages')
+      .select('*')
+      .eq('student_id', studentId)
+      .order('created_at', { ascending: false });
+
+    let messages: StudentLoveMessage[] = [];
+
+    if (error) {
+      if (error.code === '42P01' || error.message?.includes('does not exist')) {
+        // Fallback a localStorage si la tabla aún no se ha creado en Supabase
+        if (typeof window !== 'undefined') {
+          const local = localStorage.getItem(`student_love_messages_${studentId}`);
+          if (local) {
+            try {
+              messages = JSON.parse(local);
+            } catch (e) {}
+          }
+        }
+      }
+    } else if (data) {
+      messages = data.map((msg: any) => ({
+        ...msg,
+        hearts_count: Number(msg.hearts_count) || 0
+      })) as StudentLoveMessage[];
+    }
+
+    // Obtener los corazones que ha dado el usuario actual desde la tabla student_love_message_hearts
+    let userHeartedMessageIds = new Set<string>();
+
+    if (currentUserUid) {
+      try {
+        const { data: userHearts } = await supabase
+          .from('student_love_message_hearts')
+          .select('message_id')
+          .eq('user_uid', currentUserUid);
+
+        if (userHearts && Array.isArray(userHearts)) {
+          userHearts.forEach(h => userHeartedMessageIds.add(String(h.message_id)));
+        }
+      } catch (hErr) {
+        console.warn('Notice loading user hearts from Supabase:', hErr);
+      }
+    }
+
+    // Sincronizar y enriquecer con localStorage si corresponde
+    messages = messages.map(msg => {
+      let isHearted = userHeartedMessageIds.has(String(msg.id));
+      let heartsCount = msg.hearts_count || 0;
+
+      if (typeof window !== 'undefined') {
+        const localHearted = localStorage.getItem(`student_love_msg_heart_${msg.id}_${currentUserUid}`);
+        if (localHearted === 'true') {
+          isHearted = true;
+        } else if (localHearted === 'false') {
+          isHearted = false;
+        }
+
+        const localCount = localStorage.getItem(`student_love_msg_count_${msg.id}`);
+        if (localCount !== null) {
+          heartsCount = Math.max(heartsCount, parseInt(localCount, 10) || 0);
+        }
+      }
+
+      return {
+        ...msg,
+        hearts_count: heartsCount,
+        has_hearted: isHearted
+      };
+    });
+
+    if (typeof window !== 'undefined' && messages.length > 0) {
+      localStorage.setItem(`student_love_messages_${studentId}`, JSON.stringify(messages));
+    }
+
+    return messages;
+  } catch (err) {
+    if (typeof window !== 'undefined') {
+      const local = localStorage.getItem(`student_love_messages_${studentId}`);
+      if (local) {
+        try {
+          const parsed: StudentLoveMessage[] = JSON.parse(local);
+          return parsed.map(msg => ({
+            ...msg,
+            has_hearted: currentUserUid
+              ? localStorage.getItem(`student_love_msg_heart_${msg.id}_${currentUserUid}`) === 'true'
+              : false
+          }));
+        } catch (e) {}
+      }
+    }
+    return [];
+  }
+}
+
+/**
+ * Alterna el corazón (like) a un mensaje de amor:
+ * 1. Inserta o elimina en la tabla student_love_message_hearts (quién dio el corazón)
+ * 2. Suma o resta en student_love_messages.hearts_count (contador general)
+ */
+export async function toggleStudentLoveMessageHeart(
+  messageId: number | string,
+  userUid: string,
+  studentId: string
+): Promise<{ success: boolean; hasHearted: boolean; heartsCount: number; error?: string }> {
+  try {
+    // 1. Consultar si el usuario ya dio corazón a este mensaje en Supabase
+    let alreadyHearted = false;
+    try {
+      const { data: existingHeart } = await supabase
+        .from('student_love_message_hearts')
+        .select('id')
+        .eq('message_id', messageId)
+        .eq('user_uid', userUid)
+        .maybeSingle();
+
+      alreadyHearted = !!existingHeart;
+    } catch (e) {
+      // Si la tabla no existe aún, chequear localStorage
+      if (typeof window !== 'undefined') {
+        alreadyHearted = localStorage.getItem(`student_love_msg_heart_${messageId}_${userUid}`) === 'true';
+      }
+    }
+
+    let newHeartsCount = 0;
+    let nextHasHearted = !alreadyHearted;
+
+    // 2. Obtener el conteo actual del mensaje
+    let currentCount = 0;
+    try {
+      const { data: msgData } = await supabase
+        .from('student_love_messages')
+        .select('hearts_count')
+        .eq('id', messageId)
+        .maybeSingle();
+
+      if (msgData && msgData.hearts_count !== undefined && msgData.hearts_count !== null) {
+        currentCount = Number(msgData.hearts_count) || 0;
+      }
+    } catch (e) {}
+
+    if (typeof window !== 'undefined') {
+      const cached = localStorage.getItem(`student_love_msg_count_${messageId}`);
+      if (cached !== null) {
+        currentCount = Math.max(currentCount, parseInt(cached, 10) || 0);
+      }
+    }
+
+    if (alreadyHearted) {
+      // Quitar corazón: restar -1
+      newHeartsCount = Math.max(0, currentCount - 1);
+
+      // Eliminar de student_love_message_hearts
+      await supabase
+        .from('student_love_message_hearts')
+        .delete()
+        .eq('message_id', messageId)
+        .eq('user_uid', userUid);
+    } else {
+      // Dar corazón: sumar +1
+      newHeartsCount = currentCount + 1;
+
+      // Insertar en student_love_message_hearts
+      await supabase
+        .from('student_love_message_hearts')
+        .insert([{
+          message_id: messageId,
+          user_uid: userUid,
+          created_at: new Date().toISOString()
+        }]);
+    }
+
+    // 3. Actualizar la columna general hearts_count en student_love_messages
+    try {
+      await supabase
+        .from('student_love_messages')
+        .update({ hearts_count: newHeartsCount })
+        .eq('id', messageId);
+    } catch (upErr) {
+      console.warn('Notice updating hearts_count on student_love_messages:', upErr);
+    }
+
+    // 4. Guardar en localStorage para respuesta instantánea local
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(`student_love_msg_heart_${messageId}_${userUid}`, String(nextHasHearted));
+      localStorage.setItem(`student_love_msg_count_${messageId}`, String(newHeartsCount));
+
+      const localMsgsRaw = localStorage.getItem(`student_love_messages_${studentId}`);
+      if (localMsgsRaw) {
+        try {
+          const msgs: StudentLoveMessage[] = JSON.parse(localMsgsRaw);
+          const updated = msgs.map(m => {
+            if (String(m.id) === String(messageId)) {
+              return {
+                ...m,
+                hearts_count: newHeartsCount,
+                has_hearted: nextHasHearted
+              };
+            }
+            return m;
+          });
+          localStorage.setItem(`student_love_messages_${studentId}`, JSON.stringify(updated));
+        } catch (e) {}
+      }
+    }
+
+    return {
+      success: true,
+      hasHearted: nextHasHearted,
+      heartsCount: newHeartsCount
+    };
+  } catch (err: any) {
+    console.error('Error toggling love message heart:', err);
+    return {
+      success: false,
+      hasHearted: false,
+      heartsCount: 0,
+      error: err.message
+    };
+  }
+}
+
+/**
+ * Crea un nuevo mensaje de amor para un estudiante (máximo 500 caracteres).
+ */
+export async function createStudentLoveMessage(
+  studentId: string,
+  userUid: string,
+  authorName: string,
+  authorAvatar: string | null,
+  message: string
+): Promise<{ success: boolean; data?: StudentLoveMessage; error?: string }> {
+  try {
+    const trimmed = message.trim();
+    if (!trimmed) {
+      return { success: false, error: 'El mensaje no puede estar vacío.' };
+    }
+    if (trimmed.length > 500) {
+      return { success: false, error: 'El mensaje no debe superar los 500 caracteres.' };
+    }
+
+    const payload = {
+      student_id: studentId,
+      user_uid: userUid,
+      author_name: authorName || 'Anónimo',
+      author_avatar: authorAvatar || null,
+      message: trimmed,
+      hearts_count: 0,
+      created_at: new Date().toISOString()
+    };
+
+    const { data, error } = await supabase
+      .from('student_love_messages')
+      .insert([payload])
+      .select()
+      .single();
+
+    if (error) {
+      console.warn('Aviso al insertar en Supabase student_love_messages:', error.message);
+      // Fallback local
+      if (typeof window !== 'undefined') {
+        const localItem: StudentLoveMessage = {
+          id: Date.now(),
+          ...payload
+        };
+        const prev = JSON.parse(localStorage.getItem(`student_love_messages_${studentId}`) || '[]');
+        const updated = [localItem, ...prev];
+        localStorage.setItem(`student_love_messages_${studentId}`, JSON.stringify(updated));
+        return { success: true, data: localItem };
+      }
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, data: { ...data, hearts_count: 0, has_hearted: false } as StudentLoveMessage };
+  } catch (err: any) {
+    console.error('Error al crear mensaje de amor:', err);
+    return { success: false, error: err.message || 'Error inesperado' };
+  }
+}
+
+/**
+ * Elimina un mensaje de amor propio.
+ */
+export async function deleteStudentLoveMessage(
+  messageId: number | string,
+  userUid: string,
+  studentId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { error } = await supabase
+      .from('student_love_messages')
+      .delete()
+      .eq('id', messageId)
+      .eq('user_uid', userUid);
+
+    if (typeof window !== 'undefined') {
+      const prev: StudentLoveMessage[] = JSON.parse(localStorage.getItem(`student_love_messages_${studentId}`) || '[]');
+      const updated = prev.filter(m => String(m.id) !== String(messageId));
+      localStorage.setItem(`student_love_messages_${studentId}`, JSON.stringify(updated));
+    }
+
+    if (error) {
+      console.warn('Error al borrar mensaje en Supabase:', error.message);
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+

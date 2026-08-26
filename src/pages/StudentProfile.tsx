@@ -14,7 +14,13 @@ import {
   Plus, 
   CheckCircle2, 
   Calendar, 
-  Loader2 
+  Loader2,
+  MessageCircle,
+  Send,
+  Lock,
+  Trash2,
+  Quote,
+  AlertCircle
 } from 'lucide-react';
 import { 
   getStudentById, 
@@ -27,7 +33,12 @@ import {
   submitStudentVote,
   updateStudentWiki,
   getStudentCrushStatus,
-  toggleStudentCrush
+  toggleStudentCrush,
+  getStudentLoveMessages,
+  createStudentLoveMessage,
+  deleteStudentLoveMessage,
+  toggleStudentLoveMessageHeart,
+  StudentLoveMessage
 } from '@/src/lib/students';
 import { useAuth } from '@/src/context/AuthContext';
 import { supabase } from '@/src/lib/supabase';
@@ -71,6 +82,16 @@ export default function StudentProfile({
   const [crushCount, setCrushCount] = useState(0);
   const [hasCrushed, setHasCrushed] = useState(false);
   const [loadingCrush, setLoadingCrush] = useState(false);
+
+  // Love Messages States
+  const [loveMessages, setLoveMessages] = useState<StudentLoveMessage[]>([]);
+  const [loadingLoveMessages, setLoadingLoveMessages] = useState(false);
+  const [loveMessageText, setLoveMessageText] = useState('');
+  const [submittingLoveMessage, setSubmittingLoveMessage] = useState(false);
+  const [loveMessageError, setLoveMessageError] = useState<string | null>(null);
+  const [loveMessageSuccess, setLoveMessageSuccess] = useState(false);
+  const [currentAuthorName, setCurrentAuthorName] = useState<string>('Anónimo');
+  const [userAvatarUrl, setUserAvatarUrl] = useState<string | null>(null);
 
   // Wiki Editing States
   const [isEditingWiki, setIsEditingWiki] = useState(false);
@@ -118,6 +139,14 @@ export default function StudentProfile({
           setCrushCount(crushStatus.count);
           setHasCrushed(crushStatus.hasCrushed);
 
+          // Cargar mensajes de amor
+          try {
+            const msgs = await getStudentLoveMessages(data.id || slug, user?.uid);
+            setLoveMessages(msgs);
+          } catch (mErr) {
+            console.warn('Error al cargar mensajes de amor:', mErr);
+          }
+
           // Cargar interacciones y votos del usuario si está logueado
           if (user) {
             const todayV = await getTodayStudentVotes(data.id || slug, user.uid);
@@ -131,10 +160,40 @@ export default function StudentProfile({
               setHasVotedKnow(false);
               setHasVotedFan(false);
             }
+
+            // Obtener nombre de usuario real de Supabase o auth
+            try {
+              const { data: dbUser } = await supabase
+                .from('users')
+                .select('display_name, username, is_anonymous, photo_url')
+                .eq('firebase_uid', user.uid)
+                .maybeSingle();
+
+              if (dbUser) {
+                setUserAvatarUrl(dbUser.photo_url || user.photoURL || null);
+                const chosen = (dbUser.username || dbUser.display_name || '').trim();
+                if (dbUser.is_anonymous || !chosen || chosen === 'Usuario Anónimo') {
+                  setCurrentAuthorName('Anónimo');
+                } else {
+                  setCurrentAuthorName(chosen);
+                }
+              } else {
+                setUserAvatarUrl(user.photoURL || null);
+                if (user.isAnonymous || !user.displayName || user.displayName === 'Usuario Anónimo') {
+                  setCurrentAuthorName('Anónimo');
+                } else {
+                  setCurrentAuthorName(user.displayName);
+                }
+              }
+            } catch (uErr) {
+              setCurrentAuthorName(user.displayName || 'Anónimo');
+            }
           } else {
             setTodayVotes([]);
             setHasVotedKnow(false);
             setHasVotedFan(false);
+            setCurrentAuthorName('Anónimo');
+            setUserAvatarUrl(null);
           }
         } else {
           setStudent(null);
@@ -238,12 +297,77 @@ export default function StudentProfile({
           }
         }
       )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'student_love_messages'
+        },
+        async (payload) => {
+          if (payload.eventType === 'DELETE' || (payload.new && (payload.new as any).student_id === studentId)) {
+            try {
+              const msgs = await getStudentLoveMessages(studentId, user?.uid);
+              setLoveMessages(msgs);
+            } catch (err) {
+              console.error('Error al refrescar mensajes de amor en tiempo real:', err);
+            }
+          }
+        }
+      )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
   }, [student?.id, slug, user?.uid]);
+
+  const handleToggleLoveMessageHeart = async (messageId: number | string) => {
+    if (!user) {
+      if (onRequireAuth) onRequireAuth();
+      return;
+    }
+
+    if (!student) return;
+    const studentId = student.id || slug;
+
+    // Actualización optimista inmediata en la UI
+    setLoveMessages(prev =>
+      prev.map(msg => {
+        if (String(msg.id) === String(messageId)) {
+          const nextHearted = !msg.has_hearted;
+          const prevCount = msg.hearts_count || 0;
+          const nextCount = nextHearted ? prevCount + 1 : Math.max(0, prevCount - 1);
+          return {
+            ...msg,
+            has_hearted: nextHearted,
+            hearts_count: nextCount
+          };
+        }
+        return msg;
+      })
+    );
+
+    try {
+      const res = await toggleStudentLoveMessageHeart(messageId, user.uid, studentId);
+      if (res.success) {
+        setLoveMessages(prev =>
+          prev.map(msg => {
+            if (String(msg.id) === String(messageId)) {
+              return {
+                ...msg,
+                has_hearted: res.hasHearted,
+                hearts_count: res.heartsCount
+              };
+            }
+            return msg;
+          })
+        );
+      }
+    } catch (err) {
+      console.error('Error al reaccionar con corazón:', err);
+    }
+  };
 
   const handleToggleCrush = async () => {
     if (!user) {
@@ -275,6 +399,72 @@ export default function StudentProfile({
       setCrushCount(previousCount);
     } finally {
       setLoadingCrush(false);
+    }
+  };
+
+  const handleSendLoveMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) {
+      if (onRequireAuth) onRequireAuth();
+      return;
+    }
+
+    if (!student) return;
+
+    if (!hasCrushed) {
+      setLoveMessageError('Debes dar tu flechazo (Crush) primero para poder dejar un mensaje de amor.');
+      return;
+    }
+
+    const trimmed = loveMessageText.trim();
+    if (!trimmed) {
+      setLoveMessageError('Por favor, escribe un mensaje de amor antes de publicar.');
+      return;
+    }
+
+    if (trimmed.length > 500) {
+      setLoveMessageError(`El mensaje no puede superar los 500 caracteres (llevas ${trimmed.length}).`);
+      return;
+    }
+
+    try {
+      setSubmittingLoveMessage(true);
+      setLoveMessageError(null);
+
+      const studentId = student.id || slug;
+      const res = await createStudentLoveMessage(
+        studentId,
+        user.uid,
+        currentAuthorName,
+        userAvatarUrl,
+        trimmed
+      );
+
+      if (res.success) {
+        setLoveMessageText('');
+        setLoveMessageSuccess(true);
+        if (res.data) {
+          setLoveMessages(prev => [res.data!, ...prev.filter(m => m.id !== res.data!.id)]);
+        }
+        setTimeout(() => setLoveMessageSuccess(false), 4000);
+      } else {
+        setLoveMessageError(res.error || 'No se pudo enviar el mensaje.');
+      }
+    } catch (err: any) {
+      setLoveMessageError(err.message || 'Ocurrió un error al enviar el mensaje.');
+    } finally {
+      setSubmittingLoveMessage(false);
+    }
+  };
+
+  const handleDeleteMessage = async (messageId: number | string) => {
+    if (!user || !student) return;
+    try {
+      const studentId = student.id || slug;
+      await deleteStudentLoveMessage(messageId, user.uid, studentId);
+      setLoveMessages(prev => prev.filter(m => String(m.id) !== String(messageId)));
+    } catch (err) {
+      console.error('Error al eliminar mensaje:', err);
     }
   };
 
@@ -1306,67 +1496,344 @@ export default function StudentProfile({
 
       {/* 3. CRUSHES TAB */}
       {activeTab === 'Crushes' && (
-        <div className="bg-[#0d0d0d] border border-zinc-800/80 rounded-2xl p-6 sm:p-8 space-y-6 animate-in fade-in duration-300">
-          <div className="text-center max-w-md mx-auto space-y-2">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-pink-500/10 border border-pink-500/20 text-pink-400 text-[10px] font-black uppercase tracking-widest">
-              <Sparkles className="w-3 h-3" />
-              <span>Flechazos del Campus</span>
+        <div className="space-y-6 animate-in fade-in duration-300">
+          {/* Tarjeta Principal de Flechazos */}
+          <div className="bg-[#0d0d0d] border border-zinc-800/80 rounded-2xl p-6 sm:p-8 space-y-6">
+            <div className="text-center max-w-md mx-auto space-y-2">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-pink-500/10 border border-pink-500/20 text-pink-400 text-[10px] font-black uppercase tracking-widest">
+                <Sparkles className="w-3 h-3" />
+                <span>Flechazos del Campus</span>
+              </div>
+              <h3 className="text-xl sm:text-2xl font-black text-white uppercase tracking-tight">
+                ¿Es tu Crush en el Campus?
+              </h3>
+              <p className="text-xs text-zinc-400 leading-relaxed">
+                Los flechazos son 100% confidenciales y anónimos. Nadie sabrá tu identidad, pero sumarás popularidad al perfil.
+              </p>
             </div>
-            <h3 className="text-xl sm:text-2xl font-black text-white uppercase tracking-tight">
-              ¿Es tu Crush en el Campus?
-            </h3>
-            <p className="text-xs text-zinc-400 leading-relaxed">
-              Los flechazos son 100% confidenciales y anónimos. Nadie sabrá tu identidad, pero sumarás popularidad al perfil.
-            </p>
-          </div>
 
-          {/* Botón Destacado de Flechazo / Crush */}
-          <div className="flex flex-col items-center justify-center py-4 space-y-4">
-            <button
-              type="button"
-              onClick={handleToggleCrush}
-              disabled={loadingCrush}
-              className={`group relative p-6 sm:p-8 rounded-full border-2 transition-all duration-300 cursor-pointer flex flex-col items-center justify-center shadow-2xl active:scale-95 ${
-                hasCrushed
-                  ? 'bg-gradient-to-b from-pink-500/20 to-rose-600/30 border-pink-500 text-pink-400 shadow-[0_0_40px_rgba(236,72,153,0.45)] ring-4 ring-pink-500/20 scale-105'
-                  : 'bg-[#141414] hover:bg-[#1c1c1c] border-zinc-800 hover:border-pink-500/50 text-zinc-400 hover:text-pink-400 hover:shadow-[0_0_25px_rgba(236,72,153,0.2)]'
-              }`}
-              title={hasCrushed ? 'Retirar flechazo' : 'Dar flechazo'}
-            >
-              {loadingCrush ? (
-                <Loader2 className="w-16 h-16 sm:w-20 sm:h-20 animate-spin text-pink-500" />
-              ) : (
-                <Heart
-                  className={`w-16 h-16 sm:w-20 sm:h-20 transition-transform duration-300 group-hover:scale-110 ${
-                    hasCrushed ? 'fill-pink-500 text-pink-500 animate-pulse' : 'stroke-[1.5]'
-                  }`}
-                />
-              )}
-            </button>
+            {/* Botón Destacado de Flechazo / Crush */}
+            <div className="flex flex-col items-center justify-center py-4 space-y-4">
+              <button
+                type="button"
+                onClick={handleToggleCrush}
+                disabled={loadingCrush}
+                className={`group relative p-6 sm:p-8 rounded-full border-2 transition-all duration-300 cursor-pointer flex flex-col items-center justify-center shadow-2xl active:scale-95 ${
+                  hasCrushed
+                    ? 'bg-gradient-to-b from-pink-500/20 to-rose-600/30 border-pink-500 text-pink-400 shadow-[0_0_40px_rgba(236,72,153,0.45)] ring-4 ring-pink-500/20 scale-105'
+                    : 'bg-[#141414] hover:bg-[#1c1c1c] border-zinc-800 hover:border-pink-500/50 text-zinc-400 hover:text-pink-400 hover:shadow-[0_0_25px_rgba(236,72,153,0.2)]'
+                }`}
+                title={hasCrushed ? 'Retirar flechazo' : 'Dar flechazo'}
+              >
+                {loadingCrush ? (
+                  <Loader2 className="w-16 h-16 sm:w-20 sm:h-20 animate-spin text-pink-500" />
+                ) : (
+                  <Heart
+                    className={`w-16 h-16 sm:w-20 sm:h-20 transition-transform duration-300 group-hover:scale-110 ${
+                      hasCrushed ? 'fill-pink-500 text-pink-500 animate-pulse' : 'stroke-[1.5]'
+                    }`}
+                  />
+                )}
+              </button>
 
-            {/* Contador de Flechazos */}
-            <div className="text-center space-y-1">
-              <div className="flex items-center justify-center gap-2">
-                <span className={`text-4xl sm:text-5xl font-black tracking-tight ${hasCrushed ? 'text-pink-400' : 'text-white'}`}>
-                  {crushCount}
+              {/* Contador de Flechazos */}
+              <div className="text-center space-y-1">
+                <div className="flex items-center justify-center gap-2">
+                  <span className={`text-4xl sm:text-5xl font-black tracking-tight ${hasCrushed ? 'text-pink-400' : 'text-white'}`}>
+                    {crushCount}
+                  </span>
+                </div>
+                <span className="block text-xs font-black uppercase tracking-widest text-zinc-500">
+                  {crushCount === 1 ? 'Flechazo Recibido' : 'Flechazos Recibidos'}
                 </span>
               </div>
-              <span className="block text-xs font-black uppercase tracking-widest text-zinc-500">
-                {crushCount === 1 ? 'Flechazo Recibido' : 'Flechazos Recibidos'}
-              </span>
+
+              {/* Estado o Feedback */}
+              <div className="text-center max-w-xs">
+                {hasCrushed ? (
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-pink-950/40 border border-pink-800/40 text-pink-300 text-xs font-bold animate-in fade-in">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-pink-400" />
+                    <span>¡Ya diste tu flechazo anónimo!</span>
+                  </div>
+                ) : (
+                  <span className="text-[11px] text-zinc-500 font-medium">
+                    Toca el corazón para enviar tu flechazo anónimo
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* SECCIÓN INFERIOR: MENSAJES DE AMOR (SOLO ACTIVO AL VOTAR EN CRUSH, MÍNIMO 500 CARACTERES) */}
+          <div className="bg-[#0d0d0d] border border-zinc-800/80 rounded-2xl p-6 sm:p-8 space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800/60 pb-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <Heart className="w-5 h-5 text-pink-400 fill-pink-500/20" />
+                  <h4 className="text-lg font-black text-white uppercase tracking-wide">
+                    Mensajes de Amor
+                  </h4>
+                </div>
+                <p className="text-xs text-zinc-400">
+                  Escribe una declaración sincera o palabras especiales para este estudiante.
+                </p>
+              </div>
+
+              {/* Distintivo de Autor / Nombre de Usuario */}
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-[#141414] border border-zinc-800 rounded-xl text-xs">
+                <Users className="w-3.5 h-3.5 text-pink-400" />
+                <span className="text-zinc-400">Publicarás como:</span>
+                <span className="font-bold text-pink-300">
+                  {currentAuthorName}
+                </span>
+              </div>
             </div>
 
-            {/* Estado o Feedback */}
-            <div className="text-center max-w-xs">
-              {hasCrushed ? (
-                <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-pink-950/40 border border-pink-800/40 text-pink-300 text-xs font-bold animate-in fade-in">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-pink-400" />
-                  <span>¡Ya diste tu flechazo anónimo!</span>
+            {/* Condición de Activación: Solo si votó en Crush */}
+            {hasCrushed ? (
+              <form onSubmit={handleSendLoveMessage} className="space-y-4">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-zinc-300 uppercase tracking-wider flex items-center gap-2">
+                      <span>Tu Declaración de Amor</span>
+                      <span className="text-[10px] text-pink-400 bg-pink-950/50 border border-pink-800/40 px-2 py-0.5 rounded-md font-bold">
+                        Máximo 500 caracteres
+                      </span>
+                    </label>
+
+                    {/* Contador en vivo */}
+                    <div className="text-xs font-bold">
+                      {loveMessageText.length > 500 ? (
+                        <span className="text-rose-400 flex items-center gap-1">
+                          <AlertCircle className="w-3.5 h-3.5" />
+                          {loveMessageText.length} / 500 (excede por {loveMessageText.length - 500})
+                        </span>
+                      ) : (
+                        <span className="text-zinc-400 flex items-center gap-1">
+                          <span className="text-pink-300 font-bold">{loveMessageText.length}</span> / 500
+                          <span className="text-zinc-500 text-[10px] font-normal">({500 - loveMessageText.length} disponibles)</span>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Barra de progreso de caracteres */}
+                  <div className="w-full bg-zinc-900 rounded-full h-1.5 overflow-hidden border border-zinc-800/60">
+                    <div
+                      className={`h-full transition-all duration-200 ${
+                        loveMessageText.length > 500
+                          ? 'bg-rose-500'
+                          : loveMessageText.length > 450
+                          ? 'bg-amber-400'
+                          : 'bg-gradient-to-r from-pink-500 to-rose-500'
+                      }`}
+                      style={{
+                        width: `${Math.min(100, (loveMessageText.length / 500) * 100)}%`
+                      }}
+                    />
+                  </div>
+
+                  <textarea
+                    rows={5}
+                    maxLength={500}
+                    value={loveMessageText}
+                    onChange={(e) => setLoveMessageText(e.target.value)}
+                    placeholder="Escribe aquí tu mensaje de amor, confesión o dedicatoria especial para este estudiante (máximo 500 caracteres)..."
+                    className="w-full bg-[#121212] border border-zinc-800 focus:border-pink-500 focus:ring-1 focus:ring-pink-500/30 rounded-xl p-4 text-sm text-zinc-100 placeholder:text-zinc-600 outline-none transition-all resize-y leading-relaxed"
+                  />
+                </div>
+
+                {loveMessageError && (
+                  <div className="p-3.5 rounded-xl bg-rose-950/40 border border-rose-800/50 text-rose-300 text-xs font-bold flex items-center gap-2 animate-in fade-in">
+                    <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                    <span>{loveMessageError}</span>
+                  </div>
+                )}
+
+                {loveMessageSuccess && (
+                  <div className="p-3.5 rounded-xl bg-pink-950/40 border border-pink-800/50 text-pink-300 text-xs font-bold flex items-center gap-2 animate-in fade-in">
+                    <CheckCircle2 className="w-4 h-4 text-pink-400 shrink-0" />
+                    <span>¡Tu mensaje de amor fue publicado con éxito en el muro!</span>
+                  </div>
+                )}
+
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
+                  <p className="text-[11px] text-zinc-500">
+                    {currentAuthorName === 'Anónimo'
+                      ? '🔒 Aparecerás como usuario "Anónimo" en el mensaje.'
+                      : `👤 Se mostrará tu nombre de usuario: "${currentAuthorName}".`}
+                  </p>
+
+                  <button
+                    type="submit"
+                    disabled={!loveMessageText.trim() || loveMessageText.length > 500 || submittingLoveMessage}
+                    className={`py-3 px-6 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg ${
+                      loveMessageText.trim() && loveMessageText.length <= 500 && !submittingLoveMessage
+                        ? 'bg-gradient-to-r from-pink-500 to-rose-600 hover:from-pink-600 hover:to-rose-700 text-white shadow-pink-500/20 active:scale-95'
+                        : 'bg-zinc-800/60 text-zinc-500 cursor-not-allowed border border-zinc-800'
+                    }`}
+                  >
+                    {submittingLoveMessage ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin text-white" />
+                        <span>Publicando...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-4 h-4" />
+                        <span>Publicar Mensaje de Amor</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              /* ESTADO BLOQUEADO: Si no ha votado en Crush */
+              <div className="p-6 rounded-xl bg-[#121212]/80 border border-pink-900/20 text-center space-y-3">
+                <div className="w-12 h-12 rounded-full bg-pink-500/10 border border-pink-500/20 flex items-center justify-center mx-auto text-pink-400">
+                  <Lock className="w-6 h-6" />
+                </div>
+                <div className="space-y-1">
+                  <h5 className="text-sm font-black text-white uppercase tracking-wide">
+                    Mensaje de Amor Bloqueado
+                  </h5>
+                  <p className="text-xs text-zinc-400 max-w-md mx-auto">
+                    La opción de dejar un mensaje de amor solo se activa cuando votas en <strong>Crush</strong>. Toca el corazón de arriba para dar tu flechazo y desbloquear el formulario.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleToggleCrush}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-pink-500/20 hover:bg-pink-500/30 border border-pink-500/40 text-pink-300 text-xs font-bold uppercase tracking-wider transition-all cursor-pointer"
+                >
+                  <Heart className="w-4 h-4 fill-pink-500 text-pink-500" />
+                  <span>Dar Flechazo Ahora</span>
+                </button>
+              </div>
+            )}
+
+            {/* LISTA DE MENSAJES DE AMOR PUBLICADOS */}
+            <div className="pt-6 border-t border-zinc-800/60 space-y-4">
+              <div className="flex items-center justify-between">
+                <h5 className="text-xs font-black text-zinc-300 uppercase tracking-wider flex items-center gap-2">
+                  <MessageCircle className="w-4 h-4 text-pink-400" />
+                  <span>Confesiones Publicadas ({loveMessages.length})</span>
+                </h5>
+              </div>
+
+              {loveMessages.length === 0 ? (
+                <div className="py-10 text-center space-y-2 bg-[#121212]/40 rounded-xl border border-zinc-800/40">
+                  <Heart className="w-8 h-8 text-zinc-700 mx-auto" />
+                  <p className="text-xs text-zinc-500">
+                    Aún no hay mensajes de amor para este estudiante. ¡Sé la primera persona en confesar lo que sientes!
+                  </p>
                 </div>
               ) : (
-                <span className="text-[11px] text-zinc-500 font-medium">
-                  Toca el corazón para enviar tu flechazo anónimo
-                </span>
+                <div className="space-y-4">
+                  {loveMessages.map((msg) => {
+                    const isOwnMessage = user && user.uid === msg.user_uid;
+                    const dateFormatted = new Date(msg.created_at).toLocaleDateString('es-ES', {
+                      day: 'numeric',
+                      month: 'long',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    });
+
+                    return (
+                      <div
+                        key={msg.id}
+                        className="bg-[#121212] border border-zinc-800/80 hover:border-pink-500/30 rounded-xl p-5 space-y-3 transition-all relative overflow-hidden group"
+                      >
+                        {/* Cabecera del Mensaje */}
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-pink-600 to-rose-400 flex items-center justify-center text-white font-black text-sm shadow-md">
+                              {msg.author_avatar ? (
+                                <img
+                                  src={msg.author_avatar}
+                                  alt={msg.author_name}
+                                  className="w-full h-full object-cover rounded-full"
+                                  referrerPolicy="no-referrer"
+                                />
+                              ) : (
+                                <span>{msg.author_name.charAt(0).toUpperCase()}</span>
+                              )}
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold text-white">
+                                  {msg.author_name}
+                                </span>
+                                {msg.author_name === 'Anónimo' && (
+                                  <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-[10px] font-bold text-zinc-400 uppercase">
+                                    Confidencial
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[10px] text-zinc-500 flex items-center gap-1">
+                                <Calendar className="w-3 h-3 text-[#eab308]" />
+                                {dateFormatted}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Opciones (Eliminar si es el autor) */}
+                          {isOwnMessage && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteMessage(msg.id)}
+                              className="text-zinc-600 hover:text-rose-400 p-1.5 rounded-lg hover:bg-rose-950/30 transition-all cursor-pointer"
+                              title="Eliminar mi mensaje"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Cuerpo del Mensaje */}
+                        <div className="relative pl-3 border-l-2 border-pink-500/40">
+                          <p className="text-xs sm:text-sm text-zinc-200 leading-relaxed whitespace-pre-line font-normal">
+                            {msg.message}
+                          </p>
+                        </div>
+
+                        {/* Pie con botón interactivo de dejar corazón (like) y conteo */}
+                        <div className="flex items-center justify-between pt-2 border-t border-zinc-800/40">
+                          {/* Botón de Dejar Corazón */}
+                          <button
+                            type="button"
+                            onClick={() => handleToggleLoveMessageHeart(msg.id)}
+                            className={`group/heart inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all duration-200 cursor-pointer active:scale-95 ${
+                              msg.has_hearted
+                                ? 'bg-pink-500/20 hover:bg-pink-500/30 text-pink-300 border border-pink-500/50 shadow-[0_0_14px_rgba(236,72,153,0.3)]'
+                                : 'bg-[#181818] hover:bg-[#222222] text-zinc-400 hover:text-pink-400 border border-zinc-800 hover:border-pink-500/30'
+                            }`}
+                            title={msg.has_hearted ? 'Quitar mi corazón' : 'Dejar corazón a este mensaje'}
+                          >
+                            <Heart
+                              className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                                msg.has_hearted
+                                  ? 'fill-pink-500 text-pink-500 scale-110'
+                                  : 'stroke-[2] group-hover/heart:scale-115 group-hover/heart:text-pink-400'
+                              }`}
+                            />
+                            <span className={msg.has_hearted ? 'text-pink-300 font-extrabold' : 'text-zinc-300 font-semibold'}>
+                              {msg.hearts_count || 0}
+                            </span>
+                            <span className="text-[10px] font-normal text-zinc-500 ml-0.5">
+                              {(msg.hearts_count || 0) === 1 ? 'corazón' : 'corazones'}
+                            </span>
+                          </button>
+
+                          <span className="text-[10px] text-zinc-500">
+                            {msg.message.length} / 500 caracteres
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               )}
             </div>
           </div>
