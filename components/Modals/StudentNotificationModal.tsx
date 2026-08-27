@@ -6,8 +6,6 @@ import {
   MessageSquareHeart, 
   Users, 
   Star, 
-  Volume2, 
-  VolumeX, 
   Check, 
   X, 
   Sparkles, 
@@ -47,7 +45,6 @@ export default function StudentNotificationModal({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [successSaved, setSuccessSaved] = useState(false);
-  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
 
   const [preferences, setPreferences] = useState<StudentNotificationPreferences>({
     notify_crush: true,
@@ -98,22 +95,6 @@ export default function StudentNotificationModal({
       ...prev,
       [key]: !prev[key]
     }));
-  };
-
-  const handlePlayRomanticSound = () => {
-    try {
-      setIsPlayingAudio(true);
-      const audio = new Audio('/sonidos/iloveyou.mp3');
-      audio.volume = 0.8;
-      audio.play().then(() => {
-        audio.onended = () => setIsPlayingAudio(false);
-      }).catch((err) => {
-        console.warn('No se pudo reproducir audio:', err);
-        setIsPlayingAudio(false);
-      });
-    } catch (e) {
-      setIsPlayingAudio(false);
-    }
   };
 
   const handleSave = async () => {
@@ -390,32 +371,6 @@ export default function StudentNotificationModal({
             </div>
           </div>
         )}
-
-        {/* Reproductor de Sonido Romántico de prueba */}
-        <div className="p-3.5 rounded-2xl bg-[#141414] border border-zinc-800 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-xs text-zinc-300">
-            <Volume2 className="w-4 h-4 text-pink-400 flex-shrink-0" />
-            <span>Tono especial de amor: <strong className="text-pink-300">iloveyou.mp3</strong></span>
-          </div>
-          <button
-            type="button"
-            onClick={handlePlayRomanticSound}
-            disabled={isPlayingAudio}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-pink-500/20 hover:bg-pink-500/30 text-pink-300 border border-pink-500/40 text-[11px] font-bold transition-all cursor-pointer active:scale-95"
-          >
-            {isPlayingAudio ? (
-              <>
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-pink-400" />
-                <span>Reproduciendo...</span>
-              </>
-            ) : (
-              <>
-                <Volume2 className="w-3.5 h-3.5" />
-                <span>Probar sonido</span>
-              </>
-            )}
-          </button>
-        </div>
 
         {/* Botones de Acción */}
         <div className="space-y-2 pt-2 border-t border-zinc-800/80">
