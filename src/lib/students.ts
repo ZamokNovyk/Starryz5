@@ -1092,14 +1092,14 @@ export async function notifyStudentSubscribers(params: {
       case 'crush_added':
         notifTitle = '¡Nuevo Flechazo en el Campus! 💘';
         notifBody = `Alguien acaba de marcar como su Crush a ${targetName}. Total actual: ${totalCount} ${totalCount === 1 ? 'flechazo' : 'flechazos'}.`;
-        notifCategory = 'crush';
+        notifCategory = 'crush_added';
         filterColumn = 'notify_crush';
         break;
 
       case 'crush_removed':
         notifTitle = 'Actualización de Crush 💔';
         notifBody = `Se ha retirado un flechazo en el perfil de ${targetName}. Total actual: ${totalCount} ${totalCount === 1 ? 'flechazo' : 'flechazos'}.`;
-        notifCategory = 'crush';
+        notifCategory = 'crush_removed';
         filterColumn = 'notify_crush';
         break;
 
@@ -1185,6 +1185,8 @@ export async function notifyStudentSubscribers(params: {
     }
 
     // 6. Invocar Push Notifications vía Edge Function
+    const soundFile = (eventType === 'crush_added' || eventType === 'love_message') ? 'iloveyou.mp3' : 'noti.mp3';
+
     for (const uid of subscriberUids) {
       try {
         supabase.functions.invoke('rapid-processor', {
@@ -1194,7 +1196,9 @@ export async function notifyStudentSubscribers(params: {
             body: notifBody,
             link_url: linkUrl,
             category: notifCategory,
-            type: notifCategory
+            type: notifCategory,
+            event_type: eventType,
+            sound: soundFile
           }
         }).catch(() => {});
       } catch {}

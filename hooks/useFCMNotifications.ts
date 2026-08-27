@@ -166,18 +166,40 @@ export function useFCMNotifications() {
 
               // 1. Reproducir sonido de notificación correspondiente
               try {
-                const combinedText = `${title} ${body} ${payload.data?.type || ''} ${payload.data?.category || ''}`.toLowerCase();
-                const isRomanceOrCrush = 
-                  combinedText.includes('crush') || 
-                  combinedText.includes('flechazo') || 
-                  combinedText.includes('amor') || 
-                  combinedText.includes('confesión') ||
-                  payload.data?.category === 'crush' ||
-                  payload.data?.category === 'love_message' ||
-                  payload.data?.type === 'crush' ||
-                  payload.data?.type === 'love_message';
+                const payloadData = payload.data || {};
+                const eventType = (payloadData.event_type || payloadData.eventType || '').toLowerCase();
+                const category = (payloadData.category || '').toLowerCase();
+                const type = (payloadData.type || '').toLowerCase();
+                const titleLower = (title || '').toLowerCase();
+                const bodyLower = (body || '').toLowerCase();
 
-                const audioSrc = isRomanceOrCrush ? '/sonidos/iloveyou.mp3' : '/sonidos/noti.mp3';
+                // El sonido especial 'iloveyou.mp3' ÚNICAMENTE se debe reproducir cuando:
+                // - El perfil gana un nuevo flechazo (crush_added / nuevo flechazo)
+                // - O le dejan una confesión o mensaje de amor (love_message)
+                // NUNCA si se pierde o retira un flechazo (crush_removed), ni para otras notificaciones
+                const isLossOrRemoved = 
+                  eventType === 'crush_removed' ||
+                  eventType === 'fan_removed' ||
+                  category === 'crush_removed' ||
+                  category === 'fan_removed' ||
+                  titleLower.includes('retirado') ||
+                  bodyLower.includes('retirado') ||
+                  titleLower.includes('💔');
+
+                const isGainedCrushOrLove = 
+                  !isLossOrRemoved && (
+                    payloadData.sound === 'iloveyou.mp3' ||
+                    eventType === 'crush_added' ||
+                    eventType === 'love_message' ||
+                    category === 'crush_added' ||
+                    category === 'love_message' ||
+                    titleLower.includes('nuevo flechazo') ||
+                    titleLower.includes('confesión de amor') ||
+                    bodyLower.includes('marcar como su crush') ||
+                    bodyLower.includes('mensaje de amor')
+                  );
+
+                const audioSrc = isGainedCrushOrLove ? '/sonidos/iloveyou.mp3' : '/sonidos/noti.mp3';
                 const audio = new Audio(audioSrc);
                 audio.volume = 0.75;
                 audio.play().catch(() => {});

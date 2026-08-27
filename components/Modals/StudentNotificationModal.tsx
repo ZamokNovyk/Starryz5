@@ -326,7 +326,7 @@ export default function StudentNotificationModal({
                     Comunidad de Fans
                   </h4>
                   <p className="text-[11px] text-zinc-400 leading-relaxed">
-                    Avisarme cuando sume nuevos fans o haya movimiento en su club de seguidores.
+                    Avisarme cuando sume nuevos fans o haya cambios en su club de seguidores.
                   </p>
                 </div>
               </div>
