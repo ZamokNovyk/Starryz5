@@ -260,7 +260,9 @@ export async function getStudentInteractionCounts(studentId: string): Promise<{ 
 export async function toggleStudentInteraction(
   studentId: string,
   userUid: string,
-  type: 'knows' | 'fan'
+  type: 'knows' | 'fan',
+  studentName?: string,
+  actorName?: string
 ): Promise<{ success: boolean; action: 'inserted' | 'deleted' | 'updated'; current_type: 'knows' | 'fan' | null } | null> {
   try {
     // Verificar si ya existe interacción
@@ -275,18 +277,23 @@ export async function toggleStudentInteraction(
       console.warn('Error al verificar interacción de estudiante:', fetchErr);
     }
 
+    let resultAction: 'inserted' | 'deleted' | 'updated';
+    let currentType: 'knows' | 'fan' | null = null;
+
     if (existing) {
       if (existing.interaction_type === type) {
         // Eliminar interacción
         await supabase.from('student_interactions').delete().eq('id', existing.id);
-        return { success: true, action: 'deleted', current_type: null };
+        resultAction = 'deleted';
+        currentType = null;
       } else {
         // Actualizar tipo
         await supabase
           .from('student_interactions')
           .update({ interaction_type: type })
           .eq('id', existing.id);
-        return { success: true, action: 'updated', current_type: type };
+        resultAction = 'updated';
+        currentType = type;
       }
     } else {
       // Insertar nueva
@@ -297,8 +304,37 @@ export async function toggleStudentInteraction(
           interaction_type: type,
         },
       ]);
-      return { success: true, action: 'inserted', current_type: type };
+      resultAction = 'inserted';
+      currentType = type;
     }
+
+    // Disparar notificaciones a los suscriptores en segundo plano
+    try {
+      const counts = await getStudentInteractionCounts(studentId);
+      if (type === 'knows' && resultAction === 'inserted') {
+        notifyStudentSubscribers({
+          studentId,
+          studentName,
+          eventType: 'known_added',
+          actorUid: userUid,
+          actorName: actorName || 'Un estudiante',
+          totalCount: counts.knows
+        }).catch(() => {});
+      } else if (type === 'fan') {
+        notifyStudentSubscribers({
+          studentId,
+          studentName,
+          eventType: resultAction === 'inserted' ? 'fan_added' : 'fan_removed',
+          actorUid: userUid,
+          actorName: actorName || 'Un estudiante',
+          totalCount: counts.fan
+        }).catch(() => {});
+      }
+    } catch (notifErr) {
+      console.warn('Error disparando notificación de interacción de estudiante:', notifErr);
+    }
+
+    return { success: true, action: resultAction, current_type: currentType };
   } catch (err) {
     console.warn('Error al alternar interacción con estudiante:', err);
     return null;
@@ -441,7 +477,9 @@ export async function getStudentCrushStatus(studentId: string, userUid: string):
  */
 export async function toggleStudentCrush(
   studentId: string,
-  userUid: string
+  userUid: string,
+  studentName?: string,
+  actorName?: string
 ): Promise<{ success: boolean; hasCrushed: boolean; count: number; error?: string }> {
   try {
     const { data: existing, error: checkErr } = await supabase
@@ -478,6 +516,21 @@ export async function toggleStudentCrush(
       .eq('student_id', studentId);
 
     const count = (allCrushes || []).length;
+
+    // Disparar notificación a los suscriptores en segundo plano
+    try {
+      notifyStudentSubscribers({
+        studentId,
+        studentName,
+        eventType: hasCrushed ? 'crush_added' : 'crush_removed',
+        actorUid: userUid,
+        actorName: actorName || 'Alguien anónimo',
+        totalCount: count
+      }).catch(() => {});
+    } catch (notifErr) {
+      console.warn('Error disparando notificación de crush:', notifErr);
+    }
+
     return { success: true, hasCrushed, count };
   } catch (err: any) {
     return { success: false, hasCrushed: false, count: 0, error: err.message };
@@ -756,7 +809,8 @@ export async function createStudentLoveMessage(
   userUid: string,
   authorName: string,
   authorAvatar: string | null,
-  message: string
+  message: string,
+  studentName?: string
 ): Promise<{ success: boolean; data?: StudentLoveMessage; error?: string }> {
   try {
     const trimmed = message.trim();
@@ -777,6 +831,8 @@ export async function createStudentLoveMessage(
       created_at: new Date().toISOString()
     };
 
+    let createdMsg: StudentLoveMessage | null = null;
+
     const { data, error } = await supabase
       .from('student_love_messages')
       .insert([payload])
@@ -794,12 +850,30 @@ export async function createStudentLoveMessage(
         const prev = JSON.parse(localStorage.getItem(`student_love_messages_${studentId}`) || '[]');
         const updated = [localItem, ...prev];
         localStorage.setItem(`student_love_messages_${studentId}`, JSON.stringify(updated));
-        return { success: true, data: localItem };
+        createdMsg = localItem;
+      } else {
+        return { success: false, error: error.message };
       }
-      return { success: false, error: error.message };
+    } else {
+      createdMsg = { ...data, hearts_count: 0, has_hearted: false } as StudentLoveMessage;
     }
 
-    return { success: true, data: { ...data, hearts_count: 0, has_hearted: false } as StudentLoveMessage };
+    // Disparar notificación a los suscriptores en segundo plano
+    try {
+      const snippet = trimmed.length > 60 ? `${trimmed.substring(0, 57)}...` : trimmed;
+      notifyStudentSubscribers({
+        studentId,
+        studentName,
+        eventType: 'love_message',
+        actorUid: userUid,
+        actorName: authorName || 'Alguien anónimo',
+        loveMessageSnippet: snippet
+      }).catch(() => {});
+    } catch (notifErr) {
+      console.warn('Error al disparar notificación de mensaje de amor:', notifErr);
+    }
+
+    return { success: true, data: createdMsg || undefined };
   } catch (err: any) {
     console.error('Error al crear mensaje de amor:', err);
     return { success: false, error: err.message || 'Error inesperado' };
@@ -834,6 +908,299 @@ export async function deleteStudentLoveMessage(
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err.message };
+  }
+}
+
+// ============================================================================
+// 🔔 SISTEMA DE SUSCRIPCIÓN Y NOTIFICACIONES DE PERFILES DE ESTUDIANTES
+// ============================================================================
+
+export interface StudentNotificationPreferences {
+  notify_crush: boolean;
+  notify_love_message: boolean;
+  notify_known: boolean;
+  notify_fan: boolean;
+}
+
+const DEFAULT_PREFERENCES: StudentNotificationPreferences = {
+  notify_crush: true,
+  notify_love_message: true,
+  notify_known: true,
+  notify_fan: true
+};
+
+/**
+ * Obtiene las preferencias de notificación de un usuario para un estudiante específico.
+ */
+export async function getStudentNotificationPreferences(
+  studentId: string,
+  userUid: string
+): Promise<StudentNotificationPreferences | null> {
+  try {
+    // 1. Intentar consultar en Supabase
+    const { data, error } = await supabase
+      .from('student_notification_subscriptions')
+      .select('notify_crush, notify_love_message, notify_known, notify_fan')
+      .eq('student_id', studentId)
+      .eq('user_uid', userUid)
+      .maybeSingle();
+
+    if (!error && data) {
+      const prefs: StudentNotificationPreferences = {
+        notify_crush: data.notify_crush ?? true,
+        notify_love_message: data.notify_love_message ?? true,
+        notify_known: data.notify_known ?? true,
+        notify_fan: data.notify_fan ?? true
+      };
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(`student_notif_sub_${studentId}_${userUid}`, JSON.stringify(prefs));
+      }
+      return prefs;
+    }
+
+    // 2. Fallback de localStorage
+    if (typeof window !== 'undefined') {
+      const cached = localStorage.getItem(`student_notif_sub_${studentId}_${userUid}`);
+      if (cached) {
+        return JSON.parse(cached);
+      }
+    }
+
+    return null;
+  } catch (err) {
+    console.warn('Notice fetching student notification preferences:', err);
+    if (typeof window !== 'undefined') {
+      const cached = localStorage.getItem(`student_notif_sub_${studentId}_${userUid}`);
+      if (cached) return JSON.parse(cached);
+    }
+    return null;
+  }
+}
+
+/**
+ * Guarda o actualiza las preferencias de suscripción para un perfil de estudiante.
+ */
+export async function saveStudentNotificationPreferences(
+  studentId: string,
+  userUid: string,
+  prefs: StudentNotificationPreferences
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    // Guardar en localStorage inmediatamente
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(`student_notif_sub_${studentId}_${userUid}`, JSON.stringify(prefs));
+    }
+
+    // Upsert en Supabase
+    const { error } = await supabase
+      .from('student_notification_subscriptions')
+      .upsert(
+        {
+          student_id: studentId,
+          user_uid: userUid,
+          notify_crush: prefs.notify_crush,
+          notify_love_message: prefs.notify_love_message,
+          notify_known: prefs.notify_known,
+          notify_fan: prefs.notify_fan,
+          updated_at: new Date().toISOString()
+        },
+        { onConflict: 'student_id,user_uid' }
+      );
+
+    if (error) {
+      console.warn('Supabase notice on saving student subscription:', error.message);
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    console.error('Error al guardar preferencias de notificación de estudiante:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Desactiva y elimina la suscripción a un estudiante.
+ */
+export async function removeStudentNotificationSubscription(
+  studentId: string,
+  userUid: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(`student_notif_sub_${studentId}_${userUid}`);
+    }
+
+    const { error } = await supabase
+      .from('student_notification_subscriptions')
+      .delete()
+      .eq('student_id', studentId)
+      .eq('user_uid', userUid);
+
+    if (error) {
+      console.warn('Notice removing student notification subscription:', error.message);
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Notifica a todos los usuarios suscritos a las novedades de un perfil de estudiante.
+ */
+export async function notifyStudentSubscribers(params: {
+  studentId: string;
+  studentName?: string;
+  eventType: 'crush_added' | 'crush_removed' | 'love_message' | 'known_added' | 'fan_added' | 'fan_removed';
+  actorUid?: string;
+  actorName?: string;
+  totalCount?: number;
+  loveMessageSnippet?: string;
+}): Promise<void> {
+  const { studentId, studentName, eventType, actorUid, actorName, totalCount = 0, loveMessageSnippet } = params;
+
+  try {
+    // 1. Obtener nombre del estudiante si no viene provisto
+    let displayName = studentName;
+    let studentCreatorUid: string | null = null;
+
+    if (!displayName) {
+      try {
+        const { data: st } = await supabase
+          .from('students')
+          .select('nombre, apellidos, nombre_completo, created_by')
+          .eq('id', studentId)
+          .maybeSingle();
+
+        if (st) {
+          displayName = st.nombre_completo || `${st.nombre} ${st.apellidos}`;
+          studentCreatorUid = st.created_by || null;
+        }
+      } catch {}
+    }
+
+    const targetName = displayName || 'este perfil';
+
+    // 2. Construir título, cuerpo y tipo según el evento
+    let notifTitle = '';
+    let notifBody = '';
+    let notifCategory = 'general';
+    let filterColumn: keyof StudentNotificationPreferences = 'notify_crush';
+
+    switch (eventType) {
+      case 'crush_added':
+        notifTitle = '¡Nuevo Flechazo en el Campus! 💘';
+        notifBody = `Alguien acaba de marcar como su Crush a ${targetName}. Total actual: ${totalCount} ${totalCount === 1 ? 'flechazo' : 'flechazos'}.`;
+        notifCategory = 'crush';
+        filterColumn = 'notify_crush';
+        break;
+
+      case 'crush_removed':
+        notifTitle = 'Actualización de Crush 💔';
+        notifBody = `Se ha retirado un flechazo en el perfil de ${targetName}. Total actual: ${totalCount} ${totalCount === 1 ? 'flechazo' : 'flechazos'}.`;
+        notifCategory = 'crush';
+        filterColumn = 'notify_crush';
+        break;
+
+      case 'love_message':
+        notifTitle = '¡Nueva Confesión de Amor! 💌';
+        notifBody = `${actorName || 'Alguien'} ha dejado un mensaje de amor en el perfil de ${targetName}${loveMessageSnippet ? `: "${loveMessageSnippet}"` : ''}. ¡Entra a leerlo!`;
+        notifCategory = 'love_message';
+        filterColumn = 'notify_love_message';
+        break;
+
+      case 'known_added':
+        notifTitle = '¡Alguien te reconoció! 👥';
+        notifBody = `Un estudiante del campus ha indicado que conoce a ${targetName}. Total: ${totalCount} ${totalCount === 1 ? 'persona' : 'personas'}.`;
+        notifCategory = 'known';
+        filterColumn = 'notify_known';
+        break;
+
+      case 'fan_added':
+        notifTitle = '¡Tienes un nuevo Fan! ⭐';
+        notifBody = `Un usuario se ha sumado como fan del perfil de ${targetName}. Total: ${totalCount} ${totalCount === 1 ? 'fan' : 'fans'}.`;
+        notifCategory = 'fan';
+        filterColumn = 'notify_fan';
+        break;
+
+      case 'fan_removed':
+        notifTitle = 'Actualización de Fans ⭐';
+        notifBody = `Un usuario ha dejado de ser fan de ${targetName}. Total actual: ${totalCount} ${totalCount === 1 ? 'fan' : 'fans'}.`;
+        notifCategory = 'fan';
+        filterColumn = 'notify_fan';
+        break;
+    }
+
+    const linkUrl = `/estudiantes/${studentId}`;
+
+    // 3. Obtener suscriptores desde Supabase
+    let subscriberUids = new Set<string>();
+
+    try {
+      const { data: subs, error } = await supabase
+        .from('student_notification_subscriptions')
+        .select('user_uid')
+        .eq('student_id', studentId)
+        .eq(filterColumn, true);
+
+      if (!error && subs) {
+        subs.forEach(s => {
+          if (s.user_uid && s.user_uid !== actorUid) {
+            subscriberUids.add(s.user_uid);
+          }
+        });
+      }
+    } catch (subErr) {
+      console.warn('Aviso consultando suscriptores de estudiante:', subErr);
+    }
+
+    // 4. Si el creador del estudiante es conocido y no es el actor, incluirlo
+    if (studentCreatorUid && studentCreatorUid !== actorUid) {
+      subscriberUids.add(studentCreatorUid);
+    }
+
+    if (subscriberUids.size === 0) return;
+
+    // 5. Insertar notificaciones en Supabase para cada suscriptor
+    const insertPayloads = Array.from(subscriberUids).map(uid => ({
+      user_uid: uid,
+      title: notifTitle,
+      body: notifBody,
+      link_url: linkUrl,
+      is_read: false,
+      created_at: new Date().toISOString()
+    }));
+
+    try {
+      const { error: insertErr } = await supabase
+        .from('notifications')
+        .insert(insertPayloads);
+
+      if (insertErr) {
+        console.warn('Notice inserting student notifications:', insertErr.message);
+      }
+    } catch (err) {
+      console.warn('Error inserting student notifications to database:', err);
+    }
+
+    // 6. Invocar Push Notifications vía Edge Function
+    for (const uid of subscriberUids) {
+      try {
+        supabase.functions.invoke('rapid-processor', {
+          body: {
+            user_uid: uid,
+            title: notifTitle,
+            body: notifBody,
+            link_url: linkUrl,
+            category: notifCategory,
+            type: notifCategory
+          }
+        }).catch(() => {});
+      } catch {}
+    }
+  } catch (err) {
+    console.error('Error en notifyStudentSubscribers:', err);
   }
 }
 

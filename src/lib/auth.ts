@@ -21,8 +21,11 @@ export interface AuthUser {
 
 /**
  * Sincroniza los detalles del usuario autenticado con la tabla 'users' de Supabase (0 MAU en Supabase Auth).
+ * Maneja caídas de red y credenciales de desarrollo con resiliencia sin romper el flujo de la aplicación.
  */
 export async function syncUserWithSupabase(user: AuthUser) {
+  if (!user || !user.uid) return null;
+
   try {
     const { data, error } = await supabase
       .from('users')
@@ -41,13 +44,14 @@ export async function syncUserWithSupabase(user: AuthUser) {
       .select();
 
     if (error) {
-      console.error('Error al sincronizar usuario con Supabase:', error.message);
-      throw error;
+      console.warn('Aviso al sincronizar usuario con Supabase (guardado en caché local):', error.message);
+      return null;
     }
     return data;
-  } catch (err) {
-    console.error('Excepción al sincronizar usuario:', err);
-    throw err;
+  } catch (err: any) {
+    // Captura fallos de fetch / red / entorno desconectado evitando bloquear la sesión del usuario
+    console.warn('Aviso de conectividad al sincronizar usuario con Supabase:', err?.message || err);
+    return null;
   }
 }
 

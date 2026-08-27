@@ -164,9 +164,22 @@ export function useFCMNotifications() {
               const body = payload.notification?.body || payload.data?.body || 'Tienes una nueva interacción';
               const linkUrl = payload.data?.link_url || payload.data?.url || payload.fcmOptions?.link;
 
-              // 1. Reproducir sonido de notificación
+              // 1. Reproducir sonido de notificación correspondiente
               try {
-                const audio = new Audio('/sonidos/noti.mp3');
+                const combinedText = `${title} ${body} ${payload.data?.type || ''} ${payload.data?.category || ''}`.toLowerCase();
+                const isRomanceOrCrush = 
+                  combinedText.includes('crush') || 
+                  combinedText.includes('flechazo') || 
+                  combinedText.includes('amor') || 
+                  combinedText.includes('confesión') ||
+                  payload.data?.category === 'crush' ||
+                  payload.data?.category === 'love_message' ||
+                  payload.data?.type === 'crush' ||
+                  payload.data?.type === 'love_message';
+
+                const audioSrc = isRomanceOrCrush ? '/sonidos/iloveyou.mp3' : '/sonidos/noti.mp3';
+                const audio = new Audio(audioSrc);
+                audio.volume = 0.75;
                 audio.play().catch(() => {});
               } catch {}
 

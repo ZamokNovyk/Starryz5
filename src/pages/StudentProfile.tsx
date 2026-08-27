@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { 
+  Bell,
+  BellRing,
   ArrowLeft, 
   Share2, 
   BookOpen, 
@@ -38,11 +40,13 @@ import {
   createStudentLoveMessage,
   deleteStudentLoveMessage,
   toggleStudentLoveMessageHeart,
-  StudentLoveMessage
+  StudentLoveMessage,
+  getStudentNotificationPreferences
 } from '@/src/lib/students';
 import { useAuth } from '@/src/context/AuthContext';
 import { supabase } from '@/src/lib/supabase';
 import BookmarkButton from '@/components/BookmarkButton';
+import StudentNotificationModal from '@/components/Modals/StudentNotificationModal';
 import { promptNotificationOnAction } from '@/src/lib/notificationHelper';
 
 interface StudentProfileProps {
@@ -77,6 +81,10 @@ export default function StudentProfile({
   const [todayVotes, setTodayVotes] = useState<number[]>([]);
   const [ratingBreakdown, setRatingBreakdown] = useState<{ [key: number]: number }>({ 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 });
   const [votingInProgress, setVotingInProgress] = useState(false);
+
+  // Notification Subscription States
+  const [isSubscribedToNotifications, setIsSubscribedToNotifications] = useState(false);
+  const [notificationModalOpen, setNotificationModalOpen] = useState(false);
 
   // Crush States
   const [crushCount, setCrushCount] = useState(0);
@@ -151,6 +159,18 @@ export default function StudentProfile({
           if (user) {
             const todayV = await getTodayStudentVotes(data.id || slug, user.uid);
             setTodayVotes(todayV);
+
+            // Cargar estado de suscripción a notificaciones
+            try {
+              const prefs = await getStudentNotificationPreferences(data.id || slug, user.uid);
+              if (prefs && Object.values(prefs).some(Boolean)) {
+                setIsSubscribedToNotifications(true);
+              } else {
+                setIsSubscribedToNotifications(false);
+              }
+            } catch (pErr) {
+              console.warn('Error loading student notif prefs:', pErr);
+            }
 
             const userInteraction = await getUserStudentInteraction(data.id || slug, user.uid);
             if (userInteraction) {
@@ -390,7 +410,8 @@ export default function StudentProfile({
     setLoadingCrush(true);
 
     try {
-      const result = await toggleStudentCrush(studentId, user.uid);
+      const studentFullName = student.nombre_completo || `${student.nombre} ${student.apellidos}`;
+      const result = await toggleStudentCrush(studentId, user.uid, studentFullName, currentAuthorName);
       setHasCrushed(result.hasCrushed);
       setCrushCount(result.count);
     } catch (err) {
@@ -432,12 +453,14 @@ export default function StudentProfile({
       setLoveMessageError(null);
 
       const studentId = student.id || slug;
+      const studentFullName = student.nombre_completo || `${student.nombre} ${student.apellidos}`;
       const res = await createStudentLoveMessage(
         studentId,
         user.uid,
         currentAuthorName,
         userAvatarUrl,
-        trimmed
+        trimmed,
+        studentFullName
       );
 
       if (res.success) {
@@ -545,7 +568,8 @@ export default function StudentProfile({
         }
       }
 
-      const result = await toggleStudentInteraction(studentId, user.uid, type);
+      const studentFullName = student.nombre_completo || `${student.nombre} ${student.apellidos}`;
+      const result = await toggleStudentInteraction(studentId, user.uid, type, studentFullName, currentAuthorName);
       if (result && result.success) {
         const counts = await getStudentInteractionCounts(studentId);
         setKnowCount(counts.knows);
@@ -732,6 +756,35 @@ export default function StudentProfile({
         </button>
 
         <div className="flex items-center gap-2">
+          {/* Botón de Suscripción a Notificaciones */}
+          {student && (
+            <button
+              onClick={() => {
+                if (!user) {
+                  if (onRequireAuth) onRequireAuth();
+                  return;
+                }
+                setNotificationModalOpen(true);
+              }}
+              className={`p-3 rounded-full border transition-all cursor-pointer shadow-md flex items-center justify-center ${
+                isSubscribedToNotifications
+                  ? 'bg-amber-500/15 border-amber-500/50 text-[#eab308] shadow-[0_0_15px_rgba(234,179,8,0.25)] hover:bg-amber-500/25'
+                  : 'bg-[#151515] hover:bg-[#202020] border-zinc-800 text-zinc-400 hover:text-[#eab308]'
+              }`}
+              title={
+                isSubscribedToNotifications
+                  ? 'Notificaciones activadas (clic para gestionar)'
+                  : 'Suscribirse a alertas y notificaciones de este estudiante'
+              }
+            >
+              {isSubscribedToNotifications ? (
+                <BellRing className="w-4 h-4 text-[#eab308]" />
+              ) : (
+                <Bell className="w-4 h-4" />
+              )}
+            </button>
+          )}
+
           {student && (
             <BookmarkButton
               itemId={student.id || slug}
@@ -1874,6 +1927,19 @@ export default function StudentProfile({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal de Suscripción a Notificaciones */}
+      {student && user && (
+        <StudentNotificationModal
+          isOpen={notificationModalOpen}
+          onClose={() => setNotificationModalOpen(false)}
+          studentId={student.id || slug}
+          studentName={studentFullName}
+          studentAvatar={student.avatar_url || null}
+          userUid={user.uid}
+          onSubscriptionChange={(subscribed) => setIsSubscribedToNotifications(subscribed)}
+        />
       )}
 
     </div>

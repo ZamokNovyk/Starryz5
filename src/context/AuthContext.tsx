@@ -36,8 +36,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // Sincroniza automáticamente con Supabase al detectar inicio de sesión
           try {
             await syncUserWithSupabase(authUser);
-          } catch (syncError) {
-            console.error('Error durante la sincronización automática con Supabase:', syncError);
+          } catch (syncError: any) {
+            console.warn('Aviso de sincronización automática:', syncError?.message || syncError);
           }
         } else {
           setUser(null);
