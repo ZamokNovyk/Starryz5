@@ -9,8 +9,6 @@ import {
   Check, 
   X, 
   Sparkles, 
-  ShieldCheck,
-  Smartphone,
   Loader2
 } from 'lucide-react';
 import { 
@@ -19,7 +17,6 @@ import {
   saveStudentNotificationPreferences, 
   removeStudentNotificationSubscription 
 } from '@/src/lib/students';
-import { useFCMNotifications } from '@/hooks/useFCMNotifications';
 
 interface StudentNotificationModalProps {
   isOpen: boolean;
@@ -40,8 +37,6 @@ export default function StudentNotificationModal({
   userUid,
   onSubscriptionChange
 }: StudentNotificationModalProps) {
-  const { permission, requestPermission } = useFCMNotifications();
-
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [successSaved, setSuccessSaved] = useState(false);
@@ -190,31 +185,6 @@ export default function StudentNotificationModal({
             </p>
           </div>
         </div>
-
-        {/* Estado de Permiso Push */}
-        {permission !== 'granted' ? (
-          <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5">
-              <Smartphone className="w-4 h-4 text-[#eab308] flex-shrink-0" />
-              <div className="text-xs text-zinc-300">
-                <span className="font-bold text-white block">Activa notificaciones Push</span>
-                Para recibir alertas aunque la web esté cerrada
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => requestPermission()}
-              className="px-3 py-1.5 rounded-xl bg-amber-400 hover:bg-yellow-400 text-black font-black text-[11px] uppercase tracking-wider transition-all cursor-pointer flex-shrink-0"
-            >
-              Habilitar
-            </button>
-          </div>
-        ) : (
-          <div className="px-3.5 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center gap-2 text-xs text-emerald-400">
-            <ShieldCheck className="w-4 h-4 flex-shrink-0" />
-            <span className="font-semibold">Notificaciones Push activadas en tu dispositivo</span>
-          </div>
-        )}
 
         {/* Listado de Interruptores / Toggles */}
         {loading ? (
