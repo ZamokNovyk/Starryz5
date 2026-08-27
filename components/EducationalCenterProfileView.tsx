@@ -183,13 +183,6 @@ export default function EducationalCenterProfileView({
 
   const isAdmin = (user as any)?.role === 'admin' || user?.email === 'wikistars12@gmail.com';
 
-  // Guard: if user is not admin and activeTab is 'Estudiantes', reset to 'Profesores'
-  useEffect(() => {
-    if (!isAdmin && activeTab === 'Estudiantes') {
-      setActiveTab('Profesores');
-    }
-  }, [isAdmin, activeTab]);
-
   // Photo URL Validation Helper
   const photoUrlError = (() => {
     const trimmed = editPhotoUrl.trim().toLowerCase();
@@ -768,29 +761,18 @@ export default function EducationalCenterProfileView({
             <span>Profesores</span>
           </button>
 
-          {/* TAB ESTUDIANTES (VISIBLE SOLO PARA ADMIN) */}
-          {isAdmin && (
-            <button
-              onClick={() => setActiveTab('Estudiantes')}
-              className={`px-5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
-                activeTab === 'Estudiantes'
-                  ? 'bg-[#eab308] text-black font-extrabold shadow-sm'
-                  : 'text-zinc-400 hover:text-white hover:bg-[#151515]'
-              }`}
-            >
-              <GraduationCap className="w-4 h-4" />
-              <span>Estudiantes</span>
-              <span
-                className={`px-1.5 py-0.5 text-[9px] font-black rounded-full uppercase tracking-tighter ${
-                  activeTab === 'Estudiantes'
-                    ? 'bg-black/20 text-black border border-black/30'
-                    : 'bg-[#eab308]/15 text-[#eab308] border border-[#eab308]/30'
-                }`}
-              >
-                Admin
-              </span>
-            </button>
-          )}
+          {/* TAB ESTUDIANTES */}
+          <button
+            onClick={() => setActiveTab('Estudiantes')}
+            className={`px-5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'Estudiantes'
+                ? 'bg-[#eab308] text-black font-extrabold shadow-sm'
+                : 'text-zinc-400 hover:text-white hover:bg-[#151515]'
+            }`}
+          >
+            <GraduationCap className="w-4 h-4" />
+            <span>Estudiantes</span>
+          </button>
 
           {/* TAB CONFESIONES */}
           <button
