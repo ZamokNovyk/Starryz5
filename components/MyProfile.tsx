@@ -775,11 +775,11 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
               className={`py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
                 profileTab === 'info'
                   ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4'
-                  : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3'
+                  : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3 sm:px-4'
               }`}
             >
               <User className="w-4 h-4 flex-shrink-0" />
-              {profileTab === 'info' && <span>Información</span>}
+              <span className={profileTab === 'info' ? 'inline' : 'hidden sm:inline'}>Información</span>
             </button>
 
             <button
@@ -789,11 +789,11 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
               className={`py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
                 profileTab === 'collections'
                   ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4'
-                  : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3'
+                  : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3 sm:px-4'
               }`}
             >
               <Bookmark className="w-4 h-4 flex-shrink-0 text-current" />
-              {profileTab === 'collections' && <span>Colecciones</span>}
+              <span className={profileTab === 'collections' ? 'inline' : 'hidden sm:inline'}>Colecciones</span>
             </button>
 
             <button
@@ -803,11 +803,11 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
               className={`py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
                 profileTab === 'interactions'
                   ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4'
-                  : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3'
+                  : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3 sm:px-4'
               }`}
             >
               <Heart className={`w-4 h-4 flex-shrink-0 ${profileTab === 'interactions' ? 'fill-black text-black' : 'text-pink-500 fill-pink-500/20'}`} />
-              {profileTab === 'interactions' && <span>Mis Interacciones</span>}
+              <span className={profileTab === 'interactions' ? 'inline' : 'hidden sm:inline'}>Mis Interacciones</span>
             </button>
 
             <button
@@ -817,24 +817,24 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
               className={`py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
                 profileTab === 'subscriptions'
                   ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4'
-                  : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3'
+                  : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3 sm:px-4'
               }`}
             >
               <div className="relative flex items-center justify-center">
                 <BellRing className={`w-4 h-4 flex-shrink-0 ${profileTab === 'subscriptions' ? 'text-black' : 'text-amber-400'}`} />
                 {profileTab !== 'subscriptions' && (profSubscriptions.length > 0 || studentSubscriptions.length > 0) && (
-                  <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-amber-500" />
+                  <span className="sm:hidden absolute -top-1 -right-1 w-2 h-2 rounded-full bg-amber-500" />
                 )}
               </div>
-              {profileTab === 'subscriptions' && (
-                <>
-                  <span>Suscripciones</span>
-                  {(profSubscriptions.length > 0 || studentSubscriptions.length > 0) && (
-                    <span className="px-1.5 py-0.5 rounded-full text-[9px] font-mono font-black bg-black text-[#eab308]">
-                      {profSubscriptions.length + studentSubscriptions.length}
-                    </span>
-                  )}
-                </>
+              <span className={profileTab === 'subscriptions' ? 'inline' : 'hidden sm:inline'}>Suscripciones</span>
+              {(profSubscriptions.length > 0 || studentSubscriptions.length > 0) && (
+                <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-mono font-black ${
+                  profileTab === 'subscriptions'
+                    ? 'bg-black text-[#eab308]'
+                    : 'hidden sm:inline-block bg-amber-500/20 text-amber-300'
+                }`}>
+                  {profSubscriptions.length + studentSubscriptions.length}
+                </span>
               )}
             </button>
           </div>

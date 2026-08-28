@@ -746,12 +746,12 @@ export default function EducationalCenterProfileView({
             title="Wiki"
             className={`py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
               activeTab === 'Wiki'
-                ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4'
-                : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3.5'
+                ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4 sm:px-5'
+                : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3 sm:px-4.5'
             }`}
           >
             <BookOpen className="w-4 h-4 flex-shrink-0" />
-            {activeTab === 'Wiki' && <span>Wiki</span>}
+            <span className={activeTab === 'Wiki' ? 'inline' : 'hidden sm:inline'}>Wiki</span>
           </button>
 
           {/* TAB PROFESORES */}
@@ -761,12 +761,12 @@ export default function EducationalCenterProfileView({
             title="Profesores"
             className={`py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
               activeTab === 'Profesores'
-                ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4'
-                : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3.5'
+                ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4 sm:px-5'
+                : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3 sm:px-4.5'
             }`}
           >
             <Award className="w-4 h-4 flex-shrink-0" />
-            {activeTab === 'Profesores' && <span>Profesores</span>}
+            <span className={activeTab === 'Profesores' ? 'inline' : 'hidden sm:inline'}>Profesores</span>
           </button>
 
           {/* TAB ESTUDIANTES */}
@@ -776,12 +776,12 @@ export default function EducationalCenterProfileView({
             title="Estudiantes"
             className={`py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
               activeTab === 'Estudiantes'
-                ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4'
-                : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3.5'
+                ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4 sm:px-5'
+                : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3 sm:px-4.5'
             }`}
           >
             <GraduationCap className="w-4 h-4 flex-shrink-0" />
-            {activeTab === 'Estudiantes' && <span>Estudiantes</span>}
+            <span className={activeTab === 'Estudiantes' ? 'inline' : 'hidden sm:inline'}>Estudiantes</span>
           </button>
 
           {/* TAB CONFESIONES */}
@@ -791,12 +791,12 @@ export default function EducationalCenterProfileView({
             title="Confesiones"
             className={`py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
               activeTab === 'Confesiones'
-                ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4'
-                : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3.5'
+                ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4 sm:px-5'
+                : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3 sm:px-4.5'
             }`}
           >
             <MessageSquare className="w-4 h-4 flex-shrink-0" />
-            {activeTab === 'Confesiones' && <span>Confesiones</span>}
+            <span className={activeTab === 'Confesiones' ? 'inline' : 'hidden sm:inline'}>Confesiones</span>
           </button>
 
           {/* TAB GALERIA */}
@@ -806,12 +806,12 @@ export default function EducationalCenterProfileView({
             title="Galeria"
             className={`py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
               activeTab === 'Galeria'
-                ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4'
-                : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3.5'
+                ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4 sm:px-5'
+                : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3 sm:px-4.5'
             }`}
           >
             <ImageIcon className="w-4 h-4 flex-shrink-0" />
-            {activeTab === 'Galeria' && <span>Galeria</span>}
+            <span className={activeTab === 'Galeria' ? 'inline' : 'hidden sm:inline'}>Galeria</span>
           </button>
 
         </div>

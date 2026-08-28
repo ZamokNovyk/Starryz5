@@ -898,12 +898,12 @@ export default function StudentProfile({
             title="Wiki"
             className={`py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
               activeTab === 'Wiki'
-                ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4'
-                : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3.5'
+                ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4 sm:px-4.5'
+                : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3 sm:px-4'
             }`}
           >
             <BookOpen className="w-4 h-4 flex-shrink-0" />
-            {activeTab === 'Wiki' && <span>Wiki</span>}
+            <span className={activeTab === 'Wiki' ? 'inline' : 'hidden sm:inline'}>Wiki</span>
           </button>
 
           {/* Reseñas */}
@@ -913,12 +913,12 @@ export default function StudentProfile({
             title="Reseñas"
             className={`py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
               activeTab === 'Reseñas'
-                ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4'
-                : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3.5'
+                ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4 sm:px-4.5'
+                : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3 sm:px-4'
             }`}
           >
             <Star className="w-4 h-4 flex-shrink-0" />
-            {activeTab === 'Reseñas' && <span>Reseñas</span>}
+            <span className={activeTab === 'Reseñas' ? 'inline' : 'hidden sm:inline'}>Reseñas</span>
           </button>
 
           {/* Crushes */}
@@ -928,12 +928,12 @@ export default function StudentProfile({
             title="Crushes"
             className={`py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
               activeTab === 'Crushes'
-                ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4'
-                : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3.5'
+                ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4 sm:px-4.5'
+                : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3 sm:px-4'
             }`}
           >
             <Heart className={`w-4 h-4 flex-shrink-0 ${hasCrushed ? 'fill-pink-500 text-pink-500' : ''}`} />
-            {activeTab === 'Crushes' && <span>Crushes</span>}
+            <span className={activeTab === 'Crushes' ? 'inline' : 'hidden sm:inline'}>Crushes</span>
             {crushCount > 0 && (
               <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${
                 activeTab === 'Crushes' ? 'bg-black/20 text-black' : 'bg-pink-500/20 text-pink-400 border border-pink-500/30'
@@ -950,12 +950,12 @@ export default function StudentProfile({
             title="Ship"
             className={`py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
               activeTab === 'Ship'
-                ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4'
-                : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3.5'
+                ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4 sm:px-4.5'
+                : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3 sm:px-4'
             }`}
           >
             <Sparkles className="w-4 h-4 flex-shrink-0" />
-            {activeTab === 'Ship' && <span>Ship</span>}
+            <span className={activeTab === 'Ship' ? 'inline' : 'hidden sm:inline'}>Ship</span>
           </button>
 
           {/* Estadística */}
@@ -965,12 +965,12 @@ export default function StudentProfile({
             title="Estadística"
             className={`py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
               activeTab === 'Estadística'
-                ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4'
-                : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3.5'
+                ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4 sm:px-4.5'
+                : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3 sm:px-4'
             }`}
           >
             <BarChart3 className="w-4 h-4 flex-shrink-0" />
-            {activeTab === 'Estadística' && <span>Estadística</span>}
+            <span className={activeTab === 'Estadística' ? 'inline' : 'hidden sm:inline'}>Estadística</span>
           </button>
 
         </div>
