@@ -25,8 +25,10 @@ import {
   MoreVertical,
   ExternalLink,
   Share2,
-  Trash
+  Trash,
+  ShieldCheck
 } from 'lucide-react';
+import CommunityGuidelinesModal from './Modals/CommunityGuidelinesModal';
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
 import { useFCMNotifications } from '@/hooks/useFCMNotifications';
@@ -68,6 +70,7 @@ export default function Header({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [guidelinesModalOpen, setGuidelinesModalOpen] = useState(false);
   const settingsRef = useRef<HTMLDivElement>(null);
   const { user, logout } = useAuth();
   const { theme, toggleTheme, setTheme } = useTheme();
@@ -852,6 +855,21 @@ export default function Header({
                            </div>
                          </div>
 
+                         {/* OPCIÓN: NORMAS DE LA COMUNIDAD */}
+                         <div className="px-1 py-1 border-b border-zinc-800/80 mb-1">
+                           <button
+                             type="button"
+                             onClick={() => {
+                               setSettingsOpen(false);
+                               setGuidelinesModalOpen(true);
+                             }}
+                             className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-bold text-zinc-300 hover:text-amber-400 hover:bg-zinc-800/60 transition-all cursor-pointer text-left group"
+                           >
+                             <ShieldCheck className="w-4 h-4 text-amber-400 group-hover:scale-110 transition-transform" />
+                             <span>Normas de la Comunidad</span>
+                           </button>
+                         </div>
+
                          {/* OPCIÓN: ACTIVAR NOTIFICACIONES */}
                          {permission !== 'granted' && permission !== 'unsupported' && (
                            <div className="px-3 py-2 border-b border-zinc-800/80 mb-1">
@@ -993,6 +1011,19 @@ export default function Header({
                 </button>
               </div>
             </div>
+
+            {/* NORMAS DE LA COMUNIDAD EN MÓVIL */}
+            <button
+              type="button"
+              onClick={() => {
+                setMobileMenuOpen(false);
+                setGuidelinesModalOpen(true);
+              }}
+              className="w-full py-3 px-4 rounded-xl border border-zinc-800 text-zinc-200 font-bold text-xs tracking-wider bg-[#141414] hover:bg-zinc-800/80 flex items-center justify-center gap-2 transition-all cursor-pointer"
+            >
+              <ShieldCheck className="w-4 h-4 text-amber-400" />
+              <span>Normas de la Comunidad</span>
+            </button>
 
             {/* ACTIVAR NOTIFICACIONES EN MÓVIL */}
             {permission !== 'granted' && permission !== 'unsupported' && (
@@ -1355,6 +1386,11 @@ export default function Header({
           </div>
         </div>
       )}
+      {/* MODAL DE NORMAS DE LA COMUNIDAD */}
+      <CommunityGuidelinesModal
+        isOpen={guidelinesModalOpen}
+        onClose={() => setGuidelinesModalOpen(false)}
+      />
     </>
   );
 }
