@@ -104,6 +104,9 @@ export default function RegisteredInstitutions({
     return matchesCategory && matchesSearch;
   });
 
+  // Limitar a máximo 4 centros educativos por categoría para no saturar la página principal
+  const displayedInstitutions = filteredInstitutions.slice(0, 4);
+
   return (
     <section className="py-16 px-6 lg:px-8 max-w-7xl mx-auto border-t border-[#ffffff10]">
       {/* SECTION HEADER */}
@@ -145,7 +148,7 @@ export default function RegisteredInstitutions({
           <div className="w-10 h-10 border-2 border-[#eab308] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-sm font-bold text-white uppercase tracking-wider">Cargando instituciones reales...</p>
         </div>
-      ) : filteredInstitutions.length === 0 ? (
+      ) : displayedInstitutions.length === 0 ? (
         <div className="bg-[#0d0d0d] border border-[#ffffff10] rounded-xl p-12 text-center text-zinc-400">
           <Building2 className="w-12 h-12 text-[#eab308]/50 mx-auto mb-3" />
           <p className="text-lg font-bold text-white">No se encontraron instituciones registradas</p>
@@ -156,8 +159,8 @@ export default function RegisteredInstitutions({
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredInstitutions.map((inst) => (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          {displayedInstitutions.map((inst) => (
             <div
               key={inst.id}
               onClick={() => onSelectInstitution(inst)}
