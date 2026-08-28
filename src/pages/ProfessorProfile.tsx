@@ -16,7 +16,9 @@ import {
   Plus, 
   CheckCircle2,
   Calendar,
-  Loader2
+  Loader2,
+  Bell,
+  BellRing
 } from 'lucide-react';
 import { 
   getProfessorById, 
@@ -29,11 +31,14 @@ import {
   submitProfessorVote,
   updateProfessorWiki,
   getProfessorCrushStatus,
-  toggleProfessorCrush
+  toggleProfessorCrush,
+  getProfessorNotificationPreferences,
+  notifyProfessorSubscribers
 } from '@/src/lib/professors';
 import { useAuth } from '@/src/context/AuthContext';
 import { supabase } from '@/src/lib/supabase';
 import BookmarkButton from '@/components/BookmarkButton';
+import ProfessorNotificationModal from '@/components/Modals/ProfessorNotificationModal';
 import { promptNotificationOnAction } from '@/src/lib/notificationHelper';
 
 interface ProfessorProfileProps {
@@ -54,6 +59,10 @@ export default function ProfessorProfile({
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>('Reseñas');
   const [copied, setCopied] = useState(false);
+
+  // Notification subscription state
+  const [isSubscribedToNotifications, setIsSubscribedToNotifications] = useState(false);
+  const [notificationModalOpen, setNotificationModalOpen] = useState(false);
 
   // Interaction counts state
   const [knowCount, setKnowCount] = useState(0);
@@ -120,7 +129,7 @@ export default function ProfessorProfile({
           setCrushCount(crushStatus.count);
           setHasCrushed(crushStatus.hasCrushed);
 
-          // Cargar interacciones y votos del usuario si está logueado
+          // Cargar interacciones, votos y suscripción del usuario si está logueado
           if (user) {
             const todayV = await getTodayProfessorVotes(data.id || slug, user.uid);
             setTodayVotes(todayV);
@@ -133,10 +142,19 @@ export default function ProfessorProfile({
               setHasVotedKnow(false);
               setHasVotedFan(false);
             }
+
+            // Consultar si está suscrito a notificaciones
+            const subPrefs = await getProfessorNotificationPreferences(data.id || slug, user.uid);
+            if (subPrefs && Object.values(subPrefs).some(Boolean)) {
+              setIsSubscribedToNotifications(true);
+            } else {
+              setIsSubscribedToNotifications(false);
+            }
           } else {
             setTodayVotes([]);
             setHasVotedKnow(false);
             setHasVotedFan(false);
+            setIsSubscribedToNotifications(false);
           }
         } else {
           setProfessor(null);
@@ -278,6 +296,26 @@ export default function ProfessorProfile({
     try {
       const result = await toggleProfessorCrush(profId, user.uid);
       setHasCrushed(result.hasCrushed);
+
+      const profFullName = professor.nombre_completo || `${professor.nombre} ${professor.apellidos}`;
+      if (result.hasCrushed) {
+        notifyProfessorSubscribers({
+          professorId: profId,
+          professorName: profFullName,
+          eventType: 'crush_added',
+          actorUid: user.uid,
+          totalCount: nextCount
+        });
+        promptNotificationOnAction('reaction');
+      } else {
+        notifyProfessorSubscribers({
+          professorId: profId,
+          professorName: profFullName,
+          eventType: 'crush_removed',
+          actorUid: user.uid,
+          totalCount: nextCount
+        });
+      }
     } catch (err) {
       console.error('Error al alternar voto de crush:', err);
       // Revertir optimismo en caso de fallo
@@ -374,6 +412,35 @@ export default function ProfessorProfile({
         const counts = await getProfessorInteractionCounts(profId);
         setKnowCount(counts.knows);
         setFanCount(counts.fan);
+
+        const profFullName = professor.nombre_completo || `${professor.nombre} ${professor.apellidos}`;
+        if (type === 'knows' && !prevVotedKnow) {
+          notifyProfessorSubscribers({
+            professorId: profId,
+            professorName: profFullName,
+            eventType: 'known_added',
+            actorUid: user.uid,
+            totalCount: counts.knows
+          });
+        } else if (type === 'fan') {
+          if (!prevVotedFan) {
+            notifyProfessorSubscribers({
+              professorId: profId,
+              professorName: profFullName,
+              eventType: 'fan_added',
+              actorUid: user.uid,
+              totalCount: counts.fan
+            });
+          } else {
+            notifyProfessorSubscribers({
+              professorId: profId,
+              professorName: profFullName,
+              eventType: 'fan_removed',
+              actorUid: user.uid,
+              totalCount: counts.fan
+            });
+          }
+        }
       }
     } catch (err) {
       console.error('Error al guardar la interacción:', err);
@@ -429,6 +496,15 @@ export default function ProfessorProfile({
           ...prev,
           [stars]: (prev[stars] || 0) + 1
         }));
+
+        const profFullName = professor.nombre_completo || `${professor.nombre} ${professor.apellidos}`;
+        notifyProfessorSubscribers({
+          professorId: profId,
+          professorName: profFullName,
+          eventType: 'review_added',
+          actorUid: user.uid,
+          ratingScore: stars
+        });
 
         promptNotificationOnAction('rating');
       }
@@ -570,6 +646,35 @@ export default function ProfessorProfile({
         </button>
 
         <div className="flex items-center gap-2">
+          {/* Botón de Suscripción a Notificaciones */}
+          {professor && (
+            <button
+              onClick={() => {
+                if (!user) {
+                  if (onRequireAuth) onRequireAuth();
+                  return;
+                }
+                setNotificationModalOpen(true);
+              }}
+              className={`p-3 rounded-full border transition-all cursor-pointer shadow-md flex items-center justify-center ${
+                isSubscribedToNotifications
+                  ? 'bg-amber-500/15 border-amber-500/50 text-[#eab308] shadow-[0_0_15px_rgba(234,179,8,0.25)] hover:bg-amber-500/25'
+                  : 'bg-[#151515] hover:bg-[#202020] border-zinc-800 text-zinc-400 hover:text-[#eab308]'
+              }`}
+              title={
+                isSubscribedToNotifications
+                  ? 'Notificaciones activadas (clic para gestionar)'
+                  : 'Suscribirse a alertas y notificaciones de este profesor'
+              }
+            >
+              {isSubscribedToNotifications ? (
+                <BellRing className="w-4 h-4 text-[#eab308]" />
+              ) : (
+                <Bell className="w-4 h-4" />
+              )}
+            </button>
+          )}
+
           {professor && (
             <BookmarkButton
               itemId={professor.id || slug}
@@ -1437,6 +1542,19 @@ export default function ProfessorProfile({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal de Suscripción a Notificaciones del Profesor */}
+      {professor && user && (
+        <ProfessorNotificationModal
+          isOpen={notificationModalOpen}
+          onClose={() => setNotificationModalOpen(false)}
+          professorId={professor.id || slug}
+          professorName={professor.nombre_completo || `${professor.nombre} ${professor.apellidos}`}
+          professorAvatar={professor.avatar_url || null}
+          userUid={user.uid}
+          onSubscriptionChange={(subscribed) => setIsSubscribedToNotifications(subscribed)}
+        />
       )}
 
     </div>

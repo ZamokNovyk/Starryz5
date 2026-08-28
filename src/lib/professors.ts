@@ -742,4 +742,415 @@ export async function removeUserInteraction(
   }
 }
 
+// ==============================================================================
+// 🔔 GESTIÓN DE SUSCRIPCIONES A NOTIFICACIONES DE PROFESORES
+// ==============================================================================
+
+export interface ProfessorNotificationPreferences {
+  notify_crush: boolean;
+  notify_review: boolean;
+  notify_known: boolean;
+  notify_fan: boolean;
+}
+
+export interface UserProfessorSubscriptionItem {
+  id: string;
+  professorId: string;
+  professorName: string;
+  professorRole: string;
+  professorAvatar?: string | null;
+  preferences: ProfessorNotificationPreferences;
+  createdAt?: string;
+}
+
+/**
+ * Obtiene las preferencias de notificación de un usuario sobre un profesor.
+ */
+export async function getProfessorNotificationPreferences(
+  professorId: string,
+  userUid: string
+): Promise<ProfessorNotificationPreferences | null> {
+  if (!professorId || !userUid) return null;
+
+  try {
+    // 1. Intentar consultar en Supabase
+    const { data, error } = await supabase
+      .from('professor_notification_subscriptions')
+      .select('notify_crush, notify_review, notify_known, notify_fan')
+      .eq('professor_id', professorId)
+      .eq('user_uid', userUid)
+      .maybeSingle();
+
+    if (!error && data) {
+      const prefs: ProfessorNotificationPreferences = {
+        notify_crush: data.notify_crush ?? true,
+        notify_review: data.notify_review ?? true,
+        notify_known: data.notify_known ?? true,
+        notify_fan: data.notify_fan ?? true
+      };
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(`prof_notif_sub_${professorId}_${userUid}`, JSON.stringify(prefs));
+      }
+      return prefs;
+    }
+
+    // 2. Fallback de localStorage
+    if (typeof window !== 'undefined') {
+      const cached = localStorage.getItem(`prof_notif_sub_${professorId}_${userUid}`);
+      if (cached) {
+        return JSON.parse(cached);
+      }
+    }
+
+    return null;
+  } catch (err) {
+    console.warn('Notice fetching professor notification preferences:', err);
+    if (typeof window !== 'undefined') {
+      const cached = localStorage.getItem(`prof_notif_sub_${professorId}_${userUid}`);
+      if (cached) return JSON.parse(cached);
+    }
+    return null;
+  }
+}
+
+/**
+ * Guarda o actualiza las preferencias de suscripción para un perfil de profesor.
+ */
+export async function saveProfessorNotificationPreferences(
+  professorId: string,
+  userUid: string,
+  prefs: ProfessorNotificationPreferences
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    // Guardar en localStorage inmediatamente
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(`prof_notif_sub_${professorId}_${userUid}`, JSON.stringify(prefs));
+    }
+
+    // Upsert en Supabase
+    const { error } = await supabase
+      .from('professor_notification_subscriptions')
+      .upsert(
+        {
+          professor_id: professorId,
+          user_uid: userUid,
+          notify_crush: prefs.notify_crush,
+          notify_review: prefs.notify_review,
+          notify_known: prefs.notify_known,
+          notify_fan: prefs.notify_fan,
+          updated_at: new Date().toISOString()
+        },
+        { onConflict: 'professor_id,user_uid' }
+      );
+
+    if (error) {
+      console.warn('Supabase notice on saving professor subscription:', error.message);
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    console.error('Error al guardar preferencias de notificación de profesor:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Desactiva y elimina la suscripción a un profesor.
+ */
+export async function removeProfessorNotificationSubscription(
+  professorId: string,
+  userUid: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(`prof_notif_sub_${professorId}_${userUid}`);
+    }
+
+    const { error } = await supabase
+      .from('professor_notification_subscriptions')
+      .delete()
+      .eq('professor_id', professorId)
+      .eq('user_uid', userUid);
+
+    if (error) {
+      console.warn('Notice removing professor notification subscription:', error.message);
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Notifica a todos los usuarios suscritos a las novedades de un profesor.
+ */
+export async function notifyProfessorSubscribers(params: {
+  professorId: string;
+  professorName?: string;
+  eventType: 'crush_added' | 'crush_removed' | 'review_added' | 'known_added' | 'fan_added' | 'fan_removed';
+  actorUid?: string;
+  actorName?: string;
+  totalCount?: number;
+  ratingScore?: number;
+  reviewComment?: string;
+}): Promise<void> {
+  const { professorId, professorName, eventType, actorUid, actorName, totalCount = 0, ratingScore, reviewComment } = params;
+
+  try {
+    // 1. Obtener nombre del profesor si no viene provisto
+    let displayName = professorName;
+
+    if (!displayName) {
+      try {
+        const { data: prof } = await supabase
+          .from('professors')
+          .select('nombre, apellidos, nombre_completo')
+          .eq('id', professorId)
+          .maybeSingle();
+
+        if (prof) {
+          displayName = prof.nombre_completo || `${prof.nombre} ${prof.apellidos}`.trim();
+        }
+      } catch {}
+    }
+
+    const targetName = displayName || formatSlugToName(professorId) || 'este profesor';
+
+    // 2. Construir título, cuerpo y categoría
+    let notifTitle = '';
+    let notifBody = '';
+    let notifCategory = 'general';
+    let filterColumn: keyof ProfessorNotificationPreferences = 'notify_crush';
+
+    switch (eventType) {
+      case 'crush_added':
+        notifTitle = '¡Nuevo Flechazo para Profesor! 💘';
+        notifBody = `Alguien acaba de marcar como su Crush al profesor ${targetName}. Total: ${totalCount} ${totalCount === 1 ? 'flechazo' : 'flechazos'}.`;
+        notifCategory = 'crush_added';
+        filterColumn = 'notify_crush';
+        break;
+
+      case 'crush_removed':
+        notifTitle = 'Actualización de Crush de Profesor 💔';
+        notifBody = `Se ha retirado un flechazo en el perfil de ${targetName}. Total: ${totalCount} ${totalCount === 1 ? 'flechazo' : 'flechazos'}.`;
+        notifCategory = 'crush_removed';
+        filterColumn = 'notify_crush';
+        break;
+
+      case 'review_added':
+        notifTitle = '¡Nueva Calificación / Reseña! ⭐';
+        notifBody = `${actorName || 'Un estudiante'} calificó a ${targetName}${ratingScore ? ` con ${ratingScore} estrellas` : ''}${reviewComment ? `: "${reviewComment}"` : ''}.`;
+        notifCategory = 'rating';
+        filterColumn = 'notify_review';
+        break;
+
+      case 'known_added':
+        notifTitle = '¡Estudiante confirmó conocer al Profesor! 👥';
+        notifBody = `Un alumno ha confirmado haber llevado clases con ${targetName}. Total: ${totalCount} ${totalCount === 1 ? 'alumno' : 'alumnos'}.`;
+        notifCategory = 'known';
+        filterColumn = 'notify_known';
+        break;
+
+      case 'fan_added':
+        notifTitle = '¡Nuevo Fan en el Club del Profesor! 🌟';
+        notifBody = `Un estudiante se ha sumado como fan de ${targetName}. Total: ${totalCount} ${totalCount === 1 ? 'fan' : 'fans'}.`;
+        notifCategory = 'fan';
+        filterColumn = 'notify_fan';
+        break;
+
+      case 'fan_removed':
+        notifTitle = 'Actualización de Fans del Profesor 🌟';
+        notifBody = `Un alumno ha dejado el club de fans de ${targetName}. Total: ${totalCount} ${totalCount === 1 ? 'fan' : 'fans'}.`;
+        notifCategory = 'fan';
+        filterColumn = 'notify_fan';
+        break;
+    }
+
+    const linkUrl = `/profesores/${professorId}`;
+
+    // 3. Obtener suscriptores desde Supabase
+    const subscriberUids = new Set<string>();
+
+    try {
+      const { data: subs, error } = await supabase
+        .from('professor_notification_subscriptions')
+        .select('user_uid')
+        .eq('professor_id', professorId)
+        .eq(filterColumn, true);
+
+      if (!error && subs) {
+        subs.forEach(s => {
+          if (s.user_uid && s.user_uid !== actorUid) {
+            subscriberUids.add(s.user_uid);
+          }
+        });
+      }
+    } catch (subErr) {
+      console.warn('Aviso consultando suscriptores de profesor:', subErr);
+    }
+
+    if (subscriberUids.size === 0) return;
+
+    // 4. Insertar notificaciones en Supabase
+    const insertPayloads = Array.from(subscriberUids).map(uid => ({
+      user_uid: uid,
+      title: notifTitle,
+      body: notifBody,
+      link_url: linkUrl,
+      is_read: false,
+      created_at: new Date().toISOString()
+    }));
+
+    try {
+      const { error: insertErr } = await supabase
+        .from('notifications')
+        .insert(insertPayloads);
+
+      if (insertErr) {
+        console.warn('Notice inserting professor notifications:', insertErr.message);
+      }
+    } catch (err) {
+      console.warn('Error inserting professor notifications to database:', err);
+    }
+
+    // 5. Invocar Push Notifications vía Edge Function
+    const soundFile = (eventType === 'crush_added') ? 'iloveyou.mp3' : 'noti.mp3';
+
+    for (const uid of subscriberUids) {
+      try {
+        supabase.functions.invoke('rapid-processor', {
+          body: {
+            user_uid: uid,
+            title: notifTitle,
+            body: notifBody,
+            link_url: linkUrl,
+            category: notifCategory,
+            type: notifCategory,
+            event_type: eventType,
+            sound: soundFile
+          }
+        }).catch(() => {});
+      } catch {}
+    }
+  } catch (err) {
+    console.error('Error en notifyProfessorSubscribers:', err);
+  }
+}
+
+/**
+ * Obtiene todas las suscripciones a profesores realizadas por el usuario.
+ */
+export async function getUserProfessorSubscriptions(userUid: string): Promise<UserProfessorSubscriptionItem[]> {
+  if (!userUid) return [];
+
+  const items: UserProfessorSubscriptionItem[] = [];
+  const profIds = new Set<string>();
+  const prefsMap = new Map<string, { prefs: ProfessorNotificationPreferences; createdAt?: string }>();
+
+  try {
+    // 1. Consultar en Supabase
+    try {
+      const { data, error } = await supabase
+        .from('professor_notification_subscriptions')
+        .select('*')
+        .eq('user_uid', userUid)
+        .order('created_at', { ascending: false });
+
+      if (!error && data) {
+        data.forEach((row: any) => {
+          const profId = row.professor_id;
+          profIds.add(profId);
+          prefsMap.set(profId, {
+            prefs: {
+              notify_crush: row.notify_crush ?? true,
+              notify_review: row.notify_review ?? true,
+              notify_known: row.notify_known ?? true,
+              notify_fan: row.notify_fan ?? true,
+            },
+            createdAt: row.created_at
+          });
+        });
+      }
+    } catch (e) {
+      console.warn('Aviso consultando suscripciones de profesores en Supabase:', e);
+    }
+
+    // 2. Fallback con localStorage
+    if (typeof window !== 'undefined') {
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith('prof_notif_sub_') && key.endsWith(`_${userUid}`)) {
+            const profId = key.replace('prof_notif_sub_', '').replace(`_${userUid}`, '');
+            if (!profIds.has(profId)) {
+              try {
+                const cachedPrefs = JSON.parse(localStorage.getItem(key) || '{}');
+                const hasActive = Object.values(cachedPrefs).some(Boolean);
+                if (hasActive) {
+                  profIds.add(profId);
+                  prefsMap.set(profId, {
+                    prefs: {
+                      notify_crush: cachedPrefs.notify_crush ?? true,
+                      notify_review: cachedPrefs.notify_review ?? true,
+                      notify_known: cachedPrefs.notify_known ?? true,
+                      notify_fan: cachedPrefs.notify_fan ?? true,
+                    }
+                  });
+                }
+              } catch {}
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Error leyendo localStorage de suscripciones:', e);
+      }
+    }
+
+    if (profIds.size === 0) return [];
+
+    // 3. Enriquecer con datos de la tabla 'professors'
+    const profsArray = Array.from(profIds);
+    const profDataMap = new Map<string, any>();
+
+    try {
+      const { data: profs, error: profsErr } = await supabase
+        .from('professors')
+        .select('id, nombre, apellidos, nombre_completo, avatar_url, role')
+        .in('id', profsArray);
+
+      if (!profsErr && profs) {
+        profs.forEach((p: any) => profDataMap.set(p.id.toLowerCase(), p));
+      }
+    } catch (e) {
+      console.warn('Aviso enriqueciendo datos de profesores:', e);
+    }
+
+    profsArray.forEach(id => {
+      const p = profDataMap.get(id.toLowerCase());
+      const subInfo = prefsMap.get(id);
+      items.push({
+        id: `prof_sub_${id}`,
+        professorId: id,
+        professorName: p?.nombre_completo || (p ? `${p.nombre} ${p.apellidos}`.trim() : formatSlugToName(id)),
+        professorRole: p?.role || 'Profesor',
+        professorAvatar: p?.avatar_url || null,
+        preferences: subInfo?.prefs || {
+          notify_crush: true,
+          notify_review: true,
+          notify_known: true,
+          notify_fan: true
+        },
+        createdAt: subInfo?.createdAt
+      });
+    });
+
+    return items;
+  } catch (err) {
+    console.error('Error al obtener lista de suscripciones a profesores:', err);
+    return [];
+  }
+}
+
+
 

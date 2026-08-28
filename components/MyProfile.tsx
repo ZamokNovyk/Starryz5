@@ -30,6 +30,10 @@ import {
   UserCheck,
   Bell,
   BellRing,
+  BellOff,
+  GraduationCap,
+  Users,
+  Settings2,
   BarChart3,
   TrendingUp,
   Activity,
@@ -38,9 +42,19 @@ import {
 import { 
   getUserInteractions, 
   removeUserInteraction, 
-  UserInteractionItem 
+  UserInteractionItem,
+  getUserProfessorSubscriptions,
+  removeProfessorNotificationSubscription,
+  UserProfessorSubscriptionItem
 } from '@/src/lib/professors';
+import { 
+  getUserStudentSubscriptions, 
+  removeStudentNotificationSubscription, 
+  UserStudentSubscriptionItem 
+} from '@/src/lib/students';
 import { getAdminDashboardMetrics, AdminDashboardData } from '@/src/lib/admin';
+import ProfessorNotificationModal from '@/components/Modals/ProfessorNotificationModal';
+import StudentNotificationModal from '@/components/Modals/StudentNotificationModal';
 
 interface SupabaseUser {
   id: string;
@@ -75,7 +89,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
   }>({ status: 'idle', message: '' });
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [profileTab, setProfileTab] = useState<'info' | 'collections' | 'interactions' | 'admin'>('info');
+  const [profileTab, setProfileTab] = useState<'info' | 'collections' | 'interactions' | 'subscriptions' | 'admin'>('info');
 
   // Admin Dashboard Metrics State
   const [adminMetrics, setAdminMetrics] = useState<AdminDashboardData | null>(null);
@@ -95,6 +109,15 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
   const [loadingInteractions, setLoadingInteractions] = useState(false);
   const [interactionFilter, setInteractionFilter] = useState<'crush' | 'fan' | 'knows'>('crush');
   const [interactionsError, setInteractionsError] = useState('');
+
+  // Suscripciones a Notificaciones State
+  const [subscriptionsSubTab, setSubscriptionsSubTab] = useState<'professors' | 'students'>('professors');
+  const [profSubscriptions, setProfSubscriptions] = useState<UserProfessorSubscriptionItem[]>([]);
+  const [studentSubscriptions, setStudentSubscriptions] = useState<UserStudentSubscriptionItem[]>([]);
+  const [loadingSubscriptions, setLoadingSubscriptions] = useState(false);
+  const [subscriptionsError, setSubscriptionsError] = useState('');
+  const [editingProfSub, setEditingProfSub] = useState<UserProfessorSubscriptionItem | null>(null);
+  const [editingStudentSub, setEditingStudentSub] = useState<UserStudentSubscriptionItem | null>(null);
 
   const isOwnProfile = !uid || (user && user.uid === uid);
 
@@ -401,6 +424,64 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
     } catch (err) {
       console.error('Error al retirar interacción:', err);
       loadInteractions();
+    }
+  };
+
+  // Cargar suscripciones a notificaciones en la pestaña 'subscriptions' o inicial
+  const loadSubscriptions = async () => {
+    const targetUid = uid || user?.uid;
+    if (!targetUid) return;
+
+    try {
+      setLoadingSubscriptions(true);
+      setSubscriptionsError('');
+      const [profs, studs] = await Promise.all([
+        getUserProfessorSubscriptions(targetUid),
+        getUserStudentSubscriptions(targetUid)
+      ]);
+      setProfSubscriptions(profs);
+      setStudentSubscriptions(studs);
+    } catch (err: any) {
+      console.error('Error al cargar suscripciones a notificaciones:', err);
+      setSubscriptionsError('No se pudieron sincronizar tus suscripciones.');
+    } finally {
+      setLoadingSubscriptions(false);
+    }
+  };
+
+  useEffect(() => {
+    if (profileTab === 'subscriptions') {
+      loadSubscriptions();
+    }
+  }, [profileTab, uid, user?.uid]);
+
+  const handleRemoveProfSubscription = async (item: UserProfessorSubscriptionItem) => {
+    const targetUid = uid || user?.uid;
+    if (!targetUid) return;
+
+    // Optimista
+    setProfSubscriptions(prev => prev.filter(p => p.id !== item.id && p.professorId !== item.professorId));
+
+    try {
+      await removeProfessorNotificationSubscription(item.professorId, targetUid);
+    } catch (err) {
+      console.error('Error al retirar suscripción de profesor:', err);
+      loadSubscriptions();
+    }
+  };
+
+  const handleRemoveStudentSubscription = async (item: UserStudentSubscriptionItem) => {
+    const targetUid = uid || user?.uid;
+    if (!targetUid) return;
+
+    // Optimista
+    setStudentSubscriptions(prev => prev.filter(s => s.id !== item.id && s.studentId !== item.studentId));
+
+    try {
+      await removeStudentNotificationSubscription(item.studentId, targetUid);
+    } catch (err) {
+      console.error('Error al retirar suscripción de estudiante:', err);
+      loadSubscriptions();
     }
   };
 
@@ -724,6 +805,26 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
             >
               <Heart className={`w-3.5 h-3.5 ${profileTab === 'interactions' ? 'fill-black text-black' : 'text-pink-500 fill-pink-500/20'}`} />
               <span>Mis Interacciones</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setProfileTab('subscriptions')}
+              className={`px-4 py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+                profileTab === 'subscriptions'
+                  ? 'bg-[#eab308] text-black font-extrabold shadow-sm'
+                  : 'text-zinc-400 hover:text-white hover:bg-[#151515]'
+              }`}
+            >
+              <BellRing className={`w-3.5 h-3.5 ${profileTab === 'subscriptions' ? 'text-black' : 'text-amber-400'}`} />
+              <span>Suscripciones</span>
+              {(profSubscriptions.length > 0 || studentSubscriptions.length > 0) && (
+                <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-mono font-black ${
+                  profileTab === 'subscriptions' ? 'bg-black text-[#eab308]' : 'bg-amber-500/20 text-amber-300'
+                }`}>
+                  {profSubscriptions.length + studentSubscriptions.length}
+                </span>
+              )}
             </button>
           </div>
 
@@ -1292,7 +1393,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                 </div>
               )}
             </div>
-          ) : (
+          ) : profileTab === 'interactions' ? (
             // PESTAÑA MIS INTERACCIONES
             <div className="space-y-6 animate-in fade-in duration-300">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -1510,11 +1611,366 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                 </div>
               )}
             </div>
+          ) : (
+            // PESTAÑA SUSCRIPCIONES A NOTIFICACIONES
+            <div className="space-y-6 animate-in fade-in duration-300">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-xl font-black text-white uppercase tracking-tight flex items-center gap-2">
+                    <BellRing className="w-5 h-5 text-[#eab308]" /> {isOwnProfile ? 'Mis Suscripciones a Notificaciones' : 'Suscripciones del Usuario'}
+                  </h3>
+                  <p className="text-xs text-zinc-400 mt-1">
+                    {isOwnProfile 
+                      ? 'Administra las alertas y avisos en tiempo real sobre los perfiles de profesores y estudiantes que sigues.'
+                      : 'Perfiles educativos suscritos para notificaciones automáticas.'}
+                  </p>
+                </div>
+              </div>
+
+              {subscriptionsError && (
+                <div className="flex items-center gap-2 text-xs text-red-400 bg-red-950/20 border border-red-900/30 p-3 rounded-xl">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>{subscriptionsError}</span>
+                </div>
+              )}
+
+              {/* Subtags / Filtro entre Profesores y Estudiantes */}
+              <div className="flex items-center gap-2 border-b border-zinc-800 pb-3">
+                <button
+                  type="button"
+                  onClick={() => setSubscriptionsSubTab('professors')}
+                  className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+                    subscriptionsSubTab === 'professors'
+                      ? 'bg-[#eab308] text-black shadow-[0_0_15px_rgba(234,179,8,0.3)] font-extrabold'
+                      : 'bg-[#121212] text-zinc-400 hover:text-white border border-zinc-800 hover:bg-[#181818]'
+                  }`}
+                >
+                  <GraduationCap className="w-4 h-4" />
+                  <span>Profesores</span>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono ${
+                    subscriptionsSubTab === 'professors' ? 'bg-black/20 text-black font-black' : 'bg-zinc-800 text-zinc-400'
+                  }`}>
+                    {profSubscriptions.length}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSubscriptionsSubTab('students')}
+                  className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+                    subscriptionsSubTab === 'students'
+                      ? 'bg-pink-500 text-white shadow-[0_0_15px_rgba(236,72,153,0.3)] font-extrabold'
+                      : 'bg-[#121212] text-zinc-400 hover:text-white border border-zinc-800 hover:bg-[#181818]'
+                  }`}
+                >
+                  <Users className="w-4 h-4" />
+                  <span>Estudiantes</span>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono ${
+                    subscriptionsSubTab === 'students' ? 'bg-black/20 text-white font-black' : 'bg-zinc-800 text-zinc-400'
+                  }`}>
+                    {studentSubscriptions.length}
+                  </span>
+                </button>
+              </div>
+
+              {loadingSubscriptions ? (
+                <div className="py-12 flex flex-col items-center justify-center space-y-3">
+                  <Loader2 className="w-8 h-8 text-[#eab308] animate-spin" />
+                  <p className="text-xs text-zinc-400 font-mono">Sincronizando suscripciones con la base de datos...</p>
+                </div>
+              ) : subscriptionsSubTab === 'professors' ? (
+                // LISTA DE PROFESORES SUSCRITOS
+                profSubscriptions.length === 0 ? (
+                  <div className="text-center py-16 px-4 bg-[#0a0a0a] rounded-2xl border border-zinc-900 space-y-3">
+                    <BellOff className="w-10 h-10 text-zinc-600 mx-auto stroke-1" />
+                    <h4 className="text-sm font-black text-zinc-300 uppercase tracking-wide">
+                      Sin suscripciones a profesores
+                    </h4>
+                    <p className="text-xs text-zinc-500 max-w-md mx-auto">
+                      {isOwnProfile 
+                        ? 'Aún no estás suscrito a ningún profesor. Entra al perfil de tu profesor preferido y haz clic en la campanita para activar notificaciones de flechazos, fans y calificaciones.'
+                        : 'Este usuario no tiene suscripciones a profesores.'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    {profSubscriptions.map((item) => (
+                      <div
+                        key={item.id}
+                        className="group relative flex flex-col justify-between p-4 rounded-2xl border border-zinc-800/80 bg-[#0c0c0c] hover:bg-[#121212] hover:border-amber-500/40 transition-all duration-200 shadow-md"
+                      >
+                        <div className="flex items-start gap-3.5">
+                          {/* Avatar */}
+                          <div 
+                            onClick={() => navigateTo(`/profesores/${item.professorId}`)}
+                            className="w-12 h-12 rounded-xl flex items-center justify-center font-black text-sm uppercase flex-shrink-0 cursor-pointer overflow-hidden bg-amber-950/30 border border-amber-500/40 text-[#eab308] group-hover:border-[#eab308] shadow-[0_0_15px_rgba(234,179,8,0.15)]"
+                          >
+                            {item.professorAvatar ? (
+                              <img
+                                src={item.professorAvatar}
+                                alt={item.professorName}
+                                className="w-full h-full object-cover"
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              item.professorName.charAt(0)
+                            )}
+                          </div>
+
+                          {/* Info */}
+                          <div 
+                            onClick={() => navigateTo(`/profesores/${item.professorId}`)}
+                            className="min-w-0 flex-1 cursor-pointer"
+                          >
+                            <h4 className="text-xs sm:text-sm font-black text-white truncate group-hover:text-[#eab308] transition-colors uppercase tracking-tight">
+                              {item.professorName}
+                            </h4>
+                            <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mt-0.5">
+                              {item.professorRole || 'Profesor'}
+                            </p>
+
+                            {/* Tags de Notificaciones Activas */}
+                            <div className="flex items-center gap-1.5 flex-wrap mt-2">
+                              {item.notify_crush && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-pink-500/15 border border-pink-500/30 text-pink-400 text-[9px] font-black uppercase tracking-wider">
+                                  <Heart className="w-2.5 h-2.5 fill-pink-500 text-pink-500" />
+                                  Crush
+                                </span>
+                              )}
+                              {item.notify_review && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/30 text-amber-400 text-[9px] font-black uppercase tracking-wider">
+                                  <Star className="w-2.5 h-2.5 fill-amber-500 text-amber-500" />
+                                  Reseñas
+                                </span>
+                              )}
+                              {item.notify_known && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-500/15 border border-blue-500/30 text-blue-400 text-[9px] font-black uppercase tracking-wider">
+                                  <UserCheck className="w-2.5 h-2.5 text-blue-400" />
+                                  Conocido
+                                </span>
+                              )}
+                              {item.notify_fan && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[9px] font-black uppercase tracking-wider">
+                                  <Sparkles className="w-2.5 h-2.5 text-emerald-400" />
+                                  Fans
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Footer con Acciones */}
+                        <div className="flex items-center justify-between pt-3 mt-3 border-t border-zinc-800/60">
+                          <button
+                            type="button"
+                            onClick={() => navigateTo(`/profesores/${item.professorId}`)}
+                            className="inline-flex items-center gap-1 text-[11px] font-black text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                          >
+                            <span>Ver Perfil</span>
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </button>
+
+                          <div className="flex items-center gap-2">
+                            {isOwnProfile && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingProfSub(item);
+                                }}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase tracking-wider transition-all cursor-pointer bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-[#eab308] border border-zinc-800"
+                                title="Configurar alertas"
+                              >
+                                <Settings2 className="w-3 h-3" />
+                                <span>Ajustar</span>
+                              </button>
+                            )}
+
+                            {isOwnProfile && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRemoveProfSubscription(item);
+                                }}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase tracking-wider transition-all cursor-pointer bg-red-950/20 hover:bg-red-950/60 text-zinc-400 hover:text-red-300 border border-red-900/30 hover:border-red-700/50"
+                                title="Cancelar suscripción"
+                              >
+                                <Trash2 className="w-3 h-3 text-red-400" />
+                                <span>Quitar</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )
+              ) : (
+                // LISTA DE ESTUDIANTES SUSCRITOS
+                studentSubscriptions.length === 0 ? (
+                  <div className="text-center py-16 px-4 bg-[#0a0a0a] rounded-2xl border border-zinc-900 space-y-3">
+                    <BellOff className="w-10 h-10 text-zinc-600 mx-auto stroke-1" />
+                    <h4 className="text-sm font-black text-zinc-300 uppercase tracking-wide">
+                      Sin suscripciones a estudiantes
+                    </h4>
+                    <p className="text-xs text-zinc-500 max-w-md mx-auto">
+                      {isOwnProfile 
+                        ? 'Aún no estás suscrito a ningún estudiante. Entra al perfil de un alumno y activa la campana para recibir alertas inmediatas de flechazos y mensajes.'
+                        : 'Este usuario no tiene suscripciones a estudiantes.'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    {studentSubscriptions.map((item) => (
+                      <div
+                        key={item.id}
+                        className="group relative flex flex-col justify-between p-4 rounded-2xl border border-zinc-800/80 bg-[#0c0c0c] hover:bg-[#121212] hover:border-pink-500/40 transition-all duration-200 shadow-md"
+                      >
+                        <div className="flex items-start gap-3.5">
+                          {/* Avatar */}
+                          <div 
+                            onClick={() => navigateTo(`/estudiantes/${item.studentId}`)}
+                            className="w-12 h-12 rounded-xl flex items-center justify-center font-black text-sm uppercase flex-shrink-0 cursor-pointer overflow-hidden bg-pink-950/30 border border-pink-500/40 text-pink-400 group-hover:border-pink-500 shadow-[0_0_15px_rgba(236,72,153,0.15)]"
+                          >
+                            {item.studentAvatar ? (
+                              <img
+                                src={item.studentAvatar}
+                                alt={item.studentName}
+                                className="w-full h-full object-cover"
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              item.studentName.charAt(0)
+                            )}
+                          </div>
+
+                          {/* Info */}
+                          <div 
+                            onClick={() => navigateTo(`/estudiantes/${item.studentId}`)}
+                            className="min-w-0 flex-1 cursor-pointer"
+                          >
+                            <h4 className="text-xs sm:text-sm font-black text-white truncate group-hover:text-pink-400 transition-colors uppercase tracking-tight">
+                              {item.studentName}
+                            </h4>
+                            <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mt-0.5">
+                              {item.studentGrade || item.studentCareer || 'Estudiante'}
+                            </p>
+
+                            {/* Tags de Notificaciones Activas */}
+                            <div className="flex items-center gap-1.5 flex-wrap mt-2">
+                              {item.notify_crush && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-pink-500/15 border border-pink-500/30 text-pink-400 text-[9px] font-black uppercase tracking-wider">
+                                  <Heart className="w-2.5 h-2.5 fill-pink-500 text-pink-500" />
+                                  Crush
+                                </span>
+                              )}
+                              {item.notify_love_message && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-rose-500/15 border border-rose-500/30 text-rose-400 text-[9px] font-black uppercase tracking-wider">
+                                  <Mail className="w-2.5 h-2.5 text-rose-400" />
+                                  Mensajes
+                                </span>
+                              )}
+                              {item.notify_known && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-500/15 border border-blue-500/30 text-blue-400 text-[9px] font-black uppercase tracking-wider">
+                                  <UserCheck className="w-2.5 h-2.5 text-blue-400" />
+                                  Conocido
+                                </span>
+                              )}
+                              {item.notify_fan && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/30 text-amber-400 text-[9px] font-black uppercase tracking-wider">
+                                  <Star className="w-2.5 h-2.5 fill-amber-500 text-amber-500" />
+                                  Fans
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Footer con Acciones */}
+                        <div className="flex items-center justify-between pt-3 mt-3 border-t border-zinc-800/60">
+                          <button
+                            type="button"
+                            onClick={() => navigateTo(`/estudiantes/${item.studentId}`)}
+                            className="inline-flex items-center gap-1 text-[11px] font-black text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                          >
+                            <span>Ver Perfil</span>
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </button>
+
+                          <div className="flex items-center gap-2">
+                            {isOwnProfile && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingStudentSub(item);
+                                }}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase tracking-wider transition-all cursor-pointer bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-pink-400 border border-zinc-800"
+                                title="Configurar alertas"
+                              >
+                                <Settings2 className="w-3 h-3" />
+                                <span>Ajustar</span>
+                              </button>
+                            )}
+
+                            {isOwnProfile && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRemoveStudentSubscription(item);
+                                }}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase tracking-wider transition-all cursor-pointer bg-red-950/20 hover:bg-red-950/60 text-zinc-400 hover:text-red-300 border border-red-900/30 hover:border-red-700/50"
+                                title="Cancelar suscripción"
+                              >
+                                <Trash2 className="w-3 h-3 text-red-400" />
+                                <span>Quitar</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )
+              )}
+            </div>
           )}
 
         </div>
 
       </div>
+
+      {/* Modal para configurar notificaciones de profesor desde el perfil */}
+      {editingProfSub && user && (
+        <ProfessorNotificationModal
+          isOpen={true}
+          onClose={() => setEditingProfSub(null)}
+          professorId={editingProfSub.professorId}
+          professorName={editingProfSub.professorName}
+          professorAvatar={editingProfSub.professorAvatar || null}
+          userUid={user.uid}
+          onSubscriptionChange={() => {
+            loadSubscriptions();
+          }}
+        />
+      )}
+
+      {/* Modal para configurar notificaciones de estudiante desde el perfil */}
+      {editingStudentSub && user && (
+        <StudentNotificationModal
+          isOpen={true}
+          onClose={() => setEditingStudentSub(null)}
+          studentId={editingStudentSub.studentId}
+          studentName={editingStudentSub.studentName}
+          studentAvatar={editingStudentSub.studentAvatar || null}
+          userUid={user.uid}
+          onSubscriptionChange={() => {
+            loadSubscriptions();
+          }}
+        />
+      )}
 
     </div>
   );

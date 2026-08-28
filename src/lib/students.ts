@@ -1208,3 +1208,128 @@ export async function notifyStudentSubscribers(params: {
   }
 }
 
+export interface UserStudentSubscriptionItem {
+  id: string;
+  studentId: string;
+  studentName: string;
+  studentCareer: string;
+  studentAvatar?: string | null;
+  preferences: StudentNotificationPreferences;
+  createdAt?: string;
+}
+
+/**
+ * Obtiene todas las suscripciones a estudiantes realizadas por el usuario.
+ */
+export async function getUserStudentSubscriptions(userUid: string): Promise<UserStudentSubscriptionItem[]> {
+  if (!userUid) return [];
+
+  const items: UserStudentSubscriptionItem[] = [];
+  const studentIds = new Set<string>();
+  const prefsMap = new Map<string, { prefs: StudentNotificationPreferences; createdAt?: string }>();
+
+  try {
+    // 1. Consultar en Supabase
+    try {
+      const { data, error } = await supabase
+        .from('student_notification_subscriptions')
+        .select('*')
+        .eq('user_uid', userUid)
+        .order('created_at', { ascending: false });
+
+      if (!error && data) {
+        data.forEach((row: any) => {
+          const sId = row.student_id;
+          studentIds.add(sId);
+          prefsMap.set(sId, {
+            prefs: {
+              notify_crush: row.notify_crush ?? true,
+              notify_love_message: row.notify_love_message ?? true,
+              notify_known: row.notify_known ?? true,
+              notify_fan: row.notify_fan ?? true,
+            },
+            createdAt: row.created_at
+          });
+        });
+      }
+    } catch (e) {
+      console.warn('Aviso consultando suscripciones de estudiantes en Supabase:', e);
+    }
+
+    // 2. Fallback con localStorage
+    if (typeof window !== 'undefined') {
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith('student_notif_sub_') && key.endsWith(`_${userUid}`)) {
+            const sId = key.replace('student_notif_sub_', '').replace(`_${userUid}`, '');
+            if (!studentIds.has(sId)) {
+              try {
+                const cachedPrefs = JSON.parse(localStorage.getItem(key) || '{}');
+                const hasActive = Object.values(cachedPrefs).some(Boolean);
+                if (hasActive) {
+                  studentIds.add(sId);
+                  prefsMap.set(sId, {
+                    prefs: {
+                      notify_crush: cachedPrefs.notify_crush ?? true,
+                      notify_love_message: cachedPrefs.notify_love_message ?? true,
+                      notify_known: cachedPrefs.notify_known ?? true,
+                      notify_fan: cachedPrefs.notify_fan ?? true,
+                    }
+                  });
+                }
+              } catch {}
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Error leyendo localStorage de suscripciones de estudiantes:', e);
+      }
+    }
+
+    if (studentIds.size === 0) return [];
+
+    // 3. Enriquecer con datos de la tabla 'students'
+    const studentsArray = Array.from(studentIds);
+    const studentDataMap = new Map<string, any>();
+
+    try {
+      const { data: students, error: stErr } = await supabase
+        .from('students')
+        .select('id, nombre, apellidos, nombre_completo, avatar_url, carrera')
+        .in('id', studentsArray);
+
+      if (!stErr && students) {
+        students.forEach((s: any) => studentDataMap.set(s.id.toLowerCase(), s));
+      }
+    } catch (e) {
+      console.warn('Aviso enriqueciendo datos de estudiantes:', e);
+    }
+
+    studentsArray.forEach(id => {
+      const s = studentDataMap.get(id.toLowerCase());
+      const subInfo = prefsMap.get(id);
+      items.push({
+        id: `student_sub_${id}`,
+        studentId: id,
+        studentName: s?.nombre_completo || (s ? `${s.nombre} ${s.apellidos}`.trim() : id),
+        studentCareer: s?.carrera || 'Estudiante',
+        studentAvatar: s?.avatar_url || null,
+        preferences: subInfo?.prefs || {
+          notify_crush: true,
+          notify_love_message: true,
+          notify_known: true,
+          notify_fan: true
+        },
+        createdAt: subInfo?.createdAt
+      });
+    });
+
+    return items;
+  } catch (err) {
+    console.error('Error al obtener lista de suscripciones a estudiantes:', err);
+    return [];
+  }
+}
+
+
