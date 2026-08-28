@@ -531,7 +531,11 @@ export default function EducationalCenterProfileView({
     if (!confessionToDelete) return;
     try {
       setIsDeletingConfession(true);
-      const res = await deleteCenterConfession(confessionToDelete.id);
+      const res = await deleteCenterConfession(
+        confessionToDelete.id,
+        user?.uid,
+        user?.email
+      );
       if (res.success) {
         setConfessions((prev) => prev.filter((c) => c.id !== confessionToDelete.id));
         setConfessionToDelete(null);

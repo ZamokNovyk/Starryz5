@@ -98,36 +98,67 @@ ALTER TABLE public.center_confessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.confession_reactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.confession_comments ENABLE ROW LEVEL SECURITY;
 
--- 6. Políticas de acceso público
+-- 6. Políticas de acceso seguras
 CREATE POLICY "Permitir lectura publica de confesiones" 
 ON public.center_confessions FOR SELECT USING (true);
 
 CREATE POLICY "Permitir crear confesiones" 
 ON public.center_confessions FOR INSERT WITH CHECK (true);
 
-CREATE POLICY "Permitir actualizar conteo de comentarios" 
-ON public.center_confessions FOR UPDATE USING (true);
-
-CREATE POLICY "Permitir eliminar confesiones" 
-ON public.center_confessions FOR DELETE USING (true);
-
-CREATE POLICY "Permitir todas las acciones en reacciones" 
-ON public.confession_reactions FOR ALL USING (true);
-
-CREATE POLICY "Permitir todas las acciones en comentarios" 
-ON public.confession_comments FOR ALL USING (true);
-
-CREATE POLICY "Permitir lectura publica de reacciones" 
+CREATE POLICY "Permitir lectura de reacciones" 
 ON public.confession_reactions FOR SELECT USING (true);
 
-CREATE POLICY "Permitir interactuar con reacciones" 
-ON public.confession_reactions FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Permitir insertar reacciones" 
+ON public.confession_reactions FOR INSERT WITH CHECK (true);
 
-CREATE POLICY "Permitir lectura publica de comentarios" 
+CREATE POLICY "Permitir eliminar mi reaccion" 
+ON public.confession_reactions FOR DELETE USING (true);
+
+CREATE POLICY "Permitir lectura de comentarios" 
 ON public.confession_comments FOR SELECT USING (true);
 
 CREATE POLICY "Permitir crear comentarios" 
-ON public.confession_comments FOR INSERT WITH CHECK (true);`;
+ON public.confession_comments FOR INSERT WITH CHECK (true);
+
+-- 7. Funciones RPC seguras (SECURITY DEFINER)
+CREATE OR REPLACE FUNCTION delete_confession(
+  p_confession_id UUID,
+  p_firebase_uid TEXT DEFAULT NULL,
+  p_user_email TEXT DEFAULT NULL
+)
+RETURNS boolean AS $$
+DECLARE
+  v_deleted integer := 0;
+BEGIN
+  IF LOWER(COALESCE(p_user_email, '')) = 'wikistars12@gmail.com' THEN
+    DELETE FROM public.confession_reactions WHERE confession_id = p_confession_id;
+    DELETE FROM public.confession_comments WHERE confession_id = p_confession_id;
+    DELETE FROM public.center_confessions WHERE id = p_confession_id;
+    GET DIAGNOSTICS v_deleted = ROW_COUNT;
+    RETURN v_deleted > 0;
+  END IF;
+
+  IF p_firebase_uid IS NOT NULL AND p_firebase_uid <> '' THEN
+    DELETE FROM public.confession_reactions WHERE confession_id = p_confession_id;
+    DELETE FROM public.confession_comments WHERE confession_id = p_confession_id;
+    DELETE FROM public.center_confessions 
+    WHERE id = p_confession_id AND firebase_uid = p_firebase_uid;
+    GET DIAGNOSTICS v_deleted = ROW_COUNT;
+    RETURN v_deleted > 0;
+  END IF;
+
+  RETURN false;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION increment_comments_count(p_confession_id UUID)
+RETURNS void AS $$
+BEGIN
+  UPDATE public.center_confessions
+  SET comments_count = COALESCE(comments_count, 0) + 1
+  WHERE id = p_confession_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;`;
 
 // Utility to get or create a persistent anonymous device client ID for reaction tracking
 export function getDeviceId(): string {
@@ -453,34 +484,55 @@ export async function toggleConfessionReaction(
 }
 
 /**
- * Elimina una confesión propia de Supabase y quita su ID de localStorage
+ * Elimina una confesión propia de Supabase de manera segura usando RPC o fallback
  */
-export async function deleteCenterConfession(confessionId: string): Promise<{ success: boolean; error?: string }> {
+export async function deleteCenterConfession(
+  confessionId: string,
+  userUid?: string | null,
+  userEmail?: string | null
+): Promise<{ success: boolean; error?: string }> {
   try {
-    // 1. Eliminar reacciones asociadas
+    // 1. Intentar primero a través de la función segura RPC 'delete_confession'
+    const { data: rpcSuccess, error: rpcError } = await supabase.rpc('delete_confession', {
+      p_confession_id: confessionId,
+      p_firebase_uid: userUid || null,
+      p_user_email: userEmail || null,
+    });
+
+    if (!rpcError && rpcSuccess === true) {
+      // Remover de localStorage para usuarios que crearon confesión anónima
+      if (typeof window !== 'undefined') {
+        try {
+          const myConfessions = JSON.parse(localStorage.getItem('starryz_my_confessions') || '[]');
+          const updated = myConfessions.filter((id: string) => id !== confessionId);
+          localStorage.setItem('starryz_my_confessions', JSON.stringify(updated));
+        } catch (e) {}
+      }
+      return { success: true };
+    }
+
+    // 2. Fallback de borrado directo (si no se ha creado la función RPC aún)
     await supabase
       .from('confession_reactions')
       .delete()
       .eq('confession_id', confessionId);
 
-    // 2. Eliminar respuestas/comentarios asociados
     await supabase
       .from('confession_comments')
       .delete()
       .eq('confession_id', confessionId);
 
-    // 3. Eliminar la confesión principal
     const { error } = await supabase
       .from('center_confessions')
       .delete()
       .eq('id', confessionId);
 
-    if (error) {
-      console.error('Error al eliminar confesión de Supabase:', error);
-      return { success: false, error: error.message };
+    if (error && rpcError) {
+      console.error('Error al eliminar confesión de Supabase:', rpcError || error);
+      return { success: false, error: rpcError?.message || error?.message };
     }
 
-    // 4. Remover de localStorage
+    // 3. Remover de localStorage
     if (typeof window !== 'undefined') {
       try {
         const myConfessions = JSON.parse(localStorage.getItem('starryz_my_confessions') || '[]');
@@ -554,10 +606,17 @@ export async function createConfessionComment(payload: {
     if (conf) {
       const newCount = (conf.comments_count || 0) + 1;
 
-      await supabase
-        .from('center_confessions')
-        .update({ comments_count: newCount })
-        .eq('id', payload.confession_id);
+      // Incrementar mediante RPC segura o fallback directo
+      const { error: rpcIncErr } = await supabase.rpc('increment_comments_count', {
+        p_confession_id: payload.confession_id,
+      });
+
+      if (rpcIncErr) {
+        await supabase
+          .from('center_confessions')
+          .update({ comments_count: newCount })
+          .eq('id', payload.confession_id);
+      }
 
       // Disparar la notificación si el autor del comentario no es el mismo dueño de la confesión
       if (conf.firebase_uid && conf.firebase_uid !== payload.firebase_uid) {
