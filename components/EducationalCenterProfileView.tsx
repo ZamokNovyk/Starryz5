@@ -741,67 +741,77 @@ export default function EducationalCenterProfileView({
           
           {/* TAB WIKI */}
           <button
+            type="button"
             onClick={() => setActiveTab('Wiki')}
-            className={`px-5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+            title="Wiki"
+            className={`py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
               activeTab === 'Wiki'
-                ? 'bg-[#eab308] text-black font-extrabold shadow-sm'
-                : 'text-zinc-400 hover:text-white hover:bg-[#151515]'
+                ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4'
+                : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3.5'
             }`}
           >
-            <BookOpen className="w-4 h-4" />
-            <span>Wiki</span>
+            <BookOpen className="w-4 h-4 flex-shrink-0" />
+            {activeTab === 'Wiki' && <span>Wiki</span>}
           </button>
 
           {/* TAB PROFESORES */}
           <button
+            type="button"
             onClick={() => setActiveTab('Profesores')}
-            className={`px-5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+            title="Profesores"
+            className={`py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
               activeTab === 'Profesores'
-                ? 'bg-[#eab308] text-black font-extrabold shadow-sm'
-                : 'text-zinc-400 hover:text-white hover:bg-[#151515]'
+                ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4'
+                : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3.5'
             }`}
           >
-            <Award className="w-4 h-4" />
-            <span>Profesores</span>
+            <Award className="w-4 h-4 flex-shrink-0" />
+            {activeTab === 'Profesores' && <span>Profesores</span>}
           </button>
 
           {/* TAB ESTUDIANTES */}
           <button
+            type="button"
             onClick={() => setActiveTab('Estudiantes')}
-            className={`px-5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+            title="Estudiantes"
+            className={`py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
               activeTab === 'Estudiantes'
-                ? 'bg-[#eab308] text-black font-extrabold shadow-sm'
-                : 'text-zinc-400 hover:text-white hover:bg-[#151515]'
+                ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4'
+                : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3.5'
             }`}
           >
-            <GraduationCap className="w-4 h-4" />
-            <span>Estudiantes</span>
+            <GraduationCap className="w-4 h-4 flex-shrink-0" />
+            {activeTab === 'Estudiantes' && <span>Estudiantes</span>}
           </button>
 
           {/* TAB CONFESIONES */}
           <button
+            type="button"
             onClick={() => setActiveTab('Confesiones')}
-            className={`px-5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+            title="Confesiones"
+            className={`py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
               activeTab === 'Confesiones'
-                ? 'bg-[#eab308] text-black font-extrabold shadow-sm'
-                : 'text-zinc-400 hover:text-white hover:bg-[#151515]'
+                ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4'
+                : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3.5'
             }`}
           >
-            <MessageSquare className="w-4 h-4" />
-            <span>Confesiones</span>
+            <MessageSquare className="w-4 h-4 flex-shrink-0" />
+            {activeTab === 'Confesiones' && <span>Confesiones</span>}
           </button>
 
           {/* TAB GALERIA */}
           <button
+            type="button"
             onClick={() => setActiveTab('Galeria')}
-            className={`px-5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+            title="Galeria"
+            className={`py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
               activeTab === 'Galeria'
-                ? 'bg-[#eab308] text-black font-extrabold shadow-sm'
-                : 'text-zinc-400 hover:text-white hover:bg-[#151515]'
+                ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4'
+                : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3.5'
             }`}
           >
-            <ImageIcon className="w-4 h-4" />
-            <span>Galeria</span>
+            <ImageIcon className="w-4 h-4 flex-shrink-0" />
+            {activeTab === 'Galeria' && <span>Galeria</span>}
           </button>
 
         </div>
@@ -957,8 +967,8 @@ export default function EducationalCenterProfileView({
                           <Heart className="w-3.5 h-3.5 text-pink-500 fill-pink-500" />
                           <span>{p.fans}</span>
                         </span>
-                        <span className="flex items-center gap-1.5" title={`${p.knows} Yo te conozco`}>
-                          <Users className="w-3.5 h-3.5 text-amber-500 fill-amber-500/10" />
+                        <span className="flex items-center gap-1.5 text-zinc-400" title={`${p.knows} Yo te conozco`}>
+                          <Users className="w-3.5 h-3.5 text-blue-400 fill-blue-400/20" />
                           <span>{p.knows}</span>
                         </span>
                         <span className="flex items-center gap-1.5" title={`${p.crushes} Crushes`}>
@@ -1034,8 +1044,8 @@ export default function EducationalCenterProfileView({
                         <Heart className="w-3 h-3 text-pink-500 fill-pink-500" />
                         <span>{p.fans}</span>
                       </span>
-                      <span className="flex items-center gap-1" title={`${p.knows} Yo te conozco`}>
-                        <Users className="w-3 h-3 text-amber-500 fill-amber-500/10" />
+                      <span className="flex items-center gap-1 text-zinc-400" title={`${p.knows} Yo te conozco`}>
+                        <Users className="w-3 h-3 text-blue-400 fill-blue-400/20" />
                         <span>{p.knows}</span>
                       </span>
                       <span className="flex items-center gap-1" title={`${p.crushes} Crushes`}>

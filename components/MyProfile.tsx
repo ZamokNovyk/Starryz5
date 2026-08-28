@@ -771,59 +771,70 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
             <button
               type="button"
               onClick={() => setProfileTab('info')}
-              className={`px-4 py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+              title="Información"
+              className={`py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
                 profileTab === 'info'
-                  ? 'bg-[#eab308] text-black font-extrabold shadow-sm'
-                  : 'text-zinc-400 hover:text-white hover:bg-[#151515]'
+                  ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4'
+                  : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3'
               }`}
             >
-              <User className="w-3.5 h-3.5" />
-              <span>Información</span>
+              <User className="w-4 h-4 flex-shrink-0" />
+              {profileTab === 'info' && <span>Información</span>}
             </button>
 
             <button
               type="button"
               onClick={() => setProfileTab('collections')}
-              className={`px-4 py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+              title="Colecciones"
+              className={`py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
                 profileTab === 'collections'
-                  ? 'bg-[#eab308] text-black font-extrabold shadow-sm'
-                  : 'text-zinc-400 hover:text-white hover:bg-[#151515]'
+                  ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4'
+                  : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3'
               }`}
             >
-              <Bookmark className="w-3.5 h-3.5 text-current" />
-              <span>Colecciones</span>
+              <Bookmark className="w-4 h-4 flex-shrink-0 text-current" />
+              {profileTab === 'collections' && <span>Colecciones</span>}
             </button>
 
             <button
               type="button"
               onClick={() => setProfileTab('interactions')}
-              className={`px-4 py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+              title="Mis Interacciones"
+              className={`py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
                 profileTab === 'interactions'
-                  ? 'bg-[#eab308] text-black font-extrabold shadow-sm'
-                  : 'text-zinc-400 hover:text-white hover:bg-[#151515]'
+                  ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4'
+                  : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3'
               }`}
             >
-              <Heart className={`w-3.5 h-3.5 ${profileTab === 'interactions' ? 'fill-black text-black' : 'text-pink-500 fill-pink-500/20'}`} />
-              <span>Mis Interacciones</span>
+              <Heart className={`w-4 h-4 flex-shrink-0 ${profileTab === 'interactions' ? 'fill-black text-black' : 'text-pink-500 fill-pink-500/20'}`} />
+              {profileTab === 'interactions' && <span>Mis Interacciones</span>}
             </button>
 
             <button
               type="button"
               onClick={() => setProfileTab('subscriptions')}
-              className={`px-4 py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+              title="Suscripciones"
+              className={`py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
                 profileTab === 'subscriptions'
-                  ? 'bg-[#eab308] text-black font-extrabold shadow-sm'
-                  : 'text-zinc-400 hover:text-white hover:bg-[#151515]'
+                  ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4'
+                  : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3'
               }`}
             >
-              <BellRing className={`w-3.5 h-3.5 ${profileTab === 'subscriptions' ? 'text-black' : 'text-amber-400'}`} />
-              <span>Suscripciones</span>
-              {(profSubscriptions.length > 0 || studentSubscriptions.length > 0) && (
-                <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-mono font-black ${
-                  profileTab === 'subscriptions' ? 'bg-black text-[#eab308]' : 'bg-amber-500/20 text-amber-300'
-                }`}>
-                  {profSubscriptions.length + studentSubscriptions.length}
-                </span>
+              <div className="relative flex items-center justify-center">
+                <BellRing className={`w-4 h-4 flex-shrink-0 ${profileTab === 'subscriptions' ? 'text-black' : 'text-amber-400'}`} />
+                {profileTab !== 'subscriptions' && (profSubscriptions.length > 0 || studentSubscriptions.length > 0) && (
+                  <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-amber-500" />
+                )}
+              </div>
+              {profileTab === 'subscriptions' && (
+                <>
+                  <span>Suscripciones</span>
+                  {(profSubscriptions.length > 0 || studentSubscriptions.length > 0) && (
+                    <span className="px-1.5 py-0.5 rounded-full text-[9px] font-mono font-black bg-black text-[#eab308]">
+                      {profSubscriptions.length + studentSubscriptions.length}
+                    </span>
+                  )}
+                </>
               )}
             </button>
           </div>

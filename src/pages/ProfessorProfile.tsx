@@ -47,7 +47,7 @@ interface ProfessorProfileProps {
   onRequireAuth?: () => void;
 }
 
-type TabType = 'Wiki' | 'Reseñas' | 'Crushes' | 'Ship' | 'Estadística';
+type TabType = 'Wiki' | 'Reseñas' | 'Crushes' | 'Estadística';
 
 export default function ProfessorProfile({
   slug,
@@ -740,17 +740,17 @@ export default function ProfessorProfile({
           onClick={() => handleInteractionToggle('knows')}
           className={`bg-[#0d0d0d] border rounded-2xl p-6 text-center transition-all cursor-pointer select-none active:scale-[0.98] duration-200 ${
             hasVotedKnow 
-              ? 'border-[#eab308] bg-[#eab308]/5 shadow-[0_0_15px_rgba(234,179,8,0.15)]' 
-              : 'border-zinc-800/80 hover:border-zinc-700 hover:bg-[#121212]'
+              ? 'border-blue-500 bg-blue-500/10 shadow-[0_0_15px_rgba(59,130,246,0.2)]' 
+              : 'border-zinc-800/80 hover:border-blue-500/40 hover:bg-[#121212]'
           }`}
         >
           <div className="flex justify-center mb-1">
-            <Users className={`w-6 h-6 transition-transform ${hasVotedKnow ? 'text-[#eab308] scale-110' : 'text-zinc-600'}`} />
+            <Users className={`w-6 h-6 transition-transform text-blue-400 ${hasVotedKnow ? 'scale-110 text-blue-400' : 'text-blue-400/80'}`} />
           </div>
           <span className="block text-2xl font-black text-white tracking-tight">
             {knowCount}
           </span>
-          <span className={`block text-[10px] uppercase font-extrabold tracking-widest mt-1 transition-colors ${hasVotedKnow ? 'text-[#eab308]' : 'text-zinc-500'}`}>
+          <span className={`block text-[10px] uppercase font-extrabold tracking-widest mt-1 transition-colors ${hasVotedKnow ? 'text-blue-400' : 'text-zinc-400'}`}>
             {hasVotedKnow ? '✓ Yo te conozco' : 'Yo te conozco'}
           </span>
         </div>
@@ -760,17 +760,17 @@ export default function ProfessorProfile({
           onClick={() => handleInteractionToggle('fan')}
           className={`bg-[#0d0d0d] border rounded-2xl p-6 text-center transition-all cursor-pointer select-none active:scale-[0.98] duration-200 ${
             hasVotedFan 
-              ? 'border-pink-500 bg-pink-500/5 shadow-[0_0_15px_rgba(236,72,153,0.15)]' 
-              : 'border-zinc-800/80 hover:border-zinc-700 hover:bg-[#121212]'
+              ? 'border-red-500 bg-red-500/10 shadow-[0_0_15px_rgba(239,68,68,0.2)]' 
+              : 'border-zinc-800/80 hover:border-red-500/40 hover:bg-[#121212]'
           }`}
         >
           <div className="flex justify-center mb-1">
-            <Heart className={`w-6 h-6 transition-transform ${hasVotedFan ? 'text-pink-500 fill-pink-500 scale-110' : 'text-zinc-600'}`} />
+            <Heart className={`w-6 h-6 transition-transform text-red-500 ${hasVotedFan ? 'fill-red-500 scale-110' : 'fill-red-500/20'}`} />
           </div>
           <span className="block text-2xl font-black text-white tracking-tight">
             {fanCount}
           </span>
-          <span className={`block text-[10px] uppercase font-extrabold tracking-widest mt-1 transition-colors ${hasVotedFan ? 'text-pink-500' : 'text-zinc-500'}`}>
+          <span className={`block text-[10px] uppercase font-extrabold tracking-widest mt-1 transition-colors ${hasVotedFan ? 'text-red-500' : 'text-zinc-400'}`}>
             {hasVotedFan ? '✓ Fan' : 'Fan'}
           </span>
         </div>
@@ -782,41 +782,47 @@ export default function ProfessorProfile({
           
           {/* Wiki */}
           <button
+            type="button"
             onClick={() => setActiveTab('Wiki')}
-            className={`px-4.5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+            title="Wiki"
+            className={`py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
               activeTab === 'Wiki'
-                ? 'bg-[#eab308] text-black font-extrabold'
-                : 'text-zinc-400 hover:text-white hover:bg-[#151515]'
+                ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4'
+                : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3.5'
             }`}
           >
-            <BookOpen className="w-4 h-4" />
-            <span>Wiki</span>
+            <BookOpen className="w-4 h-4 flex-shrink-0" />
+            {activeTab === 'Wiki' && <span>Wiki</span>}
           </button>
 
           {/* Reseñas */}
           <button
+            type="button"
             onClick={() => setActiveTab('Reseñas')}
-            className={`px-4.5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+            title="Reseñas"
+            className={`py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
               activeTab === 'Reseñas'
-                ? 'bg-[#eab308] text-black font-extrabold'
-                : 'text-zinc-400 hover:text-white hover:bg-[#151515]'
+                ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4'
+                : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3.5'
             }`}
           >
-            <Star className="w-4 h-4" />
-            <span>Reseñas</span>
+            <Star className="w-4 h-4 flex-shrink-0" />
+            {activeTab === 'Reseñas' && <span>Reseñas</span>}
           </button>
 
           {/* Crushes */}
           <button
+            type="button"
             onClick={() => setActiveTab('Crushes')}
-            className={`px-4.5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+            title="Crushes"
+            className={`py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
               activeTab === 'Crushes'
-                ? 'bg-[#eab308] text-black font-extrabold'
-                : 'text-zinc-400 hover:text-white hover:bg-[#151515]'
+                ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4'
+                : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3.5'
             }`}
           >
-            <Heart className={`w-4 h-4 ${hasCrushed ? 'fill-pink-500 text-pink-500' : ''}`} />
-            <span>Crushes</span>
+            <Heart className={`w-4 h-4 flex-shrink-0 ${hasCrushed ? 'fill-pink-500 text-pink-500' : ''}`} />
+            {activeTab === 'Crushes' && <span>Crushes</span>}
             {crushCount > 0 && (
               <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${
                 activeTab === 'Crushes' ? 'bg-black/20 text-black' : 'bg-pink-500/20 text-pink-400 border border-pink-500/30'
@@ -826,30 +832,19 @@ export default function ProfessorProfile({
             )}
           </button>
 
-          {/* Ship */}
-          <button
-            onClick={() => setActiveTab('Ship')}
-            className={`px-4.5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
-              activeTab === 'Ship'
-                ? 'bg-[#eab308] text-black font-extrabold'
-                : 'text-zinc-400 hover:text-white hover:bg-[#151515]'
-            }`}
-          >
-            <Sparkles className="w-4 h-4" />
-            <span>Ship</span>
-          </button>
-
           {/* Estadística */}
           <button
+            type="button"
             onClick={() => setActiveTab('Estadística')}
-            className={`px-4.5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+            title="Estadística"
+            className={`py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
               activeTab === 'Estadística'
-                ? 'bg-[#eab308] text-black font-extrabold'
-                : 'text-zinc-400 hover:text-white hover:bg-[#151515]'
+                ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4'
+                : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3.5'
             }`}
           >
-            <BarChart3 className="w-4 h-4" />
-            <span>Estadística</span>
+            <BarChart3 className="w-4 h-4 flex-shrink-0" />
+            {activeTab === 'Estadística' && <span>Estadística</span>}
           </button>
 
         </div>
@@ -1508,18 +1503,7 @@ export default function ProfessorProfile({
         </div>
       )}
 
-      {/* 4. SHIP TAB */}
-      {activeTab === 'Ship' && (
-        <div className="bg-[#0d0d0d] border border-zinc-800/40 rounded-2xl p-8 text-center text-zinc-500 space-y-3">
-          <Sparkles className="w-10 h-10 text-[#eab308] mx-auto animate-bounce" />
-          <h3 className="text-base font-bold text-white uppercase">Emparejamientos del Campus (Ship)</h3>
-          <p className="text-xs max-w-sm mx-auto">
-            Vota por las parejas más votadas y divertidas del centro educativo creadas por la propia comunidad estudiantil.
-          </p>
-        </div>
-      )}
-
-      {/* 5. ESTADÍSTICA TAB */}
+      {/* 4. ESTADÍSTICA TAB */}
       {activeTab === 'Estadística' && (
         <div className="bg-[#0d0d0d] border border-zinc-800/40 rounded-2xl p-6 space-y-6">
           <h2 className="text-lg font-black text-white uppercase tracking-wide">
