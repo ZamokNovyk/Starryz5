@@ -22,7 +22,8 @@ import {
   Lock,
   Trash2,
   Quote,
-  AlertCircle
+  AlertCircle,
+  Eye
 } from 'lucide-react';
 import { 
   getStudentById, 
@@ -30,6 +31,7 @@ import {
   getUserStudentInteraction, 
   getStudentInteractionCounts, 
   toggleStudentInteraction,
+  incrementStudentViews,
   getTodayStudentVotes,
   getStudentRatingBreakdown,
   submitStudentVote,
@@ -48,6 +50,7 @@ import { supabase } from '@/src/lib/supabase';
 import BookmarkButton from '@/components/BookmarkButton';
 import StudentNotificationModal from '@/components/Modals/StudentNotificationModal';
 import { promptNotificationOnAction } from '@/src/lib/notificationHelper';
+import StudentTrendsEngine from '@/src/components/StudentTrendsEngine';
 
 interface StudentProfileProps {
   slug: string;
@@ -90,6 +93,9 @@ export default function StudentProfile({
   const [crushCount, setCrushCount] = useState(0);
   const [hasCrushed, setHasCrushed] = useState(false);
   const [loadingCrush, setLoadingCrush] = useState(false);
+
+  // Views Count State
+  const [viewsCount, setViewsCount] = useState(0);
 
   // Love Messages States
   const [loveMessages, setLoveMessages] = useState<StudentLoveMessage[]>([]);
@@ -137,6 +143,14 @@ export default function StudentProfile({
           const counts = await getStudentInteractionCounts(data.id || slug);
           setKnowCount(counts.knows);
           setFanCount(counts.fan);
+
+          // Incrementar y registrar visualización de perfil (+1 generoso)
+          try {
+            const vCount = await incrementStudentViews(data.id || slug);
+            setViewsCount(vCount);
+          } catch (vErr) {
+            console.debug('Error registrando visualización:', vErr);
+          }
 
           // Cargar distribución (breakdown) de calificaciones
           const breakdown = await getStudentRatingBreakdown(data.id || slug);
@@ -812,7 +826,22 @@ export default function StudentProfile({
       )}
 
       {/* SECCIÓN DEL AVATAR CON EL RATING RING (Diseño idéntico a imagen) */}
-      <div className="flex flex-col items-center text-center space-y-4 py-4">
+      <div className="flex flex-col items-center text-center space-y-4 py-4 relative">
+        {/* Badge de Visualizaciones en la esquina superior derecha según solicitud */}
+        <div 
+          onClick={() => setActiveTab('Estadística')}
+          title="Visualizaciones totales del perfil (Clic para ver tendencias)"
+          className="absolute top-0 right-0 sm:right-4 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#12131a] border border-zinc-800 hover:border-purple-500/50 hover:bg-purple-500/10 text-zinc-300 hover:text-purple-300 transition-all cursor-pointer shadow-lg group select-none"
+        >
+          <Eye className="w-3.5 h-3.5 text-purple-400 group-hover:scale-110 transition-transform" />
+          <span className="text-xs font-black tracking-tight text-white group-hover:text-purple-200">
+            {viewsCount.toLocaleString()}
+          </span>
+          <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider hidden sm:inline">
+            vistas
+          </span>
+        </div>
+
         <div className="relative">
           {/* Avatar circular */}
           <div className="w-28 h-28 rounded-full overflow-hidden border-2 border-zinc-800 bg-[#181818] shadow-2xl flex items-center justify-center">
@@ -1914,29 +1943,19 @@ export default function StudentProfile({
         </div>
       )}
 
-      {/* 5. ESTADÍSTICA TAB */}
+      {/* 5. ESTADÍSTICA TAB: Starryz Trends Engine v2.0 */}
       {activeTab === 'Estadística' && (
-        <div className="bg-[#0d0d0d] border border-zinc-800/40 rounded-2xl p-6 space-y-6">
-          <h2 className="text-lg font-black text-white uppercase tracking-wide">
-            Estadísticas Generales
-          </h2>
-          <div className="grid grid-cols-3 gap-4 text-center">
-            <div className="bg-[#050505] p-4 rounded-xl border border-zinc-800/20">
-              <span className="block text-xs text-zinc-500 font-bold uppercase tracking-wider">Votos</span>
-              <span className="text-xl font-black text-white mt-1 block">{knowCount}</span>
-            </div>
-            <div className="bg-[#050505] p-4 rounded-xl border border-zinc-800/20">
-              <span className="block text-xs text-zinc-500 font-bold uppercase tracking-wider">Fans</span>
-              <span className="text-xl font-black text-[#eab308] mt-1 block">{fanCount}</span>
-            </div>
-            <div className="bg-[#050505] p-4 rounded-xl border border-zinc-800/20">
-              <span className="block text-xs text-zinc-500 font-bold uppercase tracking-wider">Puntaje</span>
-              <span className="text-xl font-black text-emerald-400 mt-1 block">
-                {studentScore.toFixed(1)}
-              </span>
-            </div>
-          </div>
-        </div>
+        <StudentTrendsEngine
+          studentId={student?.id || slug}
+          studentName={studentFullName}
+          currentValues={{
+            knowsCount: knowCount,
+            fansCount: fanCount,
+            crushesCount: crushCount,
+            score: studentScore,
+            viewsCount: viewsCount,
+          }}
+        />
       )}
 
       {/* Modal de Suscripción a Notificaciones */}

@@ -13,6 +13,7 @@ export interface Student {
   crushes_count?: number;
   score?: number;
   total_ratings?: number;
+  views_count?: number;
   avatar_url?: string;
   height_cm?: number;
   marital_status?: string;
@@ -251,6 +252,63 @@ export async function getStudentInteractionCounts(studentId: string): Promise<{ 
     return { knows, fan };
   } catch (err) {
     return { knows: 0, fan: 0 };
+  }
+}
+
+/**
+ * Incrementa de manera segura y generosa el contador de visualizaciones del perfil del estudiante.
+ * Utiliza sessionStorage para no spammear en recargas continuas durante la misma sesión.
+ */
+export async function incrementStudentViews(studentId: string): Promise<number> {
+  if (!studentId) return 0;
+
+  const sessionKey = `starryz_viewed_student_${studentId}`;
+  const alreadyViewedInSession = typeof window !== 'undefined' && sessionStorage.getItem(sessionKey);
+
+  try {
+    // 1. Obtener conteo actual
+    const { data: studentData, error: fetchError } = await supabase
+      .from('students')
+      .select('views_count, knows_count, fans_count')
+      .eq('id', studentId)
+      .maybeSingle();
+
+    if (fetchError && fetchError.code !== 'PGRST116') {
+      console.warn('Error fetching student views:', fetchError);
+    }
+
+    const currentViews = typeof studentData?.views_count === 'number' 
+      ? studentData.views_count 
+      : Math.max(1, ((studentData?.knows_count || 0) * 15) + ((studentData?.fans_count || 0) * 25));
+
+    // Si ya vio en esta sesión, simplemente retornamos el conteo
+    if (alreadyViewedInSession) {
+      return currentViews;
+    }
+
+    const nextViews = currentViews + 1;
+
+    // Marcamos en sessionStorage para evitar loops en la misma pestaña
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem(sessionKey, 'true');
+    }
+
+    // Actualizar en Supabase de forma no bloqueante
+    supabase
+      .from('students')
+      .update({ views_count: nextViews })
+      .eq('id', studentId)
+      .then(({ error }) => {
+        if (error) {
+          // Si la columna views_count aún no existe en Supabase, no rompemos la app
+          console.debug('Nota: views_count se actualizará una vez migrada la tabla:', error.message);
+        }
+      });
+
+    return nextViews;
+  } catch (err) {
+    console.warn('Error al registrar visualización de estudiante:', err);
+    return 1;
   }
 }
 
