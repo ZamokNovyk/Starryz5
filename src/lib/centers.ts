@@ -89,3 +89,58 @@ export async function deleteEducationalCenter(centerId: string): Promise<void> {
   }
 }
 
+/**
+ * Incrementa y sincroniza las visualizaciones de un centro educativo con Supabase
+ */
+export async function incrementCenterViews(centerId: string): Promise<number> {
+  if (!centerId) return 0;
+
+  const sessionKey = `starryz_viewed_center_${centerId}`;
+  const alreadyViewedInSession = typeof window !== 'undefined' && sessionStorage.getItem(sessionKey);
+
+  try {
+    // 1. Obtener conteo actual
+    const { data: centerData, error: fetchError } = await supabase
+      .from('educational_centers')
+      .select('views_count')
+      .eq('id', centerId)
+      .maybeSingle();
+
+    if (fetchError && fetchError.code !== 'PGRST116') {
+      console.warn('Error fetching center views:', fetchError);
+    }
+
+    const currentViews = typeof centerData?.views_count === 'number' 
+      ? centerData.views_count 
+      : 0;
+
+    // Si ya vio en esta sesión, simplemente retornamos el conteo exacto de la BD
+    if (alreadyViewedInSession) {
+      return currentViews;
+    }
+
+    const nextViews = currentViews + 1;
+
+    // Marcamos en sessionStorage para evitar loops en la misma pestaña
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem(sessionKey, 'true');
+    }
+
+    // Actualizar en Supabase de forma directa con await para asegurar consistencia
+    const { error: updateErr } = await supabase
+      .from('educational_centers')
+      .update({ views_count: nextViews })
+      .eq('id', centerId);
+
+    if (updateErr) {
+      console.warn('Error al actualizar views_count en educational_centers:', updateErr.message);
+    }
+
+    return nextViews;
+  } catch (err) {
+    console.warn('Error al registrar visualización de centro educativo:', err);
+    return 0;
+  }
+}
+
+

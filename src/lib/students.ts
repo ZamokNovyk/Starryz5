@@ -269,7 +269,7 @@ export async function incrementStudentViews(studentId: string): Promise<number> 
     // 1. Obtener conteo actual
     const { data: studentData, error: fetchError } = await supabase
       .from('students')
-      .select('views_count, knows_count, fans_count')
+      .select('views_count')
       .eq('id', studentId)
       .maybeSingle();
 
@@ -279,7 +279,7 @@ export async function incrementStudentViews(studentId: string): Promise<number> 
 
     const currentViews = typeof studentData?.views_count === 'number' 
       ? studentData.views_count 
-      : (studentData?.views_count ? Number(studentData.views_count) : 0);
+      : 0;
 
     // Si ya vio en esta sesión, simplemente retornamos el conteo exacto de la BD
     if (alreadyViewedInSession) {
@@ -293,16 +293,15 @@ export async function incrementStudentViews(studentId: string): Promise<number> 
       sessionStorage.setItem(sessionKey, 'true');
     }
 
-    // Actualizar en Supabase de forma directa
-    supabase
+    // Actualizar en Supabase de forma directa y AWAIT para asegurar que se registre antes de actualizar UI
+    const { error: updateErr } = await supabase
       .from('students')
       .update({ views_count: nextViews })
-      .eq('id', studentId)
-      .then(({ error }) => {
-        if (error) {
-          console.debug('Nota al actualizar views_count:', error.message);
-        }
-      });
+      .eq('id', studentId);
+
+    if (updateErr) {
+      console.warn('Error al actualizar views_count en students:', updateErr.message);
+    }
 
     return nextViews;
   } catch (err) {

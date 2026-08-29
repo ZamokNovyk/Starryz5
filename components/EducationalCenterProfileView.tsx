@@ -34,7 +34,8 @@ import {
   Trash2,
   AlertTriangle,
   Settings,
-  GraduationCap
+  GraduationCap,
+  Eye
 } from 'lucide-react';
 import { supabase } from '@/src/lib/supabase';
 import { Institution } from '@/lib/mockData';
@@ -67,6 +68,7 @@ const TwitterXIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
 );
 import { getProfessorsByInstitute, Professor as DbProfessor } from '@/src/lib/professors';
 import { getStudentsByInstitute, Student as DbStudent } from '@/src/lib/students';
+import { incrementCenterViews } from '@/src/lib/centers';
 import { 
   getCenterConfessions, 
   toggleConfessionReaction, 
@@ -135,6 +137,7 @@ export default function EducationalCenterProfileView({
   const [dbProfessors, setDbProfessors] = useState<DbProfessor[]>([]);
   const [dbStudents, setDbStudents] = useState<DbStudent[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
+  const [viewsCount, setViewsCount] = useState(0);
 
   // Confessions state
   const [confessions, setConfessions] = useState<CenterConfession[]>([]);
@@ -244,6 +247,7 @@ export default function EducationalCenterProfileView({
           .maybeSingle();
 
         if (data) {
+          setViewsCount(typeof data.views_count === 'number' ? data.views_count : 0);
           setCenterWikiData({
             id: data.id,
             profile_photo_url: data.profile_photo_url || institution.image || '',
@@ -253,6 +257,16 @@ export default function EducationalCenterProfileView({
             youtube_url: data.youtube_url || '',
             twitter_url: data.twitter_url || '',
           });
+
+          // Incrementar vistas del centro educativo de manera asíncrona pero segura
+          try {
+            const vCount = await incrementCenterViews(data.id);
+            if (typeof vCount === 'number' && vCount > 0) {
+              setViewsCount(vCount);
+            }
+          } catch (vErr) {
+            console.debug('Error al incrementar vistas de centro:', vErr);
+          }
         } else {
           setCenterWikiData({
             id: institution.id,
@@ -655,6 +669,18 @@ export default function EducationalCenterProfileView({
         </button>
 
         <div className="flex items-center gap-2 flex-shrink-0">
+          {/* Badge de Vistas */}
+          <div
+            title="Visualizaciones totales del centro educativo"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#12131a] border border-zinc-800 hover:border-purple-500/50 hover:bg-purple-500/10 text-zinc-300 hover:text-purple-300 transition-all cursor-pointer shadow-sm group select-none"
+          >
+            <Eye className="w-3.5 h-3.5 text-purple-400 group-hover:scale-110 transition-transform" />
+            <span className="text-xs font-black tracking-tight text-white group-hover:text-purple-200">
+              {viewsCount.toLocaleString()}
+            </span>
+            <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider hidden sm:inline">vistas</span>
+          </div>
+
           <BookmarkButton
             itemId={institution.id || institution.slug || ''}
             itemType="center"

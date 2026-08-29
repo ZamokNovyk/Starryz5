@@ -1152,5 +1152,60 @@ export async function getUserProfessorSubscriptions(userUid: string): Promise<Us
   }
 }
 
+/**
+ * Incrementa y sincroniza las visualizaciones del perfil de un profesor con Supabase de forma segura y síncrona (con await)
+ */
+export async function incrementProfessorViews(professorId: string): Promise<number> {
+  if (!professorId) return 0;
+
+  const sessionKey = `starryz_viewed_prof_${professorId}`;
+  const alreadyViewedInSession = typeof window !== 'undefined' && sessionStorage.getItem(sessionKey);
+
+  try {
+    // 1. Obtener conteo actual
+    const { data: profData, error: fetchError } = await supabase
+      .from('professors')
+      .select('views_count')
+      .eq('id', professorId)
+      .maybeSingle();
+
+    if (fetchError && fetchError.code !== 'PGRST116') {
+      console.warn('Error fetching professor views:', fetchError);
+    }
+
+    const currentViews = typeof profData?.views_count === 'number' 
+      ? profData.views_count 
+      : 0;
+
+    // Si ya vio en esta sesión, simplemente retornamos el conteo exacto de la BD
+    if (alreadyViewedInSession) {
+      return currentViews;
+    }
+
+    const nextViews = currentViews + 1;
+
+    // Marcamos en sessionStorage para evitar loops en la misma pestaña
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem(sessionKey, 'true');
+    }
+
+    // Actualizar en Supabase de forma directa con await para asegurar consistencia
+    const { error: updateErr } = await supabase
+      .from('professors')
+      .update({ views_count: nextViews })
+      .eq('id', professorId);
+
+    if (updateErr) {
+      console.warn('Error al actualizar views_count en professors:', updateErr.message);
+    }
+
+    return nextViews;
+  } catch (err) {
+    console.warn('Error al registrar visualización de profesor:', err);
+    return 0;
+  }
+}
+
+
 
 
