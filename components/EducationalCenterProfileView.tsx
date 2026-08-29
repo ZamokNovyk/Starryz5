@@ -659,7 +659,7 @@ export default function EducationalCenterProfileView({
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 space-y-6 animate-in fade-in duration-300">
       
-      {/* Volver a la Red + Botones de Acción (Guardar y Compartir) */}
+      {/* Volver a la Red + Botones de Acción (Guardar, Compartir y Vistas) */}
       <div className="flex items-center justify-between gap-4">
         <button
           onClick={onBack}
@@ -670,6 +670,21 @@ export default function EducationalCenterProfileView({
         </button>
 
         <div className="flex items-center gap-2 flex-shrink-0">
+          {/* Badge de Visualizaciones */}
+          <div 
+            onClick={() => setActiveTab('Wiki')}
+            title="Visualizaciones totales del centro educativo"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#12131a] border border-zinc-800 hover:border-purple-500/50 hover:bg-purple-500/10 text-zinc-300 hover:text-purple-300 transition-all cursor-pointer shadow-md group select-none"
+          >
+            <Eye className="w-3.5 h-3.5 text-purple-400 group-hover:scale-110 transition-transform" />
+            <span className="text-xs font-black tracking-tight text-white group-hover:text-purple-200">
+              {viewsCount.toLocaleString()}
+            </span>
+            <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider hidden sm:inline">
+              vistas
+            </span>
+          </div>
+
           <BookmarkButton
             itemId={institution.id || institution.slug || ''}
             itemType="center"
@@ -688,22 +703,7 @@ export default function EducationalCenterProfileView({
       </div>
 
       {/* HEADER DE LA INSTITUCIÓN */}
-      <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 pt-2 pb-4 relative">
-        {/* Badge de Visualizaciones en la esquina superior derecha */}
-        <div 
-          onClick={() => setActiveTab('Wiki')}
-          title="Visualizaciones totales del centro educativo"
-          className="absolute top-0 right-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#12131a] border border-zinc-800 hover:border-purple-500/50 hover:bg-purple-500/10 text-zinc-300 hover:text-purple-300 transition-all cursor-pointer shadow-lg group select-none"
-        >
-          <Eye className="w-3.5 h-3.5 text-purple-400 group-hover:scale-110 transition-transform" />
-          <span className="text-xs font-black tracking-tight text-white group-hover:text-purple-200">
-            {viewsCount.toLocaleString()}
-          </span>
-          <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider hidden sm:inline">
-            vistas
-          </span>
-        </div>
-
+      <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 pt-2 pb-4">
         {/* Avatar circular */}
         <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-[#181818] border border-zinc-800 flex items-center justify-center text-zinc-500 text-3xl font-black shadow-lg flex-shrink-0 overflow-hidden relative">
           {centerWikiData?.profile_photo_url ? (

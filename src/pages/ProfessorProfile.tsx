@@ -662,6 +662,21 @@ export default function ProfessorProfile({
         </button>
 
         <div className="flex items-center gap-2">
+          {/* Badge de Visualizaciones */}
+          <div 
+            onClick={() => setActiveTab('Estadística')}
+            title="Visualizaciones totales del perfil (Clic para ver estadísticas)"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#12131a] border border-zinc-800 hover:border-purple-500/50 hover:bg-purple-500/10 text-zinc-300 hover:text-purple-300 transition-all cursor-pointer shadow-md group select-none"
+          >
+            <Eye className="w-3.5 h-3.5 text-purple-400 group-hover:scale-110 transition-transform" />
+            <span className="text-xs font-black tracking-tight text-white group-hover:text-purple-200">
+              {viewsCount.toLocaleString()}
+            </span>
+            <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider hidden sm:inline">
+              vistas
+            </span>
+          </div>
+
           {/* Botón de Suscripción a Notificaciones */}
           {professor && (
             <button
@@ -718,22 +733,7 @@ export default function ProfessorProfile({
       )}
 
       {/* SECCIÓN DEL AVATAR CON EL RATING RING (Diseño idéntico a imagen 2) */}
-      <div className="flex flex-col items-center text-center space-y-4 py-4 relative">
-        {/* Badge de Visualizaciones en la esquina superior derecha */}
-        <div 
-          onClick={() => setActiveTab('Estadística')}
-          title="Visualizaciones totales del perfil (Clic para ver estadísticas)"
-          className="absolute top-0 right-0 sm:right-4 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#12131a] border border-zinc-800 hover:border-purple-500/50 hover:bg-purple-500/10 text-zinc-300 hover:text-purple-300 transition-all cursor-pointer shadow-lg group select-none"
-        >
-          <Eye className="w-3.5 h-3.5 text-purple-400 group-hover:scale-110 transition-transform" />
-          <span className="text-xs font-black tracking-tight text-white group-hover:text-purple-200">
-            {viewsCount.toLocaleString()}
-          </span>
-          <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider hidden sm:inline">
-            vistas
-          </span>
-        </div>
-
+      <div className="flex flex-col items-center text-center space-y-4 py-4">
         <div className="relative">
           {/* Avatar circular */}
           <div className="w-28 h-28 rounded-full overflow-hidden border-2 border-zinc-800 bg-[#181818] shadow-2xl">
