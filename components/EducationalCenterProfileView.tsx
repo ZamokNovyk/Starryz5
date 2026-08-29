@@ -34,11 +34,13 @@ import {
   Trash2,
   AlertTriangle,
   Settings,
-  GraduationCap
+  GraduationCap,
+  Eye
 } from 'lucide-react';
 import { supabase } from '@/src/lib/supabase';
 import { Institution } from '@/lib/mockData';
 import { promptNotificationOnAction } from '@/src/lib/notificationHelper';
+import { incrementCenterViews } from '@/src/lib/centers';
 
 const InstagramIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -171,6 +173,7 @@ export default function EducationalCenterProfileView({
   const [loadingWiki, setLoadingWiki] = useState(false);
   const [isEditingWiki, setIsEditingWiki] = useState(false);
   const [savingWiki, setSavingWiki] = useState(false);
+  const [viewsCount, setViewsCount] = useState(0);
 
   // Edit form state
   const [editPhotoUrl, setEditPhotoUrl] = useState('');
@@ -253,6 +256,7 @@ export default function EducationalCenterProfileView({
             youtube_url: data.youtube_url || '',
             twitter_url: data.twitter_url || '',
           });
+          setViewsCount(typeof data.views_count === 'number' ? data.views_count : 0);
         } else {
           setCenterWikiData({
             id: institution.id,
@@ -263,6 +267,17 @@ export default function EducationalCenterProfileView({
             youtube_url: '',
             twitter_url: '',
           });
+          setViewsCount(0);
+        }
+
+        // Incrementar y sincronizar visualización con la BD de forma segura
+        try {
+          const vCount = await incrementCenterViews(data?.id || institution.id || institution.slug || '');
+          if (typeof vCount === 'number' && vCount > 0) {
+            setViewsCount(prev => Math.max(prev, vCount));
+          }
+        } catch (vErr) {
+          console.debug('Error registrando visualización de centro educativo:', vErr);
         }
       } catch (err) {
         console.warn('Aviso al cargar Wiki de Supabase:', err);
@@ -673,7 +688,22 @@ export default function EducationalCenterProfileView({
       </div>
 
       {/* HEADER DE LA INSTITUCIÓN */}
-      <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 pt-2 pb-4">
+      <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 pt-2 pb-4 relative">
+        {/* Badge de Visualizaciones en la esquina superior derecha */}
+        <div 
+          onClick={() => setActiveTab('Wiki')}
+          title="Visualizaciones totales del centro educativo"
+          className="absolute top-0 right-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#12131a] border border-zinc-800 hover:border-purple-500/50 hover:bg-purple-500/10 text-zinc-300 hover:text-purple-300 transition-all cursor-pointer shadow-lg group select-none"
+        >
+          <Eye className="w-3.5 h-3.5 text-purple-400 group-hover:scale-110 transition-transform" />
+          <span className="text-xs font-black tracking-tight text-white group-hover:text-purple-200">
+            {viewsCount.toLocaleString()}
+          </span>
+          <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider hidden sm:inline">
+            vistas
+          </span>
+        </div>
+
         {/* Avatar circular */}
         <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-[#181818] border border-zinc-800 flex items-center justify-center text-zinc-500 text-3xl font-black shadow-lg flex-shrink-0 overflow-hidden relative">
           {centerWikiData?.profile_photo_url ? (

@@ -18,7 +18,8 @@ import {
   Calendar,
   Loader2,
   Bell,
-  BellRing
+  BellRing,
+  Eye
 } from 'lucide-react';
 import { 
   getProfessorById, 
@@ -33,7 +34,8 @@ import {
   getProfessorCrushStatus,
   toggleProfessorCrush,
   getProfessorNotificationPreferences,
-  notifyProfessorSubscribers
+  notifyProfessorSubscribers,
+  incrementProfessorViews
 } from '@/src/lib/professors';
 import { useAuth } from '@/src/context/AuthContext';
 import { supabase } from '@/src/lib/supabase';
@@ -83,6 +85,9 @@ export default function ProfessorProfile({
   const [hasCrushed, setHasCrushed] = useState(false);
   const [loadingCrush, setLoadingCrush] = useState(false);
 
+  // Views Count State
+  const [viewsCount, setViewsCount] = useState(0);
+
   // Wiki Editing States
   const [isEditingWiki, setIsEditingWiki] = useState(false);
   const [wikiAvatarUrl, setWikiAvatarUrl] = useState('');
@@ -114,11 +119,22 @@ export default function ProfessorProfile({
           setProfessor(data);
           setProfessorScore(data.score || 0.0);
           setProfessorTotalRatings(data.total_ratings || 0);
+          setViewsCount(typeof data.views_count === 'number' ? data.views_count : 0);
           
           // Cargar conteos totales de interacción de la BD
           const counts = await getProfessorInteractionCounts(data.id || slug);
           setKnowCount(counts.knows);
           setFanCount(counts.fan);
+
+          // Incrementar y sincronizar visualización con la BD
+          try {
+            const vCount = await incrementProfessorViews(data.id || slug);
+            if (typeof vCount === 'number' && vCount > 0) {
+              setViewsCount(prev => Math.max(prev, vCount));
+            }
+          } catch (vErr) {
+            console.debug('Error registrando visualización:', vErr);
+          }
 
           // Cargar distribución (breakdown) de calificaciones
           const breakdown = await getProfessorRatingBreakdown(data.id || slug);
@@ -702,7 +718,22 @@ export default function ProfessorProfile({
       )}
 
       {/* SECCIÓN DEL AVATAR CON EL RATING RING (Diseño idéntico a imagen 2) */}
-      <div className="flex flex-col items-center text-center space-y-4 py-4">
+      <div className="flex flex-col items-center text-center space-y-4 py-4 relative">
+        {/* Badge de Visualizaciones en la esquina superior derecha */}
+        <div 
+          onClick={() => setActiveTab('Estadística')}
+          title="Visualizaciones totales del perfil (Clic para ver estadísticas)"
+          className="absolute top-0 right-0 sm:right-4 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#12131a] border border-zinc-800 hover:border-purple-500/50 hover:bg-purple-500/10 text-zinc-300 hover:text-purple-300 transition-all cursor-pointer shadow-lg group select-none"
+        >
+          <Eye className="w-3.5 h-3.5 text-purple-400 group-hover:scale-110 transition-transform" />
+          <span className="text-xs font-black tracking-tight text-white group-hover:text-purple-200">
+            {viewsCount.toLocaleString()}
+          </span>
+          <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider hidden sm:inline">
+            vistas
+          </span>
+        </div>
+
         <div className="relative">
           {/* Avatar circular */}
           <div className="w-28 h-28 rounded-full overflow-hidden border-2 border-zinc-800 bg-[#181818] shadow-2xl">

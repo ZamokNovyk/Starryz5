@@ -16,6 +16,7 @@ export interface Professor {
   crushes_count?: number;
   score?: number;
   total_ratings?: number;
+  views_count?: number;
   avatar_url?: string;
   height_cm?: number;
   marital_status?: string;
@@ -255,6 +256,81 @@ export async function getProfessorInteractionCounts(professorId: string): Promis
   } catch (err) {
     console.warn('Excepción de red al obtener conteo de interacciones:', err);
     return { knows: 0, fan: 0 };
+  }
+}
+
+/**
+ * Incrementa de manera segura y atómica el contador de visualizaciones del perfil del profesor.
+ * Utiliza sessionStorage para no spammear en recargas continuas durante la misma sesión.
+ * Utiliza RPC con SECURITY DEFINER para que cualquier visitante (incluso anónimo) pueda sumar +1.
+ */
+export async function incrementProfessorViews(professorId: string): Promise<number> {
+  if (!professorId) return 0;
+  const sessionKey = `starryz_viewed_professor_${professorId}`;
+  const alreadyViewedInSession = typeof window !== 'undefined' && sessionStorage.getItem(sessionKey);
+
+  try {
+    // Si ya vio en esta sesión en este navegador, solo obtenemos el conteo real sin incrementar
+    if (alreadyViewedInSession) {
+      const { data: profData } = await supabase
+        .from('professors')
+        .select('views_count')
+        .eq('id', professorId)
+        .maybeSingle();
+
+      return typeof profData?.views_count === 'number'
+        ? profData.views_count
+        : (profData?.views_count ? Number(profData.views_count) : 0);
+    }
+
+    // 1. Intentar registrar la vista atómicamente a través de RPC (Bypassea RLS con SECURITY DEFINER)
+    try {
+      const { data: rpcViews, error: rpcError } = await supabase.rpc('increment_professor_views', {
+        p_professor_id: professorId,
+      });
+
+      if (!rpcError && typeof rpcViews === 'number' && rpcViews > 0) {
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem(sessionKey, 'true');
+        }
+        return rpcViews;
+      }
+    } catch (rpcEx) {
+      console.debug('Aviso RPC professor views:', rpcEx);
+    }
+
+    // 2. Fallback: Obtener conteo actual y actualizar de forma directa
+    const { data: profData, error: fetchError } = await supabase
+      .from('professors')
+      .select('views_count')
+      .eq('id', professorId)
+      .maybeSingle();
+
+    if (fetchError && fetchError.code !== 'PGRST116') {
+      console.warn('Error fetching professor views:', fetchError);
+    }
+
+    const currentViews = typeof profData?.views_count === 'number' 
+      ? profData.views_count 
+      : (profData?.views_count ? Number(profData.views_count) : 0);
+
+    const nextViews = currentViews + 1;
+
+    // Marcamos en sessionStorage para evitar loops en la misma pestaña
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem(sessionKey, 'true');
+    }
+
+    // Actualizar en Supabase de forma directa
+    await supabase
+      .from('professors')
+      .update({ views_count: nextViews })
+      .eq('id', professorId);
+
+    return nextViews;
+  } catch (err) {
+    console.warn('Error al registrar visualización de profesor:', err);
+    return 0;
   }
 }
 

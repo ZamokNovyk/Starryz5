@@ -10,6 +10,7 @@ export interface EducationalCenter {
   facebook_url?: string | null;
   youtube_url?: string | null;
   twitter_url?: string | null;
+  views_count?: number;
   created_by: string;
   created_at: string;
 }
@@ -86,6 +87,84 @@ export async function deleteEducationalCenter(centerId: string): Promise<void> {
   if (error) {
     console.error('Error al eliminar centro educativo en Supabase:', error);
     throw new Error(error.message || 'No se pudo eliminar el centro educativo.');
+  }
+}
+
+/**
+ * Incrementa de manera segura y atómica el contador de visualizaciones del perfil de la institución / centro educativo.
+ * Utiliza sessionStorage para no spammear en recargas continuas durante la misma sesión.
+ * Utiliza RPC con SECURITY DEFINER para que cualquier visitante (incluso anónimo) pueda sumar +1.
+ */
+export async function incrementCenterViews(centerIdOrSlug: string): Promise<number> {
+  if (!centerIdOrSlug) return 0;
+  const sessionKey = `starryz_viewed_center_${centerIdOrSlug}`;
+  const alreadyViewedInSession = typeof window !== 'undefined' && sessionStorage.getItem(sessionKey);
+
+  try {
+    // Si ya vio en esta sesión en este navegador, solo obtenemos el conteo real sin incrementar
+    if (alreadyViewedInSession) {
+      const { data: centerData } = await supabase
+        .from('educational_centers')
+        .select('views_count')
+        .or(`id.eq.${centerIdOrSlug},name.ilike.${centerIdOrSlug}`)
+        .limit(1)
+        .maybeSingle();
+
+      return typeof centerData?.views_count === 'number'
+        ? centerData.views_count
+        : (centerData?.views_count ? Number(centerData.views_count) : 0);
+    }
+
+    // 1. Intentar registrar la vista atómicamente a través de RPC (Bypassea RLS con SECURITY DEFINER)
+    try {
+      const { data: rpcViews, error: rpcError } = await supabase.rpc('increment_center_views', {
+        p_center_id: centerIdOrSlug,
+      });
+
+      if (!rpcError && typeof rpcViews === 'number' && rpcViews > 0) {
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem(sessionKey, 'true');
+        }
+        return rpcViews;
+      }
+    } catch (rpcEx) {
+      console.debug('Aviso RPC center views:', rpcEx);
+    }
+
+    // 2. Fallback: Obtener conteo actual y actualizar de forma directa
+    const { data: centerData, error: fetchError } = await supabase
+      .from('educational_centers')
+      .select('id, views_count')
+      .or(`id.eq.${centerIdOrSlug},name.ilike.${centerIdOrSlug}`)
+      .limit(1)
+      .maybeSingle();
+
+    if (fetchError && fetchError.code !== 'PGRST116') {
+      console.warn('Error fetching center views:', fetchError);
+    }
+
+    const targetId = centerData?.id || centerIdOrSlug;
+    const currentViews = typeof centerData?.views_count === 'number' 
+      ? centerData.views_count 
+      : (centerData?.views_count ? Number(centerData.views_count) : 0);
+
+    const nextViews = currentViews + 1;
+
+    // Marcamos en sessionStorage para evitar loops en la misma pestaña
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem(sessionKey, 'true');
+    }
+
+    // Actualizar en Supabase de forma directa
+    await supabase
+      .from('educational_centers')
+      .update({ views_count: nextViews })
+      .eq('id', targetId);
+
+    return nextViews;
+  } catch (err) {
+    console.warn('Error al registrar visualización de centro educativo:', err);
+    return 0;
   }
 }
 
