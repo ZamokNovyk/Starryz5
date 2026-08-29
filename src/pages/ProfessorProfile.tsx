@@ -779,74 +779,42 @@ export default function ProfessorProfile({
       {/* PESTAÑAS (Wiki, Reseñas, Crushes, Ship, Estadística - idéntico a imagen 2) */}
       <div className="bg-[#0d0d0d] border border-zinc-800/80 rounded-xl p-1 overflow-x-auto scrollbar-none">
         <div className="flex items-center gap-1.5 min-w-max">
-          
-          {/* Wiki */}
-          <button
-            type="button"
-            onClick={() => setActiveTab('Wiki')}
-            title="Wiki"
-            className={`py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
-              activeTab === 'Wiki'
-                ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4 sm:px-4.5'
-                : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3 sm:px-4'
-            }`}
-          >
-            <BookOpen className="w-4 h-4 flex-shrink-0" />
-            <span className={activeTab === 'Wiki' ? 'inline' : 'hidden sm:inline'}>Wiki</span>
-          </button>
+          {[
+            { id: 'Wiki' as TabType, label: 'Wiki', icon: BookOpen, color: '#3b82f6' },
+            { id: 'Reseñas' as TabType, label: 'Reseñas', icon: Star, color: '#eab308' },
+            { id: 'Crushes' as TabType, label: 'Crushes', icon: Heart, color: '#f43f5e' },
+            { id: 'Estadística' as TabType, label: 'Estadística', icon: BarChart3, color: '#06b6d4' }
+          ].map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            const isCrushes = tab.id === 'Crushes';
 
-          {/* Reseñas */}
-          <button
-            type="button"
-            onClick={() => setActiveTab('Reseñas')}
-            title="Reseñas"
-            className={`py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
-              activeTab === 'Reseñas'
-                ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4 sm:px-4.5'
-                : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3 sm:px-4'
-            }`}
-          >
-            <Star className="w-4 h-4 flex-shrink-0" />
-            <span className={activeTab === 'Reseñas' ? 'inline' : 'hidden sm:inline'}>Reseñas</span>
-          </button>
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                title={tab.label}
+                className={`relative py-3.5 px-4 sm:px-5 rounded-lg text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 select-none ${
+                  isActive
+                    ? 'bg-[#14151d] text-white border border-zinc-800/60 font-black shadow-sm'
+                    : 'text-zinc-400 hover:text-white hover:bg-[#151515] border border-transparent'
+                }`}
+              >
+                <Icon 
+                  className={`w-4 h-4 flex-shrink-0 transition-transform hover:scale-110`} 
+                  style={{ color: tab.color }}
+                  fill={isCrushes && hasCrushed ? tab.color : 'none'}
+                />
+                <span className={isActive ? 'inline' : 'hidden sm:inline'}>{tab.label}</span>
 
-          {/* Crushes */}
-          <button
-            type="button"
-            onClick={() => setActiveTab('Crushes')}
-            title="Crushes"
-            className={`py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
-              activeTab === 'Crushes'
-                ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4 sm:px-4.5'
-                : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3 sm:px-4'
-            }`}
-          >
-            <Heart className={`w-4 h-4 flex-shrink-0 ${hasCrushed ? 'fill-pink-500 text-pink-500' : ''}`} />
-            <span className={activeTab === 'Crushes' ? 'inline' : 'hidden sm:inline'}>Crushes</span>
-            {crushCount > 0 && (
-              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${
-                activeTab === 'Crushes' ? 'bg-black/20 text-black' : 'bg-pink-500/20 text-pink-400 border border-pink-500/30'
-              }`}>
-                {crushCount}
-              </span>
-            )}
-          </button>
-
-          {/* Estadística */}
-          <button
-            type="button"
-            onClick={() => setActiveTab('Estadística')}
-            title="Estadística"
-            className={`py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
-              activeTab === 'Estadística'
-                ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4 sm:px-4.5'
-                : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3 sm:px-4'
-            }`}
-          >
-            <BarChart3 className="w-4 h-4 flex-shrink-0" />
-            <span className={activeTab === 'Estadística' ? 'inline' : 'hidden sm:inline'}>Estadística</span>
-          </button>
-
+                {/* Línea inferior brillante cuando el elemento está activo */}
+                {isActive && (
+                  <div className="absolute bottom-0 left-3 right-3 h-[2px] bg-[#eab308] rounded-full shadow-[0_0_8px_#eab308]" />
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
 

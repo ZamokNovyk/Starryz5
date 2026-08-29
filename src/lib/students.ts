@@ -279,9 +279,9 @@ export async function incrementStudentViews(studentId: string): Promise<number> 
 
     const currentViews = typeof studentData?.views_count === 'number' 
       ? studentData.views_count 
-      : Math.max(1, ((studentData?.knows_count || 0) * 15) + ((studentData?.fans_count || 0) * 25));
+      : (studentData?.views_count ? Number(studentData.views_count) : 0);
 
-    // Si ya vio en esta sesión, simplemente retornamos el conteo
+    // Si ya vio en esta sesión, simplemente retornamos el conteo exacto de la BD
     if (alreadyViewedInSession) {
       return currentViews;
     }
@@ -293,22 +293,21 @@ export async function incrementStudentViews(studentId: string): Promise<number> 
       sessionStorage.setItem(sessionKey, 'true');
     }
 
-    // Actualizar en Supabase de forma no bloqueante
+    // Actualizar en Supabase de forma directa
     supabase
       .from('students')
       .update({ views_count: nextViews })
       .eq('id', studentId)
       .then(({ error }) => {
         if (error) {
-          // Si la columna views_count aún no existe en Supabase, no rompemos la app
-          console.debug('Nota: views_count se actualizará una vez migrada la tabla:', error.message);
+          console.debug('Nota al actualizar views_count:', error.message);
         }
       });
 
     return nextViews;
   } catch (err) {
     console.warn('Error al registrar visualización de estudiante:', err);
-    return 1;
+    return 0;
   }
 }
 

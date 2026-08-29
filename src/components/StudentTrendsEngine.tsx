@@ -337,7 +337,8 @@ export default function StudentTrendsEngine({
           </p>
         </div>
 
-        {/* CONTROLES DERECHA: Periodo y Comparar */}
+
+        {/* CONTROLES DERECHA: Periodo */}
         <div className="flex flex-wrap items-center gap-2.5">
           {/* Selector de Rango */}
           <div className="relative">
@@ -352,35 +353,11 @@ export default function StudentTrendsEngine({
             </select>
             <Calendar className="w-3.5 h-3.5 text-zinc-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
-
-          {/* Botón Comparar con Promedio */}
-          <button
-            type="button"
-            onClick={() => setCompareAverage(!compareAverage)}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer border ${
-              compareAverage
-                ? 'bg-amber-500/15 border-[#eab308] text-[#eab308] shadow-[0_0_15px_rgba(234,179,8,0.2)]'
-                : 'bg-[#14151b] border-zinc-700/80 text-zinc-300 hover:text-white hover:border-zinc-600'
-            }`}
-          >
-            <RotateCw className={`w-3.5 h-3.5 ${compareAverage ? 'text-[#eab308]' : 'text-zinc-400'}`} />
-            <span>Comparar con Promedio</span>
-          </button>
-
-          {/* Botón de Ayuda / SQL Info */}
-          <button
-            type="button"
-            onClick={() => setShowSqlModal(true)}
-            title="Ver arquitectura Supabase pg_cron"
-            className="p-2 rounded-xl bg-[#14151b] border border-zinc-700/80 text-zinc-400 hover:text-amber-400 hover:border-amber-500/40 transition-colors cursor-pointer"
-          >
-            <Code2 className="w-4 h-4" />
-          </button>
         </div>
       </div>
 
       {/* CARDS SELECTORAS DE MÉTRICAS */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+      <div className="flex flex-row items-center gap-2 overflow-x-auto pb-1.5 scrollbar-none sm:grid sm:grid-cols-3 lg:grid-cols-5 sm:gap-3">
         {(Object.keys(METRICS_CONFIG) as MetricType[]).map((metricKey) => {
           const config = METRICS_CONFIG[metricKey];
           const isSelected = selectedMetric === metricKey;
@@ -390,14 +367,16 @@ export default function StudentTrendsEngine({
             <div
               key={metricKey}
               onClick={() => setSelectedMetric(metricKey)}
-              className={`relative p-3.5 sm:p-4 rounded-xl border transition-all cursor-pointer select-none group flex items-center justify-between gap-3 ${
+              className={`relative shrink-0 p-2.5 sm:p-4 rounded-xl border transition-all cursor-pointer select-none group flex items-center justify-between gap-2.5 ${
                 isSelected
                   ? 'bg-[#14151d] border-[#eab308] shadow-[0_0_20px_rgba(234,179,8,0.15)] ring-1 ring-[#eab308]'
                   : 'bg-[#0f1016] border-zinc-800/80 hover:border-zinc-700 hover:bg-[#13141b]'
               }`}
             >
               <div className="flex flex-col justify-center min-w-0">
-                <span className="text-xs sm:text-sm font-bold text-zinc-300 group-hover:text-white transition-colors truncate">
+                <span className={`text-xs sm:text-sm font-bold transition-colors truncate ${
+                  isSelected ? 'block text-white' : 'hidden sm:block text-zinc-300 group-hover:text-white'
+                }`}>
                   {config.label}
                 </span>
               </div>
