@@ -18,8 +18,7 @@ import {
   Calendar,
   Loader2,
   Bell,
-  BellRing,
-  Eye
+  BellRing
 } from 'lucide-react';
 import { 
   getProfessorById, 
@@ -34,8 +33,7 @@ import {
   getProfessorCrushStatus,
   toggleProfessorCrush,
   getProfessorNotificationPreferences,
-  notifyProfessorSubscribers,
-  incrementProfessorViews
+  notifyProfessorSubscribers
 } from '@/src/lib/professors';
 import { useAuth } from '@/src/context/AuthContext';
 import { supabase } from '@/src/lib/supabase';
@@ -107,8 +105,6 @@ export default function ProfessorProfile({
     twitter?: string;
   }>({});
 
-  const [viewsCount, setViewsCount] = useState(0);
-
   useEffect(() => {
     async function loadProfessorAndInteractions() {
       try {
@@ -118,17 +114,6 @@ export default function ProfessorProfile({
           setProfessor(data);
           setProfessorScore(data.score || 0.0);
           setProfessorTotalRatings(data.total_ratings || 0);
-          setViewsCount(typeof data.views_count === 'number' ? data.views_count : 0);
-          
-          // Incrementar y sincronizar visualización con la BD
-          try {
-            const vCount = await incrementProfessorViews(data.id || slug);
-            if (typeof vCount === 'number' && vCount > 0) {
-              setViewsCount(vCount);
-            }
-          } catch (vErr) {
-            console.debug('Error registrando visualización:', vErr);
-          }
           
           // Cargar conteos totales de interacción de la BD
           const counts = await getProfessorInteractionCounts(data.id || slug);
@@ -661,21 +646,6 @@ export default function ProfessorProfile({
         </button>
 
         <div className="flex items-center gap-2">
-          {/* Badge de Visualizaciones */}
-          <div 
-            onClick={() => setActiveTab('Estadística')}
-            title="Visualizaciones totales del perfil (Clic para ver tendencias)"
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#12131a] border border-zinc-800 hover:border-purple-500/50 hover:bg-purple-500/10 text-zinc-300 hover:text-purple-300 transition-all cursor-pointer shadow-lg group select-none"
-          >
-            <Eye className="w-3.5 h-3.5 text-purple-400 group-hover:scale-110 transition-transform" />
-            <span className="text-xs font-black tracking-tight text-white group-hover:text-purple-200">
-              {viewsCount.toLocaleString()}
-            </span>
-            <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider hidden sm:inline">
-              vistas
-            </span>
-          </div>
-
           {/* Botón de Suscripción a Notificaciones */}
           {professor && (
             <button
