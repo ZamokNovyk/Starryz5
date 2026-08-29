@@ -149,7 +149,7 @@ export default function StudentProfile({
           try {
             const vCount = await incrementStudentViews(data.id || slug);
             if (typeof vCount === 'number' && vCount > 0) {
-              setViewsCount(vCount);
+              setViewsCount(prev => Math.max(prev, vCount));
             }
           } catch (vErr) {
             console.debug('Error registrando visualización:', vErr);

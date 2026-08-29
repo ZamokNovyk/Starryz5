@@ -258,6 +258,7 @@ export async function getStudentInteractionCounts(studentId: string): Promise<{ 
 /**
  * Incrementa de manera segura y generosa el contador de visualizaciones del perfil del estudiante.
  * Utiliza sessionStorage para no spammear en recargas continuas durante la misma sesión.
+ * Utiliza RPC con SECURITY DEFINER para que cualquier visitante (incluso anónimo) pueda sumar +1.
  */
 export async function incrementStudentViews(studentId: string): Promise<number> {
   if (!studentId) return 0;
@@ -266,7 +267,36 @@ export async function incrementStudentViews(studentId: string): Promise<number> 
   const alreadyViewedInSession = typeof window !== 'undefined' && sessionStorage.getItem(sessionKey);
 
   try {
-    // 1. Obtener conteo actual
+    // Si ya vio en esta sesión en este navegador, solo obtenemos el conteo real sin incrementar
+    if (alreadyViewedInSession) {
+      const { data: studentData } = await supabase
+        .from('students')
+        .select('views_count')
+        .eq('id', studentId)
+        .maybeSingle();
+
+      return typeof studentData?.views_count === 'number'
+        ? studentData.views_count
+        : (studentData?.views_count ? Number(studentData.views_count) : 0);
+    }
+
+    // 1. Intentar registrar la vista atómicamente a través de RPC (Bypassea RLS con SECURITY DEFINER)
+    try {
+      const { data: rpcViews, error: rpcError } = await supabase.rpc('increment_student_views', {
+        p_student_id: studentId,
+      });
+
+      if (!rpcError && typeof rpcViews === 'number' && rpcViews > 0) {
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem(sessionKey, 'true');
+        }
+        return rpcViews;
+      }
+    } catch (rpcEx) {
+      console.debug('Aviso RPC views:', rpcEx);
+    }
+
+    // 2. Fallback: Obtener conteo actual y actualizar de forma directa
     const { data: studentData, error: fetchError } = await supabase
       .from('students')
       .select('views_count, knows_count, fans_count')
@@ -281,11 +311,6 @@ export async function incrementStudentViews(studentId: string): Promise<number> 
       ? studentData.views_count 
       : (studentData?.views_count ? Number(studentData.views_count) : 0);
 
-    // Si ya vio en esta sesión, simplemente retornamos el conteo exacto de la BD
-    if (alreadyViewedInSession) {
-      return currentViews;
-    }
-
     const nextViews = currentViews + 1;
 
     // Marcamos en sessionStorage para evitar loops en la misma pestaña
@@ -294,15 +319,10 @@ export async function incrementStudentViews(studentId: string): Promise<number> 
     }
 
     // Actualizar en Supabase de forma directa
-    supabase
+    await supabase
       .from('students')
       .update({ views_count: nextViews })
-      .eq('id', studentId)
-      .then(({ error }) => {
-        if (error) {
-          console.debug('Nota al actualizar views_count:', error.message);
-        }
-      });
+      .eq('id', studentId);
 
     return nextViews;
   } catch (err) {

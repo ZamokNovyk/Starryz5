@@ -211,10 +211,31 @@ export async function getStudentHistoricalStats(
  * Script SQL para crear la tabla y configurar pg_cron en Supabase.
  */
 export const SUPABASE_PG_CRON_SQL = `-- ==============================================================================
--- 1. ASEGURAR COLUMNA VIEWS_COUNT EN LA TABLA STUDENTS
+-- 1. ASEGURAR COLUMNA VIEWS_COUNT Y FUNCIÓN DE INCREMENTO ATÓMICO (SECURITY DEFINER)
 -- ==============================================================================
 ALTER TABLE IF EXISTS public.students 
 ADD COLUMN IF NOT EXISTS views_count INTEGER NOT NULL DEFAULT 0;
+
+-- Función segura para registrar visualizaciones de perfil (+1 atómico por cualquier visitante)
+CREATE OR REPLACE FUNCTION public.increment_student_views(p_student_id TEXT)
+RETURNS INTEGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    new_views INTEGER;
+BEGIN
+    UPDATE public.students
+    SET views_count = COALESCE(views_count, 0) + 1
+    WHERE id = p_student_id
+    RETURNING views_count INTO new_views;
+    
+    RETURN COALESCE(new_views, 1);
+END;
+$$;
+
+-- Otorgar permisos de ejecución a todos los visitantes
+GRANT EXECUTE ON FUNCTION public.increment_student_views(TEXT) TO anon, authenticated, service_role;
 
 -- ==============================================================================
 -- 2. HABILITAR EXTENSIONES NECESARIAS (UUID Y PG_CRON)
