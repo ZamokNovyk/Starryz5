@@ -28,6 +28,7 @@ interface ConfessionCommentsModalProps {
   onClose: () => void;
   confession: CenterConfession | null;
   onCommentAdded: (confessionId: string) => void;
+  onCommentDeleted?: (confessionId: string) => void;
 }
 
 export default function ConfessionCommentsModal({
@@ -35,6 +36,7 @@ export default function ConfessionCommentsModal({
   onClose,
   confession,
   onCommentAdded,
+  onCommentDeleted,
 }: ConfessionCommentsModalProps) {
   const { user } = useAuth();
   const [comments, setComments] = useState<ConfessionComment[]>([]);
@@ -134,7 +136,9 @@ export default function ConfessionCommentsModal({
       setError(null);
       const { success, error: deleteErr } = await deleteConfessionComment(commentId, confession.id);
       if (success) {
-        onCommentAdded(confession.id);
+        if (onCommentDeleted) {
+          onCommentDeleted(confession.id);
+        }
       } else {
         setComments(previousComments);
         setError(deleteErr || 'No se pudo eliminar el comentario.');

@@ -653,17 +653,18 @@ export async function createConfessionComment(payload: {
     if (conf) {
       const newCount = (conf.comments_count || 0) + 1;
 
-      // Incrementar mediante RPC segura o fallback directo
-      const { error: rpcIncErr } = await supabase.rpc('increment_comments_count', {
-        p_confession_id: payload.confession_id,
-      });
+      // Sincronizar el conteo real exacto de comentarios
+      const { count } = await supabase
+        .from('confession_comments')
+        .select('*', { count: 'exact', head: true })
+        .eq('confession_id', payload.confession_id);
 
-      if (rpcIncErr) {
-        await supabase
-          .from('center_confessions')
-          .update({ comments_count: newCount })
-          .eq('id', payload.confession_id);
-      }
+      const exactCount = count !== null && count !== undefined ? count : (conf.comments_count || 0) + 1;
+
+      await supabase
+        .from('center_confessions')
+        .update({ comments_count: exactCount })
+        .eq('id', payload.confession_id);
 
       let centerName = '';
       if (conf.center_id) {
@@ -771,21 +772,19 @@ export async function deleteConfessionComment(commentId: string, confessionId: s
       return { success: false, error: deleteErr.message };
     }
 
-    // Decrementar conteo de comentarios
+    // Sincronizar conteo real exacto de comentarios
     try {
-      const { data: conf } = await supabase
-        .from('center_confessions')
-        .select('comments_count')
-        .eq('id', confessionId)
-        .single();
+      const { count } = await supabase
+        .from('confession_comments')
+        .select('*', { count: 'exact', head: true })
+        .eq('confession_id', confessionId);
 
-      if (conf) {
-        const newCount = Math.max(0, (conf.comments_count || 0) - 1);
-        await supabase
-          .from('center_confessions')
-          .update({ comments_count: newCount })
-          .eq('id', confessionId);
-      }
+      const exactCount = count !== null && count !== undefined ? count : 0;
+
+      await supabase
+        .from('center_confessions')
+        .update({ comments_count: exactCount })
+        .eq('id', confessionId);
     } catch (e) {
       console.warn('Error al actualizar comments_count al eliminar comentario:', e);
     }

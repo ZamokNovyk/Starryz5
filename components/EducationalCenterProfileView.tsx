@@ -2031,11 +2031,21 @@ export default function EducationalCenterProfileView({
         confession={selectedConfessionForModal}
         onCommentAdded={(confId) => {
           setConfessions((prev) =>
-            prev.map((c) => (c.id === confId ? { ...c, comments_count: c.comments_count + 1 } : c))
+            prev.map((c) => (c.id === confId ? { ...c, comments_count: (c.comments_count || 0) + 1 } : c))
           );
           if (selectedConfessionForModal && selectedConfessionForModal.id === confId) {
             setSelectedConfessionForModal((prev) =>
-              prev ? { ...prev, comments_count: prev.comments_count + 1 } : null
+              prev ? { ...prev, comments_count: (prev.comments_count || 0) + 1 } : null
+            );
+          }
+        }}
+        onCommentDeleted={(confId) => {
+          setConfessions((prev) =>
+            prev.map((c) => (c.id === confId ? { ...c, comments_count: Math.max(0, (c.comments_count || 1) - 1) } : c))
+          );
+          if (selectedConfessionForModal && selectedConfessionForModal.id === confId) {
+            setSelectedConfessionForModal((prev) =>
+              prev ? { ...prev, comments_count: Math.max(0, (prev.comments_count || 1) - 1) } : null
             );
           }
         }}
