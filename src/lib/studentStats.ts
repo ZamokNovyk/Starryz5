@@ -73,6 +73,7 @@ export async function getStudentHistoricalStats(
     dateList.push(`${year}-${month}-${day}`);
   }
 
+  const todayStr = dateList[dateList.length - 1];
   const startDate = dateList[0];
   let dbRows: StudentDailyStat[] = [];
 
@@ -85,65 +86,21 @@ export async function getStudentHistoricalStats(
       .order('date', { ascending: true });
 
     if (!error && data && data.length > 0) {
-      dbRows = data as StudentDailyStat[];
+      dbRows = (data as StudentDailyStat[]).map(row => {
+        // Si el registro fue guardado con fecha adelantada por desfase UTC (ej. 2026-08-30 cuando es 2026-08-29 en Perú)
+        if (row.date > todayStr) {
+          return { ...row, date: todayStr };
+        }
+        return row;
+      });
     }
   } catch (err) {
     console.debug('Error consultando student_daily_stats:', err);
   }
 
-  // SI NO HAY REGISTROS EN LA BASE DE DATOS (Primer día del sistema):
-  // El sistema muestra todas las estadísticas y tendencias anteriores a hoy en 0, 
-  // ya que recién mañana se empezarán a graficar los históricos recolectados hoy.
-  if (dbRows.length === 0) {
-    const stats: StudentDailyStat[] = dateList.map((dateStr) => {
-      const dayLabel = formatDayLabel(dateStr);
-      return {
-        student_id: studentId,
-        date: dateStr,
-        day_label: dayLabel,
-        knows_count: 0,
-        fans_count: 0,
-        crushes_count: 0,
-        score: 0.0,
-        views_count: 0,
-      };
-    });
-
-    const campusAverage: StudentDailyStat[] = stats.map((s) => ({
-      student_id: 'campus_avg',
-      date: s.date,
-      day_label: s.day_label,
-      knows_count: 0,
-      fans_count: 0,
-      crushes_count: 0,
-      score: 0.0,
-      views_count: 0,
-    }));
-
-    return {
-      periodDays: days,
-      stats,
-      campusAverage,
-      totals: {
-        views: 0,
-        crushes: 0,
-        knows: 0,
-        fans: 0,
-        score: 0.0,
-      },
-      trends: {
-        viewsTrend: 'Iniciando',
-        crushesTrend: 'Iniciando',
-        knowsTrend: 'Iniciando',
-        fansTrend: 'Iniciando',
-        scoreTrend: 'Iniciando',
-      },
-    };
-  }
-
-  // SI YA HAY HISTÓRICO:
-  // Mapeamos de forma estricta los datos cargados desde la base de datos
+  // Mapeamos los datos de la serie temporal combinando historial y valores en tiempo real para hoy
   const stats: StudentDailyStat[] = dateList.map((dateStr) => {
+    const isToday = dateStr === todayStr;
     const existing = dbRows.find(r => r.date === dateStr);
     const dayLabel = formatDayLabel(dateStr);
 
@@ -151,10 +108,30 @@ export async function getStudentHistoricalStats(
       return {
         ...existing,
         day_label: dayLabel,
+        // Si es hoy, nos aseguramos de mostrar el valor en vivo más reciente
+        knows_count: isToday ? Math.max(existing.knows_count, currentValues.knowsCount) : existing.knows_count,
+        fans_count: isToday ? Math.max(existing.fans_count, currentValues.fansCount) : existing.fans_count,
+        crushes_count: isToday ? Math.max(existing.crushes_count, currentValues.crushesCount) : existing.crushes_count,
+        score: isToday && currentValues.score > 0 ? currentValues.score : existing.score,
+        views_count: isToday ? Math.max(existing.views_count, currentValues.viewsCount || 0) : existing.views_count,
       };
     }
 
-    // Para los días sin datos en el rango (por ejemplo, si el alumno fue creado a mitad de semana)
+    // Si es hoy y aún no hay snapshot en la BD, mostramos los valores reales en vivo del perfil
+    if (isToday) {
+      return {
+        student_id: studentId,
+        date: dateStr,
+        day_label: dayLabel,
+        knows_count: currentValues.knowsCount || 0,
+        fans_count: currentValues.fansCount || 0,
+        crushes_count: currentValues.crushesCount || 0,
+        score: currentValues.score || 0.0,
+        views_count: currentValues.viewsCount || 0,
+      };
+    }
+
+    // Para los días anteriores sin datos en el rango
     return {
       student_id: studentId,
       date: dateStr,
@@ -291,7 +268,7 @@ CREATE EXTENSION IF NOT EXISTS pg_cron;
 CREATE TABLE IF NOT EXISTS public.student_daily_stats (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     student_id TEXT NOT NULL,
-    date DATE NOT NULL DEFAULT CURRENT_DATE,
+    date DATE NOT NULL DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'America/Lima')::DATE,
     knows_count INTEGER NOT NULL DEFAULT 0,
     fans_count INTEGER NOT NULL DEFAULT 0,
     crushes_count INTEGER NOT NULL DEFAULT 0,
@@ -322,7 +299,7 @@ BEGIN
 END $$;
 
 -- ==============================================================================
--- 4. FUNCIÓN QUE TOMA LA FOTO DIARIA DE TODOS LOS ESTUDIANTES
+-- 4. FUNCIÓN QUE TOMA LA FOTO DIARIA DE TODOS LOS ESTUDIANTES (HORA PERÚ UTC-5)
 -- ==============================================================================
 CREATE OR REPLACE FUNCTION public.snapshot_student_daily_stats()
 RETURNS void
@@ -341,7 +318,7 @@ BEGIN
     )
     SELECT 
         s.id AS student_id,
-        CURRENT_DATE AS date,
+        (CURRENT_TIMESTAMP AT TIME ZONE 'America/Lima')::DATE AS date,
         COALESCE((
             SELECT COUNT(*)::int 
             FROM public.student_interactions i 
@@ -375,11 +352,16 @@ BEGIN
 END;
 $$;
 
--- Ejecutar una primera vez para poblar los datos de hoy de inmediato
+-- Corregir cualquier registro previo que se haya guardado con fecha UTC adelantada
+UPDATE public.student_daily_stats 
+SET date = (CURRENT_TIMESTAMP AT TIME ZONE 'America/Lima')::DATE 
+WHERE date > (CURRENT_TIMESTAMP AT TIME ZONE 'America/Lima')::DATE;
+
+-- Ejecutar una primera vez para poblar los datos de hoy de inmediato (Hora Perú)
 SELECT public.snapshot_student_daily_stats();
 
 -- ==============================================================================
--- 5. PROGRAMAR LA TAREA AUTOMÁTICA CADA 24 HORAS CON PG_CRON (00:00 UTC)
+-- 5. PROGRAMAR LA TAREA AUTOMÁTICA A LA MEDIANOCHE DE PERÚ (05:00 UTC = 00:00 UTC-5)
 -- ==============================================================================
 SELECT cron.unschedule('student-daily-stats-job') 
 WHERE EXISTS (
@@ -388,7 +370,7 @@ WHERE EXISTS (
 
 SELECT cron.schedule(
     'student-daily-stats-job',
-    '0 0 * * *',
+    '0 5 * * *', -- 05:00 UTC equivale a las 00:00 (Medianoche) en Hora de Perú
     'SELECT public.snapshot_student_daily_stats();'
 );
 `;
