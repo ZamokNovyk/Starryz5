@@ -51,6 +51,7 @@ import BookmarkButton from '@/components/BookmarkButton';
 import StudentNotificationModal from '@/components/Modals/StudentNotificationModal';
 import { promptNotificationOnAction } from '@/src/lib/notificationHelper';
 import StudentTrendsEngine from '@/src/components/StudentTrendsEngine';
+import GenderBadge from '@/components/GenderBadge';
 
 interface StudentProfileProps {
   slug: string;
@@ -105,6 +106,7 @@ export default function StudentProfile({
   const [loveMessageError, setLoveMessageError] = useState<string | null>(null);
   const [loveMessageSuccess, setLoveMessageSuccess] = useState(false);
   const [currentAuthorName, setCurrentAuthorName] = useState<string>('Anónimo');
+  const [currentUserGender, setCurrentUserGender] = useState<string | null>(null);
   const [userAvatarUrl, setUserAvatarUrl] = useState<string | null>(null);
 
   // Wiki Editing States
@@ -198,38 +200,55 @@ export default function StudentProfile({
               setHasVotedFan(false);
             }
 
-            // Obtener nombre de usuario real de Supabase o auth
+            // Obtener nombre de usuario real de Supabase o auth y su género
             try {
               const { data: dbUser } = await supabase
                 .from('users')
-                .select('display_name, username, is_anonymous, photo_url')
+                .select('display_name, username, gender, photo_url')
                 .eq('firebase_uid', user.uid)
                 .maybeSingle();
 
-              if (dbUser) {
-                setUserAvatarUrl(dbUser.photo_url || user.photoURL || null);
-                const chosen = (dbUser.username || dbUser.display_name || '').trim();
-                if (dbUser.is_anonymous || !chosen || chosen === 'Usuario Anónimo') {
-                  setCurrentAuthorName('Anónimo');
-                } else {
-                  setCurrentAuthorName(chosen);
-                }
+              let g = dbUser?.gender || null;
+              if (!g && typeof window !== 'undefined') {
+                g = localStorage.getItem(`user_gender_${user.uid}`) || localStorage.getItem('starryz_user_gender');
+              }
+              setCurrentUserGender(g);
+
+              setUserAvatarUrl(dbUser?.photo_url || user.photoURL || null);
+
+              const chosen = (dbUser?.username || dbUser?.display_name || user.displayName || '').trim();
+              const isGeneric = !chosen || 
+                chosen.toLowerCase() === 'anónimo' || 
+                chosen.toLowerCase() === 'anonimo' || 
+                chosen.toLowerCase() === 'usuario anónimo';
+
+              if (!isGeneric) {
+                setCurrentAuthorName(chosen);
+              } else if (user.uid) {
+                setCurrentAuthorName(`user_${user.uid.substring(0, 5)}`);
               } else {
-                setUserAvatarUrl(user.photoURL || null);
-                if (user.isAnonymous || !user.displayName || user.displayName === 'Usuario Anónimo') {
-                  setCurrentAuthorName('Anónimo');
-                } else {
-                  setCurrentAuthorName(user.displayName);
-                }
+                setCurrentAuthorName('Anónimo');
               }
             } catch (uErr) {
-              setCurrentAuthorName(user.displayName || 'Anónimo');
+              const chosen = (user.displayName || '').trim();
+              const isGeneric = !chosen || chosen.toLowerCase() === 'anónimo' || chosen.toLowerCase() === 'anonimo';
+              if (!isGeneric) {
+                setCurrentAuthorName(chosen);
+              } else if (user.uid) {
+                setCurrentAuthorName(`user_${user.uid.substring(0, 5)}`);
+              } else {
+                setCurrentAuthorName('Anónimo');
+              }
+              if (typeof window !== 'undefined') {
+                setCurrentUserGender(localStorage.getItem(`user_gender_${user.uid}`) || localStorage.getItem('starryz_user_gender'));
+              }
             }
           } else {
             setTodayVotes([]);
             setHasVotedKnow(false);
             setHasVotedFan(false);
             setCurrentAuthorName('Anónimo');
+            setCurrentUserGender(null);
             setUserAvatarUrl(null);
           }
         } else {
@@ -484,7 +503,12 @@ export default function StudentProfile({
         setLoveMessageText('');
         setLoveMessageSuccess(true);
         if (res.data) {
-          setLoveMessages(prev => [res.data!, ...prev.filter(m => m.id !== res.data!.id)]);
+          const freshMessage: StudentLoveMessage = {
+            ...res.data,
+            author_name: currentAuthorName || res.data.author_name,
+            author_gender: currentUserGender || (user?.uid ? localStorage.getItem(`user_gender_${user.uid}`) : null) || (typeof window !== 'undefined' ? localStorage.getItem('starryz_user_gender') : null),
+          };
+          setLoveMessages(prev => [freshMessage, ...prev.filter(m => m.id !== res.data!.id)]);
         }
         setTimeout(() => setLoveMessageSuccess(false), 4000);
       } else {
@@ -868,9 +892,12 @@ export default function StudentProfile({
         </div>
 
         {/* Nombre completo */}
-        <h1 className="text-2xl sm:text-3xl font-black text-white leading-tight uppercase tracking-tight">
-          {studentFullName}
-        </h1>
+        <div className="flex items-center justify-center gap-2 flex-wrap">
+          <h1 className="text-2xl sm:text-3xl font-black text-white leading-tight uppercase tracking-tight">
+            {studentFullName}
+          </h1>
+          <GenderBadge gender={student.gender} size="lg" />
+        </div>
         <p className="px-3 py-1 rounded-full bg-[#181818] border border-zinc-800 text-zinc-400 text-[10px] uppercase font-bold tracking-widest">
           ESTUDIANTE
         </p>
@@ -1632,9 +1659,12 @@ export default function StudentProfile({
               <div className="flex items-center gap-2 px-3 py-1.5 bg-[#141414] border border-zinc-800 rounded-xl text-xs">
                 <Users className="w-3.5 h-3.5 text-pink-400" />
                 <span className="text-zinc-400">Publicarás como:</span>
-                <span className="font-bold text-pink-300">
-                  {currentAuthorName}
-                </span>
+                <div className="flex items-center gap-1.5 font-bold text-pink-300">
+                  <span>{currentAuthorName}</span>
+                  {currentAuthorName !== 'Anónimo' && (
+                    <GenderBadge gender={currentUserGender} size="sm" />
+                  )}
+                </div>
               </div>
             </div>
 
@@ -1780,7 +1810,7 @@ export default function StudentProfile({
               ) : (
                 <div className="space-y-4">
                   {loveMessages.map((msg) => {
-                    const isOwnMessage = user && user.uid === msg.user_uid;
+                    const isOwnMessage = !!(user && user.uid === msg.user_uid);
                     const dateFormatted = new Date(msg.created_at).toLocaleDateString('es-ES', {
                       day: 'numeric',
                       month: 'long',
@@ -1789,34 +1819,61 @@ export default function StudentProfile({
                       minute: '2-digit'
                     });
 
+                    let displayAuthor = (msg.author_name || '').trim();
+                    const isGeneric = !displayAuthor || 
+                      displayAuthor.toLowerCase() === 'anónimo' || 
+                      displayAuthor.toLowerCase() === 'anonimo' || 
+                      displayAuthor.toLowerCase() === 'usuario anónimo';
+
+                    if (isOwnMessage) {
+                      if (currentAuthorName && currentAuthorName.toLowerCase() !== 'anónimo' && currentAuthorName.toLowerCase() !== 'anonimo') {
+                        displayAuthor = currentAuthorName;
+                      } else if (user?.uid) {
+                        displayAuthor = `user_${user.uid.substring(0, 5)}`;
+                      }
+                    } else if (isGeneric) {
+                      displayAuthor = msg.user_uid ? `user_${msg.user_uid.substring(0, 5)}` : 'Anónimo';
+                    }
+
+                    const displayGender = msg.author_gender || (isOwnMessage ? (currentUserGender || (user?.uid ? localStorage.getItem(`user_gender_${user.uid}`) : null) || (typeof window !== 'undefined' ? localStorage.getItem('starryz_user_gender') : null)) : null);
+
+                    const cardBorderClass = isOwnMessage
+                      ? 'bg-[#170a13] border-2 border-pink-500 shadow-[0_0_30px_rgba(236,72,153,0.22)] ring-1 ring-pink-500/40'
+                      : 'bg-[#121212] border border-zinc-800/80 hover:border-pink-500/30';
+
                     return (
                       <div
                         key={msg.id}
-                        className="bg-[#121212] border border-zinc-800/80 hover:border-pink-500/30 rounded-xl p-5 space-y-3 transition-all relative overflow-hidden group"
+                        className={`rounded-xl p-5 space-y-3 transition-all relative overflow-hidden group ${cardBorderClass}`}
                       >
                         {/* Cabecera del Mensaje */}
                         <div className="flex items-center justify-between gap-3">
                           <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-pink-600 to-rose-400 flex items-center justify-center text-white font-black text-sm shadow-md">
+                            <div className={`w-9 h-9 rounded-full flex items-center justify-center font-black text-sm shadow-md ${
+                              isOwnMessage
+                                ? 'bg-gradient-to-tr from-pink-500 to-rose-500 text-white ring-2 ring-pink-400/50'
+                                : 'bg-gradient-to-tr from-pink-600 to-rose-400 text-white'
+                            }`}>
                               {msg.author_avatar ? (
                                 <img
                                   src={msg.author_avatar}
-                                  alt={msg.author_name}
+                                  alt={displayAuthor}
                                   className="w-full h-full object-cover rounded-full"
                                   referrerPolicy="no-referrer"
                                 />
                               ) : (
-                                <span>{msg.author_name.charAt(0).toUpperCase()}</span>
+                                <span>{displayAuthor.charAt(0).toUpperCase()}</span>
                               )}
                             </div>
                             <div>
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs font-bold text-white">
-                                  {msg.author_name}
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className={`text-xs font-bold ${isOwnMessage ? 'text-pink-400' : 'text-white'}`}>
+                                  {displayAuthor}
                                 </span>
-                                {msg.author_name === 'Anónimo' && (
-                                  <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-[10px] font-bold text-zinc-400 uppercase">
-                                    Confidencial
+                                <GenderBadge gender={displayGender} size="sm" />
+                                {isOwnMessage && (
+                                  <span className="inline-flex items-center gap-1 bg-gradient-to-r from-pink-500 to-rose-500 text-white text-[9px] font-black uppercase px-2 py-0.5 rounded shadow-sm tracking-wider">
+                                    Tu Confesión
                                   </span>
                                 )}
                               </div>
@@ -1832,7 +1889,7 @@ export default function StudentProfile({
                             <button
                               type="button"
                               onClick={() => handleDeleteMessage(msg.id)}
-                              className="text-zinc-600 hover:text-rose-400 p-1.5 rounded-lg hover:bg-rose-950/30 transition-all cursor-pointer"
+                              className="text-zinc-500 hover:text-rose-400 p-1.5 rounded-lg hover:bg-rose-950/30 transition-all cursor-pointer"
                               title="Eliminar mi mensaje"
                             >
                               <Trash2 className="w-4 h-4" />

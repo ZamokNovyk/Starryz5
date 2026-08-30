@@ -541,30 +541,21 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
     setErrorMsg(null);
 
     try {
-      // 1. Actualizar en Supabase con username, display_name y gender
-      let updateError = null;
-
-      // Intentar actualizar con gender incluido
-      const updatePayload: any = { 
-        username: cleanUsername,
-        display_name: cleanUsername 
-      };
-      if (selectedGender) {
-        updatePayload.gender = selectedGender;
-      }
-
-      const { error: fullUpdateErr } = await supabase
+      // 1. Actualizar 'display_name' en Supabase (columna existente en la tabla 'users')
+      const { error: displayErr } = await supabase
         .from('users')
-        .update(updatePayload)
+        .update({ 
+          display_name: cleanUsername 
+        })
         .eq('firebase_uid', user.uid);
 
-      if (fullUpdateErr) {
+      if (displayErr) {
         // Capturar error 23505 (duplicate key / unique constraint)
         if (
-          fullUpdateErr.code === '23505' || 
-          fullUpdateErr.message?.includes('duplicate key') || 
-          fullUpdateErr.message?.includes('23505') ||
-          fullUpdateErr.message?.includes('unique constraint')
+          displayErr.code === '23505' || 
+          displayErr.message?.includes('duplicate key') || 
+          displayErr.message?.includes('23505') ||
+          displayErr.message?.includes('unique constraint')
         ) {
           setUsernameAvailability({
             status: 'taken',
@@ -574,37 +565,21 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
           setSaving(false);
           return;
         }
-
-        // Si la columna 'gender' o 'username' no existe aún en la tabla, actualizamos los campos disponibles
-        const fallbackPayload: any = { display_name: cleanUsername };
-        if (!fullUpdateErr.message?.includes('username')) {
-          fallbackPayload.username = cleanUsername;
-        }
-        const { error: fallbackErr } = await supabase
-          .from('users')
-          .update(fallbackPayload)
-          .eq('firebase_uid', user.uid);
-        
-        if (fallbackErr) updateError = fallbackErr;
+        throw displayErr;
       }
 
-      if (updateError) {
-        // Capturar error 23505 en caso de conflicto
-        if (
-          updateError.code === '23505' || 
-          updateError.message?.includes('duplicate key') || 
-          updateError.message?.includes('23505') ||
-          updateError.message?.includes('unique constraint')
-        ) {
-          setUsernameAvailability({
-            status: 'taken',
-            message: 'Este nombre ya está en uso'
-          });
-          setErrorMsg('Este nombre acaba de ser tomado por otro usuario. Por favor elige otro.');
-          setSaving(false);
-          return;
+      // 2. Intentar actualizar 'gender' en Supabase si la columna existe en la tabla
+      try {
+        const { error: genderErr } = await supabase
+          .from('users')
+          .update({ gender: selectedGender || null })
+          .eq('firebase_uid', user.uid);
+
+        if (genderErr) {
+          console.warn('Nota sobre columna gender en tabla users:', genderErr.message);
         }
-        throw updateError;
+      } catch (gErr) {
+        console.warn('Aviso guardando gender en Supabase:', gErr);
       }
 
       // Guardar siempre el género en localStorage de respaldo para el usuario
@@ -614,7 +589,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
         localStorage.removeItem(`user_gender_${user.uid}`);
       }
 
-      // 2. Actualizar en Firebase Auth si el usuario de Firebase está disponible
+      // 3. Actualizar en Firebase Auth si el usuario de Firebase está disponible
       if (auth.currentUser) {
         try {
           await updateProfile(auth.currentUser, {
@@ -634,7 +609,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
         message: 'Nombre disponible (guardado)'
       });
       
-      setSuccessMsg('¡Datos de tu perfil actualizados con éxito en Supabase!');
+      setSuccessMsg('¡Datos de tu perfil guardados con éxito!');
       
       // Auto-ocultar el mensaje de éxito después de 4 segundos
       setTimeout(() => {
@@ -741,9 +716,19 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
           </div>
 
           <div className="space-y-1.5 w-full flex flex-col items-center">
-            <h3 className="text-xl font-black text-white tracking-tight truncate max-w-full">
-              {dbUser?.display_name || 'Cargando...'}
-            </h3>
+            <div className="flex items-center justify-center gap-2 max-w-full">
+              <h3 className="text-xl font-black text-white tracking-tight truncate">
+                {dbUser?.display_name || 'Cargando...'}
+              </h3>
+              {(dbUser?.gender || selectedGender) && (
+                <span 
+                  className={`text-lg font-black shrink-0 select-none ${(dbUser?.gender || selectedGender) === 'male' || (dbUser?.gender || selectedGender) === 'hombre' ? 'text-blue-400' : 'text-pink-400'}`}
+                  title={(dbUser?.gender || selectedGender) === 'male' || (dbUser?.gender || selectedGender) === 'hombre' ? 'Hombre ♂' : 'Mujer ♀'}
+                >
+                  {(dbUser?.gender || selectedGender) === 'male' || (dbUser?.gender || selectedGender) === 'hombre' ? '♂' : '♀'}
+                </span>
+              )}
+            </div>
             
             {dbUser?.role === 'admin' && (
               <div className="pt-0.5 pb-0.5">

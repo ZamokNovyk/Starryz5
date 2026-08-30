@@ -53,9 +53,32 @@ export default function PublishConfessionModal({
         }
       }
       
-      const authorName = currentUser 
-        ? (currentUser.displayName || currentUser.email?.split('@')[0] || 'Anónimo') 
-        : 'Anónimo';
+      let authorName = currentUser 
+        ? (currentUser.displayName || currentUser.email?.split('@')[0] || '') 
+        : '';
+
+      if (currentUser?.uid) {
+        try {
+          const { data: dbU } = await supabase
+            .from('users')
+            .select('username, display_name')
+            .eq('firebase_uid', currentUser.uid)
+            .maybeSingle();
+
+          if (dbU) {
+            const picked = (dbU.username || dbU.display_name || '').trim();
+            if (picked && picked.toLowerCase() !== 'anónimo' && picked.toLowerCase() !== 'usuario anónimo') {
+              authorName = picked;
+            }
+          }
+        } catch (dbErr) {
+          // Ignorar
+        }
+      }
+
+      if (!authorName) {
+        authorName = currentUser?.uid ? `user_${currentUser.uid.substring(0, 5)}` : 'Anónimo';
+      }
 
       await createCenterConfession({
         center_id: institutionId,

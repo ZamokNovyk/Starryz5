@@ -645,6 +645,7 @@ export interface StudentLoveMessage {
   user_uid: string;
   author_name: string;
   author_avatar?: string | null;
+  author_gender?: string | null;
   message: string;
   created_at: string;
   hearts_count?: number;
@@ -683,6 +684,45 @@ export async function getStudentLoveMessages(studentId: string, currentUserUid?:
       })) as StudentLoveMessage[];
     }
 
+    // Obtener los nombres reales y géneros de los autores de los mensajes
+    const authorUids = Array.from(
+      new Set(
+        messages
+          .map(m => m.user_uid)
+          .filter((uid): uid is string => Boolean(uid && typeof uid === 'string'))
+      )
+    );
+
+    const userProfileMap: Record<string, { name?: string; gender?: string; avatar?: string }> = {};
+    if (authorUids.length > 0) {
+      try {
+        const { data: usersData } = await supabase
+          .from('users')
+          .select('firebase_uid, username, display_name, gender, photo_url')
+          .in('firebase_uid', authorUids);
+
+        if (usersData && Array.isArray(usersData)) {
+          usersData.forEach((u: any) => {
+            if (u.firebase_uid) {
+              const customName = (u.username || u.display_name || '').trim();
+              const isGen = !customName || 
+                customName.toLowerCase() === 'anónimo' || 
+                customName.toLowerCase() === 'anonimo' || 
+                customName.toLowerCase() === 'usuario anónimo';
+              
+              userProfileMap[u.firebase_uid] = {
+                name: !isGen ? customName : `user_${u.firebase_uid.substring(0, 5)}`,
+                gender: u.gender || null,
+                avatar: u.photo_url || null,
+              };
+            }
+          });
+        }
+      } catch (uErr) {
+        // Ignorar
+      }
+    }
+
     // Obtener los corazones que ha dado el usuario actual desde la tabla student_love_message_hearts
     let userHeartedMessageIds = new Set<string>();
 
@@ -706,6 +746,34 @@ export async function getStudentLoveMessages(studentId: string, currentUserUid?:
       let isHearted = userHeartedMessageIds.has(String(msg.id));
       let heartsCount = msg.hearts_count || 0;
 
+      let authorGender = msg.user_uid ? userProfileMap[msg.user_uid]?.gender || msg.author_gender || null : null;
+      if (!authorGender && msg.user_uid && typeof window !== 'undefined') {
+        const cachedGender = localStorage.getItem(`user_gender_${msg.user_uid}`);
+        if (cachedGender) authorGender = cachedGender;
+      }
+
+      let authorName = (msg.author_name || '').trim();
+      const isGeneric = !authorName || 
+        authorName.toLowerCase() === 'anónimo' || 
+        authorName.toLowerCase() === 'anonimo' || 
+        authorName.toLowerCase() === 'usuario anónimo' ||
+        authorName.toLowerCase() === 'user_anon';
+
+      if (isGeneric && msg.user_uid) {
+        if (userProfileMap[msg.user_uid]?.name) {
+          authorName = userProfileMap[msg.user_uid]!.name!;
+        } else {
+          authorName = `user_${msg.user_uid.substring(0, 5)}`;
+        }
+      } else if (!authorName) {
+        authorName = msg.user_uid ? `user_${msg.user_uid.substring(0, 5)}` : 'Anónimo';
+      }
+
+      let authorAvatar = msg.author_avatar;
+      if (!authorAvatar && msg.user_uid && userProfileMap[msg.user_uid]?.avatar) {
+        authorAvatar = userProfileMap[msg.user_uid]!.avatar!;
+      }
+
       if (typeof window !== 'undefined') {
         const localHearted = localStorage.getItem(`student_love_msg_heart_${msg.id}_${currentUserUid}`);
         if (localHearted === 'true') {
@@ -722,6 +790,7 @@ export async function getStudentLoveMessages(studentId: string, currentUserUid?:
 
       return {
         ...msg,
+        author_gender: authorGender,
         hearts_count: heartsCount,
         has_hearted: isHearted
       };
@@ -933,6 +1002,13 @@ export async function createStudentLoveMessage(
       }
     } else {
       createdMsg = { ...data, hearts_count: 0, has_hearted: false } as StudentLoveMessage;
+    }
+
+    if (createdMsg && typeof window !== 'undefined') {
+      const cachedGender = localStorage.getItem(`user_gender_${userUid}`);
+      if (cachedGender) {
+        createdMsg.author_gender = cachedGender;
+      }
     }
 
     // Disparar notificación a los suscriptores en segundo plano

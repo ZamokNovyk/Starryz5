@@ -88,6 +88,7 @@ import AddMemberModal from '@/components/Modals/AddMemberModal';
 import PublishConfessionModal from '@/components/Modals/PublishConfessionModal';
 import ConfessionCommentsModal from '@/components/Modals/ConfessionCommentsModal';
 import BookmarkButton from '@/components/BookmarkButton';
+import GenderBadge from '@/components/GenderBadge';
 import { useAuth } from '@/src/context/AuthContext';
 
 interface EducationalCenterProfileViewProps {
@@ -1801,6 +1802,13 @@ export default function EducationalCenterProfileView({
                               <span className={`font-extrabold text-xs tracking-wide ${isMyConfession ? 'text-[#eab308]' : 'text-white'}`}>
                                 {displayAuthor}
                               </span>
+                              <GenderBadge 
+                                gender={
+                                  conf.author_gender || 
+                                  (isMyConfession && user?.uid ? (localStorage.getItem(`user_gender_${user.uid}`) || localStorage.getItem('starryz_user_gender')) : null)
+                                } 
+                                size="sm" 
+                              />
                               {isMyConfession && (
                                 <span className="inline-flex items-center gap-1 bg-[#eab308] text-black text-[9px] font-black uppercase px-2 py-0.5 rounded shadow-sm tracking-wider">
                                   Tu Confesión

@@ -9,6 +9,7 @@ export interface CenterConfession {
   center_id: string;
   firebase_uid: string | null;
   author_name: string;
+  author_gender?: string | null;
   content: string;
   category: 'crush' | 'professors' | 'exams' | 'anecdotes';
   card_style: CardStyle;
@@ -36,6 +37,7 @@ export interface ConfessionComment {
   confession_id: string;
   firebase_uid: string | null;
   author_name: string;
+  author_gender?: string | null;
   content: string;
   is_anonymous: boolean;
   parent_id?: string | null;
@@ -318,15 +320,77 @@ export async function getCenterConfessions(
       // Ignorar si la tabla de reacciones aún se está creando
     }
 
+    // Recopilar UIDs únicos para obtener los nombres reales y géneros de los autores
+    const authorUids = Array.from(
+      new Set(
+        confessionsData
+          .map((c: any) => c.firebase_uid)
+          .filter((uid: any): uid is string => Boolean(uid && typeof uid === 'string'))
+      )
+    );
+
+    const userProfileMap: Record<string, { name?: string; gender?: string }> = {};
+    if (authorUids.length > 0) {
+      try {
+        const { data: usersData } = await supabase
+          .from('users')
+          .select('firebase_uid, username, display_name, gender')
+          .in('firebase_uid', authorUids);
+
+        if (usersData && Array.isArray(usersData)) {
+          usersData.forEach((u: any) => {
+            if (u.firebase_uid) {
+              const customName = (u.username || u.display_name || '').trim();
+              const isGen = !customName || 
+                customName.toLowerCase() === 'anónimo' || 
+                customName.toLowerCase() === 'anonimo' || 
+                customName.toLowerCase() === 'usuario anónimo';
+              
+              userProfileMap[u.firebase_uid] = {
+                name: !isGen ? customName : `user_${u.firebase_uid.substring(0, 5)}`,
+                gender: u.gender || null,
+              };
+            }
+          });
+        }
+      } catch (uErr) {
+        // Ignorar si hay error consultando usuarios
+      }
+    }
+
     const result: CenterConfession[] = confessionsData.map((c: any) => {
       const reacts = reactionsMap[c.id] || { heart: 0, laugh: 0, fire: 0, cry: 0, shock: 0 };
       const userReacts = userReactionsMap[c.id] || { heart: false, laugh: false, fire: false, cry: false, shock: false };
+
+      let authorGender = c.firebase_uid ? userProfileMap[c.firebase_uid]?.gender || null : null;
+      if (!authorGender && c.firebase_uid && typeof window !== 'undefined') {
+        const cachedGender = localStorage.getItem(`user_gender_${c.firebase_uid}`);
+        if (cachedGender) authorGender = cachedGender;
+      }
+
+      let authorName = (c.author_name || '').trim();
+      const isGeneric = !authorName || 
+        authorName.toLowerCase() === 'anónimo' || 
+        authorName.toLowerCase() === 'anonimo' || 
+        authorName.toLowerCase() === 'usuario anónimo' ||
+        authorName.toLowerCase() === 'user_anon';
+
+      if (isGeneric && c.firebase_uid) {
+        if (userProfileMap[c.firebase_uid]?.name) {
+          authorName = userProfileMap[c.firebase_uid]!.name!;
+        } else {
+          authorName = `user_${c.firebase_uid.substring(0, 5)}`;
+        }
+      } else if (!authorName) {
+        authorName = c.firebase_uid ? `user_${c.firebase_uid.substring(0, 5)}` : 'Anónimo';
+      }
 
       return {
         id: c.id,
         center_id: c.center_id,
         firebase_uid: c.firebase_uid,
-        author_name: c.author_name || 'Anónimo',
+        author_name: authorName,
+        author_gender: authorGender,
         content: c.content,
         category: c.category || 'anecdotes',
         card_style: c.card_style || 'dark',
@@ -607,7 +671,75 @@ export async function getConfessionComments(confessionId: string): Promise<Confe
       .order('created_at', { ascending: true });
 
     if (error || !data) return [];
-    return data;
+
+    // Recopilar UIDs únicos de los autores de comentarios
+    const authorUids = Array.from(
+      new Set(
+        data
+          .map((c: any) => c.firebase_uid)
+          .filter((uid: any): uid is string => Boolean(uid && typeof uid === 'string'))
+      )
+    );
+
+    const userProfileMap: Record<string, { name?: string; gender?: string }> = {};
+    if (authorUids.length > 0) {
+      try {
+        const { data: usersData } = await supabase
+          .from('users')
+          .select('firebase_uid, username, display_name, gender')
+          .in('firebase_uid', authorUids);
+
+        if (usersData && Array.isArray(usersData)) {
+          usersData.forEach((u: any) => {
+            if (u.firebase_uid) {
+              const customName = (u.username || u.display_name || '').trim();
+              const isGen = !customName || 
+                customName.toLowerCase() === 'anónimo' || 
+                customName.toLowerCase() === 'anonimo' || 
+                customName.toLowerCase() === 'usuario anónimo';
+              
+              userProfileMap[u.firebase_uid] = {
+                name: !isGen ? customName : `user_${u.firebase_uid.substring(0, 5)}`,
+                gender: u.gender || null,
+              };
+            }
+          });
+        }
+      } catch (uErr) {
+        // Ignorar
+      }
+    }
+
+    return data.map((comment: any) => {
+      let authorGender = comment.firebase_uid ? userProfileMap[comment.firebase_uid]?.gender || null : null;
+      if (!authorGender && comment.firebase_uid && typeof window !== 'undefined') {
+        const cachedGender = localStorage.getItem(`user_gender_${comment.firebase_uid}`);
+        if (cachedGender) authorGender = cachedGender;
+      }
+
+      let authorName = (comment.author_name || '').trim();
+      const isGeneric = !authorName || 
+        authorName.toLowerCase() === 'anónimo' || 
+        authorName.toLowerCase() === 'anonimo' || 
+        authorName.toLowerCase() === 'usuario anónimo' ||
+        authorName.toLowerCase() === 'user_anon';
+
+      if (isGeneric && comment.firebase_uid) {
+        if (userProfileMap[comment.firebase_uid]?.name) {
+          authorName = userProfileMap[comment.firebase_uid]!.name!;
+        } else {
+          authorName = `user_${comment.firebase_uid.substring(0, 5)}`;
+        }
+      } else if (!authorName) {
+        authorName = comment.firebase_uid ? `user_${comment.firebase_uid.substring(0, 5)}` : 'Anónimo';
+      }
+
+      return {
+        ...comment,
+        author_name: authorName,
+        author_gender: authorGender,
+      };
+    });
   } catch (err) {
     return [];
   }

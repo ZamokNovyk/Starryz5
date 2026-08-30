@@ -24,6 +24,7 @@ import {
   getMyConfessionIds
 } from '@/src/lib/confessions';
 import { promptNotificationOnAction } from '@/src/lib/notificationHelper';
+import GenderBadge from '@/components/GenderBadge';
 
 interface ConfessionCommentsModalProps {
   isOpen: boolean;
@@ -278,6 +279,13 @@ export default function ConfessionCommentsModal({
                         <span className={`font-extrabold text-xs tracking-wide ${isMyConfession ? 'text-[#eab308]' : 'text-white'}`}>
                           {displayAuthor}
                         </span>
+                        <GenderBadge 
+                          gender={
+                            confession.author_gender || 
+                            (isMyConfession && user?.uid ? (localStorage.getItem(`user_gender_${user.uid}`) || localStorage.getItem('starryz_user_gender')) : null)
+                          } 
+                          size="sm" 
+                        />
                         {isMyConfession && (
                           <span className="inline-flex items-center gap-1 bg-[#eab308] text-black text-[9px] font-black uppercase px-2 py-0.5 rounded shadow-sm tracking-wider">
                             Tu Confesión
@@ -420,10 +428,17 @@ export default function ConfessionCommentsModal({
                     >
                       {/* Cabecera Nivel 1 */}
                       <div className="flex items-center justify-between gap-2 flex-wrap">
-                        <div className="flex items-center gap-2 flex-wrap">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="font-extrabold text-xs text-[#eab308]">
                             {commentAuthor}
                           </span>
+                          <GenderBadge 
+                            gender={
+                              comment.author_gender || 
+                              (isMyComment && user?.uid ? (localStorage.getItem(`user_gender_${user.uid}`) || localStorage.getItem('starryz_user_gender')) : null)
+                            } 
+                            size="sm" 
+                          />
                           {isMyComment && (
                             <span className="bg-[#eab308] text-black text-[9px] font-black uppercase px-1.5 py-0.5 rounded shadow-sm">
                               Tú
@@ -509,6 +524,13 @@ export default function ConfessionCommentsModal({
                                     <span className="font-extrabold text-xs text-white">
                                       {subCommentAuthor}
                                     </span>
+                                    <GenderBadge 
+                                      gender={
+                                        subComment.author_gender || 
+                                        (isMySubComment && user?.uid ? (localStorage.getItem(`user_gender_${user.uid}`) || localStorage.getItem('starryz_user_gender')) : null)
+                                      } 
+                                      size="sm" 
+                                    />
                                     {isMySubComment && (
                                       <span className="bg-[#eab308] text-black text-[9px] font-black uppercase px-1.5 py-0.5 rounded shadow-sm">
                                         Tú
