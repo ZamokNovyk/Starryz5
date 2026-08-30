@@ -62,6 +62,7 @@ interface SupabaseUser {
   email: string | null;
   display_name: string | null;
   username?: string | null;
+  gender?: string | null;
   role?: string | null;
   photo_url: string | null;
   created_at: string;
@@ -83,6 +84,8 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
   const [linkingGoogle, setLinkingGoogle] = useState(false);
   const [displayNameInput, setDisplayNameInput] = useState('');
   const [initialDisplayName, setInitialDisplayName] = useState('');
+  const [selectedGender, setSelectedGender] = useState<'male' | 'female' | ''>('');
+  const [initialGender, setInitialGender] = useState<'male' | 'female' | ''>('');
   const [usernameAvailability, setUsernameAvailability] = useState<{
     status: 'idle' | 'checking' | 'available' | 'taken' | 'error';
     message: string;
@@ -143,6 +146,17 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
         const name = data.display_name || data.username || '';
         setDisplayNameInput(name);
         setInitialDisplayName(name);
+        
+        let loadedGender: 'male' | 'female' | '' = '';
+        if (data.gender === 'male' || data.gender === 'hombre') loadedGender = 'male';
+        else if (data.gender === 'female' || data.gender === 'mujer') loadedGender = 'female';
+        else {
+          const cachedGender = localStorage.getItem(`user_gender_${user.uid}`);
+          if (cachedGender === 'male' || cachedGender === 'female') loadedGender = cachedGender;
+        }
+        setSelectedGender(loadedGender);
+        setInitialGender(loadedGender);
+
         setUsernameAvailability({ status: 'available', message: 'Nombre actual verificado' });
       }
 
@@ -183,6 +197,17 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
           const name = data.display_name || data.username || '';
           setDisplayNameInput(name);
           setInitialDisplayName(name);
+
+          let loadedGender: 'male' | 'female' | '' = '';
+          if (data.gender === 'male' || data.gender === 'hombre') loadedGender = 'male';
+          else if (data.gender === 'female' || data.gender === 'mujer') loadedGender = 'female';
+          else {
+            const cachedGender = localStorage.getItem(`user_gender_${targetUid}`);
+            if (cachedGender === 'male' || cachedGender === 'female') loadedGender = cachedGender;
+          }
+          setSelectedGender(loadedGender);
+          setInitialGender(loadedGender);
+
           setUsernameAvailability({ status: 'available', message: 'Nombre actual asignado' });
         }
       } catch (err: any) {
@@ -516,15 +541,21 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
     setErrorMsg(null);
 
     try {
-      // 1. Actualizar en Supabase con .update({ username: nuevoNombre, display_name: nuevoNombre })
+      // 1. Actualizar en Supabase con username, display_name y gender
       let updateError = null;
+
+      // Intentar actualizar con gender incluido
+      const updatePayload: any = { 
+        username: cleanUsername,
+        display_name: cleanUsername 
+      };
+      if (selectedGender) {
+        updatePayload.gender = selectedGender;
+      }
 
       const { error: fullUpdateErr } = await supabase
         .from('users')
-        .update({ 
-          username: cleanUsername,
-          display_name: cleanUsername 
-        })
+        .update(updatePayload)
         .eq('firebase_uid', user.uid);
 
       if (fullUpdateErr) {
@@ -544,17 +575,17 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
           return;
         }
 
-        // Si la columna 'username' no existe aún en la tabla, actualizamos 'display_name'
-        if (fullUpdateErr.message?.includes('username') && (fullUpdateErr.message?.includes('column') || fullUpdateErr.message?.includes('schema'))) {
-          const { error: displayErr } = await supabase
-            .from('users')
-            .update({ display_name: cleanUsername })
-            .eq('firebase_uid', user.uid);
-          
-          if (displayErr) updateError = displayErr;
-        } else {
-          updateError = fullUpdateErr;
+        // Si la columna 'gender' o 'username' no existe aún en la tabla, actualizamos los campos disponibles
+        const fallbackPayload: any = { display_name: cleanUsername };
+        if (!fullUpdateErr.message?.includes('username')) {
+          fallbackPayload.username = cleanUsername;
         }
+        const { error: fallbackErr } = await supabase
+          .from('users')
+          .update(fallbackPayload)
+          .eq('firebase_uid', user.uid);
+        
+        if (fallbackErr) updateError = fallbackErr;
       }
 
       if (updateError) {
@@ -576,6 +607,13 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
         throw updateError;
       }
 
+      // Guardar siempre el género en localStorage de respaldo para el usuario
+      if (selectedGender) {
+        localStorage.setItem(`user_gender_${user.uid}`, selectedGender);
+      } else {
+        localStorage.removeItem(`user_gender_${user.uid}`);
+      }
+
       // 2. Actualizar en Firebase Auth si el usuario de Firebase está disponible
       if (auth.currentUser) {
         try {
@@ -588,14 +626,15 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
       }
 
       // Actualizar estado local
-      setDbUser(prev => prev ? { ...prev, display_name: cleanUsername, username: cleanUsername } : null);
+      setDbUser(prev => prev ? { ...prev, display_name: cleanUsername, username: cleanUsername, gender: selectedGender || null } : null);
       setInitialDisplayName(cleanUsername);
+      setInitialGender(selectedGender);
       setUsernameAvailability({
         status: 'available',
         message: 'Nombre disponible (guardado)'
       });
       
-      setSuccessMsg('¡Nombre de usuario actualizado con éxito en Supabase!');
+      setSuccessMsg('¡Datos de tu perfil actualizados con éxito en Supabase!');
       
       // Auto-ocultar el mensaje de éxito después de 4 segundos
       setTimeout(() => {
@@ -719,6 +758,23 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
               <p className="text-xs text-zinc-400 truncate max-w-full">
                 {dbUser?.email || 'Sesión Local Sin Correo'}
               </p>
+            )}
+
+            {(dbUser?.gender || selectedGender) && (
+              <div className="pt-1">
+                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold tracking-wider uppercase border shadow-sm ${
+                  (dbUser?.gender || selectedGender) === 'male' || (dbUser?.gender || selectedGender) === 'hombre'
+                    ? 'bg-blue-950/50 border-blue-500/40 text-blue-300'
+                    : 'bg-pink-950/50 border-pink-500/40 text-pink-300'
+                }`}>
+                  <span className="text-xs font-black">
+                    {(dbUser?.gender || selectedGender) === 'male' || (dbUser?.gender || selectedGender) === 'hombre' ? '♂' : '♀'}
+                  </span>
+                  <span>
+                    {(dbUser?.gender || selectedGender) === 'male' || (dbUser?.gender || selectedGender) === 'hombre' ? 'Hombre' : 'Mujer'}
+                  </span>
+                </span>
+              </div>
             )}
           </div>
 
@@ -1032,6 +1088,61 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                           className="w-full bg-[#121212] border border-[#ffffff0a] text-zinc-500 rounded-xl px-4 py-3 text-sm outline-none cursor-not-allowed font-medium"
                         />
                       </div>
+                    </div>
+
+                    {/* Sexo / Género */}
+                    <div className="space-y-2">
+                      <label className="block text-[10px] font-extrabold uppercase tracking-widest text-[#eab308] flex items-center gap-1.5">
+                        <Users className="w-3.5 h-3.5" /> Sexo
+                      </label>
+                      {isOwnProfile ? (
+                        <div className="grid grid-cols-2 gap-2 h-[46px]">
+                          <button
+                            type="button"
+                            disabled={saving}
+                            onClick={() => setSelectedGender(prev => prev === 'male' ? '' : 'male')}
+                            className={`px-3 py-2.5 rounded-xl border font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer select-none ${
+                              selectedGender === 'male'
+                                ? 'bg-blue-950/60 border-blue-500 text-blue-300 shadow-[0_0_15px_rgba(59,130,246,0.3)] ring-1 ring-blue-500/50'
+                                : 'bg-[#121212] border-[#ffffff0f] text-zinc-400 hover:text-white hover:border-blue-500/40'
+                            }`}
+                            title="Seleccionar Hombre ♂"
+                          >
+                            <span className="text-base font-black text-blue-400">♂</span>
+                            <span>Hombre</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={saving}
+                            onClick={() => setSelectedGender(prev => prev === 'female' ? '' : 'female')}
+                            className={`px-3 py-2.5 rounded-xl border font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer select-none ${
+                              selectedGender === 'female'
+                                ? 'bg-pink-950/60 border-pink-500 text-pink-300 shadow-[0_0_15px_rgba(236,72,153,0.3)] ring-1 ring-pink-500/50'
+                                : 'bg-[#121212] border-[#ffffff0f] text-zinc-400 hover:text-white hover:border-pink-500/40'
+                            }`}
+                            title="Seleccionar Mujer ♀"
+                          >
+                            <span className="text-base font-black text-pink-400">♀</span>
+                            <span>Mujer</span>
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="relative">
+                          <input
+                            type="text"
+                            value={
+                              dbUser?.gender === 'male' || dbUser?.gender === 'hombre'
+                                ? '♂ Hombre'
+                                : dbUser?.gender === 'female' || dbUser?.gender === 'mujer'
+                                  ? '♀ Mujer'
+                                  : 'No especificado'
+                            }
+                            disabled
+                            className="w-full bg-[#121212] border border-[#ffffff0a] text-zinc-400 rounded-xl px-4 py-3 text-sm outline-none cursor-not-allowed font-medium"
+                          />
+                        </div>
+                      )}
                     </div>
 
                     {/* Fecha de Vinculación con Google (Solo se muestra a uno mismo) */}
