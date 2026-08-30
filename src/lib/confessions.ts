@@ -169,6 +169,38 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;`;
 
+// Utility to get display name for anonymous users without chosen names (e.g. user_y5Pl5 from uid)
+export function getDisplayAuthorName(
+  authorName?: string | null,
+  firebaseUid?: string | null,
+  isAnonymous: boolean = true
+): string {
+  const cleanName = (authorName || '').trim();
+  const lower = cleanName.toLowerCase();
+
+  const isGenericAnon = !cleanName || 
+    lower === 'anónimo' || 
+    lower === 'anonimo' || 
+    lower === 'usuario anónimo' || 
+    lower === 'usuario anonimo' || 
+    lower === 'usuario' ||
+    lower === 'anon' ||
+    lower === 'alguien' ||
+    lower === 'user';
+
+  // Si el usuario eligió un nombre de usuario real (ej: "vegano1", "Juan", etc.), se respeta siempre su nombre
+  if (!isGenericAnon) {
+    return cleanName;
+  }
+
+  // Si no eligió nombre o es anónimo genérico, se genera el identificador con los primeros 5 caracteres de su UID
+  if (firebaseUid && firebaseUid.trim()) {
+    return `user_${firebaseUid.trim().substring(0, 5)}`;
+  }
+
+  return 'user_anon';
+}
+
 // Utility to get or create a persistent anonymous device client ID for reaction tracking
 export function getDeviceId(): string {
   if (typeof window === 'undefined') return 'anon_device';
@@ -324,10 +356,16 @@ export async function getCenterConfessions(
  * Publica una nueva confesión en 'center_confessions' de Supabase
  */
 export async function createCenterConfession(payload: CreateConfessionPayload): Promise<CenterConfession> {
+  const effectiveAuthorName = getDisplayAuthorName(
+    payload.author_name,
+    payload.firebase_uid,
+    payload.is_anonymous
+  );
+
   const record = {
     center_id: payload.center_id,
     firebase_uid: payload.firebase_uid,
-    author_name: payload.author_name || 'Anónimo',
+    author_name: effectiveAuthorName,
     content: payload.content,
     category: payload.category,
     card_style: payload.card_style,
@@ -587,10 +625,16 @@ export async function createConfessionComment(payload: {
   parent_id?: string | null;
   reply_to_author?: string | null;
 }): Promise<ConfessionComment> {
+  const effectiveAuthorName = getDisplayAuthorName(
+    payload.author_name,
+    payload.firebase_uid,
+    payload.is_anonymous
+  );
+
   const record: Record<string, any> = {
     confession_id: payload.confession_id,
     firebase_uid: payload.firebase_uid,
-    author_name: payload.author_name || 'Anónimo',
+    author_name: effectiveAuthorName,
     content: payload.content,
     is_anonymous: payload.is_anonymous,
   };
@@ -620,7 +664,7 @@ export async function createConfessionComment(payload: {
     const fallbackRecord = {
       confession_id: payload.confession_id,
       firebase_uid: payload.firebase_uid,
-      author_name: payload.author_name || 'Anónimo',
+      author_name: effectiveAuthorName,
       content: payload.content,
       is_anonymous: payload.is_anonymous,
     };

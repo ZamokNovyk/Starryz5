@@ -39,7 +39,7 @@ import { useFCMNotifications } from '@/hooks/useFCMNotifications';
 import AutocompleteSearchBar from './AutocompleteSearchBar';
 import { SearchSuggestion } from '@/src/lib/search';
 import { supabase } from '@/src/lib/supabase';
-import { createConfessionComment } from '@/src/lib/confessions';
+import { createConfessionComment, getDisplayAuthorName, getMyConfessionIds } from '@/src/lib/confessions';
 import { promptNotificationOnAction } from '@/src/lib/notificationHelper';
 
 interface NotificationItem {
@@ -1247,64 +1247,85 @@ export default function Header({
                 <div className="space-y-6">
                   
                   {/* Confesión Original Card */}
-                  <div className="p-5 sm:p-6 rounded-2xl bg-[#14151a] border border-zinc-800/90 shadow-lg space-y-4 relative">
-                    
-                    {/* Header de la confesión */}
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        {/* Avatar */}
-                        <div className="relative shrink-0">
-                          <div className="w-11 h-11 rounded-2xl bg-[#eab308] text-black flex items-center justify-center font-black text-sm shadow-md">
-                            {(modalConfession.author_name || 'Anónimo').substring(0, 2).toUpperCase()}
+                  {(() => {
+                    const myConfessionIds = getMyConfessionIds();
+                    const isMyConf = !!(((user?.uid && modalConfession.firebase_uid === user.uid) || myConfessionIds.includes(modalConfession.id)));
+                    const confAuthor = getDisplayAuthorName(modalConfession.author_name, modalConfession.firebase_uid, modalConfession.is_anonymous);
+
+                    return (
+                      <div className={`p-5 sm:p-6 rounded-2xl shadow-lg space-y-4 relative transition-all ${
+                        isMyConf
+                          ? 'bg-[#141209] border-2 border-[#eab308] shadow-[0_0_25px_rgba(234,179,8,0.18)] ring-1 ring-[#eab308]/40'
+                          : 'bg-[#14151a] border border-zinc-800/90'
+                      }`}>
+                        
+                        {/* Header de la confesión */}
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            {/* Avatar */}
+                            <div className="relative shrink-0">
+                              <div className={`w-11 h-11 rounded-2xl flex items-center justify-center font-black text-sm shadow-md ${
+                                isMyConf
+                                  ? 'bg-[#eab308] text-black'
+                                  : 'bg-[#eab308] text-black'
+                              }`}>
+                                {confAuthor.substring(0, 2).toUpperCase()}
+                              </div>
+                              <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 rounded-full border-2 border-[#14151a]" />
+                            </div>
+
+                            {/* Autor y Fecha */}
+                            <div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h4 className={`text-sm font-bold ${isMyConf ? 'text-[#eab308]' : 'text-white'}`}>
+                                  {confAuthor}
+                                </h4>
+                                {isMyConf && (
+                                  <span className="bg-[#eab308] text-black text-[9px] font-black uppercase px-2 py-0.5 rounded shadow-sm">
+                                    Tu Confesión
+                                  </span>
+                                )}
+                                <span className="bg-zinc-800 text-zinc-400 border border-zinc-700/60 text-[10px] px-2 py-0.5 rounded font-medium">
+                                  Autor
+                                </span>
+                              </div>
+                              <span className="text-xs text-zinc-400">
+                                {formatFullDateWithRelative(modalConfession.created_at).fullDate}
+                                {formatFullDateWithRelative(modalConfession.created_at).relative && (
+                                  <> • {formatFullDateWithRelative(modalConfession.created_at).relative}</>
+                                )}
+                              </span>
+                            </div>
                           </div>
-                          <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 rounded-full border-2 border-[#14151a]" />
+
+                          {/* Badge de Categoría */}
+                          {(() => {
+                            const badge = getCategoryBadge(modalConfession.category);
+                            return (
+                              <div className={`text-[11px] uppercase font-bold tracking-wider px-2.5 py-1 rounded-lg border flex items-center gap-1.5 shrink-0 ${badge.colorClass}`}>
+                                <span>{badge.icon}</span>
+                                <span>{badge.label}</span>
+                              </div>
+                            );
+                          })()}
                         </div>
 
-                        {/* Autor y Fecha */}
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h4 className="text-sm font-bold text-white">
-                              {modalConfession.author_name || 'Anónimo'}
-                            </h4>
-                            <span className="bg-zinc-800 text-zinc-400 border border-zinc-700/60 text-[10px] px-2 py-0.5 rounded font-medium">
-                              Autor
-                            </span>
+                        {/* Contenido del texto de la confesión */}
+                        <p className="text-zinc-100 text-sm sm:text-base leading-relaxed whitespace-pre-wrap font-normal py-1">
+                          {modalConfession.content}
+                        </p>
+
+                        {/* Stats Footer */}
+                        <div className="flex items-center gap-5 pt-3 border-t border-zinc-800/80 text-xs text-zinc-400">
+                          <div className="flex items-center gap-1.5 text-zinc-400 font-medium">
+                            <MessageSquare className="w-3.5 h-3.5 text-zinc-400" />
+                            <span>{modalConfession.comments_count || modalComments.length || 1} {modalConfession.comments_count === 1 ? 'respuesta' : 'respuestas'}</span>
                           </div>
-                          <span className="text-xs text-zinc-400">
-                            {formatFullDateWithRelative(modalConfession.created_at).fullDate}
-                            {formatFullDateWithRelative(modalConfession.created_at).relative && (
-                              <> • {formatFullDateWithRelative(modalConfession.created_at).relative}</>
-                            )}
-                          </span>
                         </div>
+
                       </div>
-
-                      {/* Badge de Categoría */}
-                      {(() => {
-                        const badge = getCategoryBadge(modalConfession.category);
-                        return (
-                          <div className={`text-[11px] uppercase font-bold tracking-wider px-2.5 py-1 rounded-lg border flex items-center gap-1.5 shrink-0 ${badge.colorClass}`}>
-                            <span>{badge.icon}</span>
-                            <span>{badge.label}</span>
-                          </div>
-                        );
-                      })()}
-                    </div>
-
-                    {/* Contenido del texto de la confesión */}
-                    <p className="text-zinc-100 text-sm sm:text-base leading-relaxed whitespace-pre-wrap font-normal py-1">
-                      {modalConfession.content}
-                    </p>
-
-                    {/* Stats Footer */}
-                    <div className="flex items-center gap-5 pt-3 border-t border-zinc-800/80 text-xs text-zinc-400">
-                      <div className="flex items-center gap-1.5 text-zinc-400 font-medium">
-                        <MessageSquare className="w-3.5 h-3.5 text-zinc-400" />
-                        <span>{modalConfession.comments_count || modalComments.length || 1} {modalConfession.comments_count === 1 ? 'respuesta' : 'respuestas'}</span>
-                      </div>
-                    </div>
-
-                  </div>
+                    );
+                  })()}
 
                   {/* Respuestas y Conversación (2 Niveles) */}
                   <div className="space-y-3">
@@ -1335,6 +1356,8 @@ export default function Header({
                             const replies = getReplies(comment.id);
                             const hasReplies = replies.length > 0;
                             const isExpanded = !!modalExpandedReplies[comment.id];
+                            const isMyComment = !!(user && comment.firebase_uid === user.uid);
+                            const commentAuthor = getDisplayAuthorName(comment.author_name, comment.firebase_uid, comment.is_anonymous);
 
                             return (
                               <div 
@@ -1342,21 +1365,29 @@ export default function Header({
                                 className={`p-3.5 rounded-xl border transition-all space-y-2.5 ${
                                   isTarget 
                                     ? 'bg-[#1c1a14] border-amber-500/70 shadow-lg ring-1 ring-amber-500/30' 
-                                    : 'bg-[#16171e] border-zinc-800/90 hover:border-zinc-700'
+                                    : isMyComment
+                                      ? 'bg-[#16140b] border-2 border-[#eab308]/80 shadow-[0_0_20px_rgba(234,179,8,0.12)] ring-1 ring-[#eab308]/30'
+                                      : 'bg-[#16171e] border-zinc-800/90 hover:border-zinc-700'
                                 }`}
                               >
                                 <div className="flex items-start gap-3">
                                   {/* Avatar */}
                                   <div className="w-8 h-8 rounded-xl flex items-center justify-center font-bold text-[11px] shrink-0 shadow-sm mt-0.5 bg-zinc-800/90 text-amber-400 border border-amber-500/20">
-                                    {(comment.author_name || 'Anónimo').substring(0, 2).toUpperCase()}
+                                    {commentAuthor.substring(0, 2).toUpperCase()}
                                   </div>
 
                                   <div className="flex-1 min-w-0 space-y-1">
                                     <div className="flex items-center justify-between gap-2 flex-wrap">
                                       <div className="flex items-center gap-2 flex-wrap">
                                         <span className="text-xs font-bold text-[#eab308]">
-                                          {comment.author_name || 'Anónimo'}
+                                          {commentAuthor}
                                         </span>
+
+                                        {isMyComment && (
+                                          <span className="bg-[#eab308] text-black text-[9px] font-black uppercase px-1.5 py-0.5 rounded shadow-sm">
+                                            Tú
+                                          </span>
+                                        )}
 
                                         {isTarget && (
                                           <span className="bg-amber-500 text-black text-[9px] font-black uppercase px-1.5 py-0.5 rounded shadow-sm">
@@ -1375,18 +1406,18 @@ export default function Header({
                                         <button
                                           type="button"
                                           onClick={() => {
-                                            setModalReplyingTo({ root_id: comment.id, author_name: comment.author_name || 'Anónimo' });
+                                            setModalReplyingTo({ root_id: comment.id, author_name: commentAuthor });
                                             setModalExpandedReplies(prev => ({ ...prev, [comment.id]: true }));
                                             setTimeout(() => modalReplyInputRef.current?.focus(), 50);
                                           }}
                                           className="flex items-center gap-1 text-[11px] font-bold text-zinc-400 hover:text-amber-400 hover:bg-amber-500/10 px-2 py-0.5 rounded-md transition-all cursor-pointer"
-                                          title={`Responder a ${comment.author_name || 'Anónimo'}`}
+                                          title={`Responder a ${commentAuthor}`}
                                         >
                                           <CornerDownRight className="w-3 h-3" />
                                           <span>Responder</span>
                                         </button>
 
-                                        {user && comment.firebase_uid === user.uid && (
+                                        {isMyComment && (
                                           <button
                                             type="button"
                                             onClick={() => handleDeleteModalCommentClick(comment.id)}
@@ -1434,6 +1465,9 @@ export default function Header({
                                     {replies.map((subComment: any) => {
                                       const subDateInfo = formatFullDateWithRelative(subComment.created_at);
                                       const isSubTarget = targetCommentId && subComment.id === targetCommentId;
+                                      const isMySubComment = !!(user && subComment.firebase_uid === user.uid);
+                                      const subCommentAuthor = getDisplayAuthorName(subComment.author_name, subComment.firebase_uid, subComment.is_anonymous);
+                                      const repliedToDisplayName = getDisplayAuthorName(subComment.reply_to_author || comment.author_name, null, false);
 
                                       return (
                                         <div
@@ -1441,19 +1475,27 @@ export default function Header({
                                           className={`p-2.5 rounded-xl border transition-all ${
                                             isSubTarget
                                               ? 'bg-[#1e1c14] border-amber-500/70 ring-1 ring-amber-500/30'
-                                              : 'bg-[#0f1015] border-zinc-800/80 hover:border-zinc-700'
+                                              : isMySubComment
+                                                ? 'bg-[#15130b] border-2 border-[#eab308]/70 shadow-sm ring-1 ring-[#eab308]/20'
+                                                : 'bg-[#0f1015] border-zinc-800/80 hover:border-zinc-700'
                                           }`}
                                         >
                                           <div className="flex items-center justify-between gap-2 flex-wrap">
                                             <div className="flex items-center gap-1.5 flex-wrap">
                                               <span className="font-extrabold text-xs text-white">
-                                                {subComment.author_name || 'Anónimo'}
+                                                {subCommentAuthor}
                                               </span>
+
+                                              {isMySubComment && (
+                                                <span className="bg-[#eab308] text-black text-[9px] font-black uppercase px-1.5 py-0.5 rounded shadow-sm">
+                                                  Tú
+                                                </span>
+                                              )}
 
                                               {/* Indicador 'X ha respondido a @Y' */}
                                               <span className="inline-flex items-center gap-1 bg-[#eab308]/15 text-[#eab308] border border-[#eab308]/30 text-[10px] font-bold px-2 py-0.5 rounded-md">
                                                 <CornerDownRight className="w-2.5 h-2.5" />
-                                                <span>ha respondido a @{subComment.reply_to_author || comment.author_name}</span>
+                                                <span>ha respondido a @{repliedToDisplayName}</span>
                                               </span>
 
                                               {isSubTarget && (
@@ -1473,18 +1515,18 @@ export default function Header({
                                               <button
                                                 type="button"
                                                 onClick={() => {
-                                                  setModalReplyingTo({ root_id: comment.id, author_name: subComment.author_name || 'Anónimo' });
+                                                  setModalReplyingTo({ root_id: comment.id, author_name: subCommentAuthor });
                                                   setModalExpandedReplies(prev => ({ ...prev, [comment.id]: true }));
                                                   setTimeout(() => modalReplyInputRef.current?.focus(), 50);
                                                 }}
                                                 className="flex items-center gap-1 text-[10px] font-bold text-zinc-400 hover:text-amber-400 hover:bg-amber-500/10 px-1.5 py-0.5 rounded transition-all cursor-pointer"
-                                                title={`Responder a ${subComment.author_name || 'Anónimo'}`}
+                                                title={`Responder a ${subCommentAuthor}`}
                                               >
                                                 <CornerDownRight className="w-2.5 h-2.5" />
                                                 <span>Responder</span>
                                               </button>
 
-                                              {user && subComment.firebase_uid === user.uid && (
+                                              {isMySubComment && (
                                                 <button
                                                   type="button"
                                                   onClick={() => handleDeleteModalCommentClick(subComment.id)}

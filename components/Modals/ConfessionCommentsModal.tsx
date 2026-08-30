@@ -19,7 +19,9 @@ import {
   getConfessionComments, 
   createConfessionComment,
   deleteConfessionComment,
-  formatTimeAgo 
+  formatTimeAgo,
+  getDisplayAuthorName,
+  getMyConfessionIds
 } from '@/src/lib/confessions';
 import { promptNotificationOnAction } from '@/src/lib/notificationHelper';
 
@@ -94,9 +96,10 @@ export default function ConfessionCommentsModal({
 
   // Responder a un comentario de Nivel 1
   const handleReplyToLevel1 = (comment: ConfessionComment) => {
+    const authorDisplayName = getDisplayAuthorName(comment.author_name, comment.firebase_uid, comment.is_anonymous);
     setReplyingTo({
       root_id: comment.id,
-      author_name: comment.author_name || 'Anónimo',
+      author_name: authorDisplayName,
     });
     setExpandedReplies(prev => ({ ...prev, [comment.id]: true }));
     setTimeout(() => {
@@ -106,9 +109,10 @@ export default function ConfessionCommentsModal({
 
   // Responder a una respuesta de Nivel 2 (se queda en Nivel 2 bajo la misma raíz)
   const handleReplyToLevel2 = (rootCommentId: string, subComment: ConfessionComment) => {
+    const authorDisplayName = getDisplayAuthorName(subComment.author_name, subComment.firebase_uid, subComment.is_anonymous);
     setReplyingTo({
       root_id: rootCommentId,
-      author_name: subComment.author_name || 'Anónimo',
+      author_name: authorDisplayName,
     });
     setExpandedReplies(prev => ({ ...prev, [rootCommentId]: true }));
     setTimeout(() => {
@@ -249,45 +253,66 @@ export default function ConfessionCommentsModal({
 
         <div className="overflow-y-auto space-y-6 pr-1 flex-1">
           {/* Confession Preview Card */}
-          <div className="bg-[#141414] border border-zinc-800 rounded-2xl p-4 sm:p-5 space-y-3 shadow-inner">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-full bg-[#1c1c1c] border border-amber-500/30 flex items-center justify-center text-[#eab308] shrink-0">
-                  <Building2 className="w-4 h-4" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-extrabold text-xs text-white tracking-wide">
-                      {confession.author_name}
-                    </span>
-                    {!confession.is_anonymous && (
-                      <CheckCircle2 className="w-3.5 h-3.5 text-[#eab308] fill-[#eab308]/20 shrink-0" />
-                    )}
+          {(() => {
+            const myConfessionIds = getMyConfessionIds();
+            const isMyConfession = !!(((user?.uid && confession.firebase_uid === user.uid) || myConfessionIds.includes(confession.id)));
+            const displayAuthor = getDisplayAuthorName(confession.author_name, confession.firebase_uid, confession.is_anonymous);
+
+            return (
+              <div className={`rounded-2xl p-4 sm:p-5 space-y-3 shadow-inner transition-all ${
+                isMyConfession
+                  ? 'border-2 border-[#eab308] bg-[#141209] shadow-[0_0_25px_rgba(234,179,8,0.18)] ring-1 ring-[#eab308]/40'
+                  : 'bg-[#141414] border border-zinc-800'
+              }`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+                      isMyConfession
+                        ? 'bg-[#eab308]/20 border border-[#eab308] text-[#eab308]'
+                        : 'bg-[#1c1c1c] border border-amber-500/30 text-[#eab308]'
+                    }`}>
+                      <Building2 className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className={`font-extrabold text-xs tracking-wide ${isMyConfession ? 'text-[#eab308]' : 'text-white'}`}>
+                          {displayAuthor}
+                        </span>
+                        {isMyConfession && (
+                          <span className="inline-flex items-center gap-1 bg-[#eab308] text-black text-[9px] font-black uppercase px-2 py-0.5 rounded shadow-sm tracking-wider">
+                            Tu Confesión
+                          </span>
+                        )}
+                        {!confession.is_anonymous && (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-[#eab308] fill-[#eab308]/20 shrink-0" />
+                        )}
+                      </div>
+                      <span className="text-[11px] text-zinc-500">
+                        {formatTimeAgo(confession.created_at)}
+                      </span>
+                    </div>
                   </div>
-                  <span className="text-[11px] text-zinc-500">
-                    {formatTimeAgo(confession.created_at)}
+
+                  <span className={`px-2.5 py-0.5 text-[10px] font-bold rounded-lg border uppercase tracking-wider ${categoryBadgeClass}`}>
+                    {categoryLabel}
                   </span>
                 </div>
+
+                <p className="text-xs sm:text-sm text-zinc-200 font-medium leading-relaxed">
+                  {confession.content}
+                </p>
+
+                {/* Reactions preview */}
+                <div className="flex items-center gap-2 pt-2 text-xs text-zinc-400 flex-wrap">
+                  <span className="bg-zinc-900/80 border border-zinc-800 px-2 py-1 rounded-lg text-xs font-semibold">❤️ {confession.reactions.heart}</span>
+                  <span className="bg-zinc-900/80 border border-zinc-800 px-2 py-1 rounded-lg text-xs font-semibold">😂 {confession.reactions.laugh}</span>
+                  <span className="bg-zinc-900/80 border border-zinc-800 px-2 py-1 rounded-lg text-xs font-semibold">🔥 {confession.reactions.fire}</span>
+                  <span className="bg-zinc-900/80 border border-zinc-800 px-2 py-1 rounded-lg text-xs font-semibold">😭 {confession.reactions.cry}</span>
+                  <span className="bg-zinc-900/80 border border-zinc-800 px-2 py-1 rounded-lg text-xs font-semibold">🤯 {confession.reactions.shock}</span>
+                </div>
               </div>
-
-              <span className={`px-2.5 py-0.5 text-[10px] font-bold rounded-lg border uppercase tracking-wider ${categoryBadgeClass}`}>
-                {categoryLabel}
-              </span>
-            </div>
-
-            <p className="text-xs sm:text-sm text-zinc-200 font-medium leading-relaxed">
-              {confession.content}
-            </p>
-
-            {/* Reactions preview */}
-            <div className="flex items-center gap-2 pt-2 text-xs text-zinc-400 flex-wrap">
-              <span className="bg-zinc-900/80 border border-zinc-800 px-2 py-1 rounded-lg text-xs font-semibold">❤️ {confession.reactions.heart}</span>
-              <span className="bg-zinc-900/80 border border-zinc-800 px-2 py-1 rounded-lg text-xs font-semibold">😂 {confession.reactions.laugh}</span>
-              <span className="bg-zinc-900/80 border border-zinc-800 px-2 py-1 rounded-lg text-xs font-semibold">🔥 {confession.reactions.fire}</span>
-              <span className="bg-zinc-900/80 border border-zinc-800 px-2 py-1 rounded-lg text-xs font-semibold">😭 {confession.reactions.cry}</span>
-              <span className="bg-zinc-900/80 border border-zinc-800 px-2 py-1 rounded-lg text-xs font-semibold">🤯 {confession.reactions.shock}</span>
-            </div>
-          </div>
+            );
+          })()}
 
           {/* Form: Responder a la confesión o responder en Nivel 2 */}
           <form onSubmit={handleSubmit} className="bg-[#141414] border border-zinc-800/90 rounded-2xl p-4 sm:p-5 space-y-3">
@@ -381,18 +406,29 @@ export default function ConfessionCommentsModal({
                   const replies = getRepliesForLevel1(comment.id);
                   const hasReplies = replies.length > 0;
                   const isExpanded = !!expandedReplies[comment.id];
+                  const isMyComment = !!(user && comment.firebase_uid === user.uid);
+                  const commentAuthor = getDisplayAuthorName(comment.author_name, comment.firebase_uid, comment.is_anonymous);
 
                   return (
                     <div
                       key={comment.id}
-                      className="p-3.5 bg-[#141414] border border-zinc-800/90 rounded-2xl space-y-2.5 transition-all hover:border-zinc-700 shadow-sm"
+                      className={`p-3.5 rounded-2xl space-y-2.5 transition-all shadow-sm ${
+                        isMyComment
+                          ? 'bg-[#16140b] border-2 border-[#eab308]/80 shadow-[0_0_20px_rgba(234,179,8,0.12)] ring-1 ring-[#eab308]/30'
+                          : 'bg-[#141414] border border-zinc-800/90 hover:border-zinc-700'
+                      }`}
                     >
                       {/* Cabecera Nivel 1 */}
                       <div className="flex items-center justify-between gap-2 flex-wrap">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-extrabold text-xs text-[#eab308]">
-                            {comment.author_name}
+                            {commentAuthor}
                           </span>
+                          {isMyComment && (
+                            <span className="bg-[#eab308] text-black text-[9px] font-black uppercase px-1.5 py-0.5 rounded shadow-sm">
+                              Tú
+                            </span>
+                          )}
                           <span className="text-[10px] text-zinc-500 font-medium">
                             {formatTimeAgo(comment.created_at)}
                           </span>
@@ -404,13 +440,13 @@ export default function ConfessionCommentsModal({
                             type="button"
                             onClick={() => handleReplyToLevel1(comment)}
                             className="flex items-center gap-1 text-[11px] font-bold text-zinc-400 hover:text-amber-400 hover:bg-amber-500/10 px-2 py-0.5 rounded-md transition-all cursor-pointer"
-                            title={`Responder a ${comment.author_name || 'Anónimo'}`}
+                            title={`Responder a ${commentAuthor}`}
                           >
                             <CornerDownRight className="w-3 h-3" />
                             <span>Responder</span>
                           </button>
 
-                          {user && comment.firebase_uid === user.uid && (
+                          {isMyComment && (
                             <button
                               type="button"
                               onClick={() => handleDeleteClick(comment.id)}
@@ -454,58 +490,73 @@ export default function ConfessionCommentsModal({
                       {/* Respuestas de Nivel 2 agrupadas */}
                       {hasReplies && isExpanded && (
                         <div className="space-y-2 pl-3.5 sm:pl-4 border-l-2 border-amber-500/30 pt-1">
-                          {replies.map((subComment) => (
-                            <div
-                              key={subComment.id}
-                              className="p-3 bg-[#0d0d10] border border-zinc-800/80 rounded-xl space-y-1.5 transition-all hover:border-zinc-700"
-                            >
-                              <div className="flex items-center justify-between gap-2 flex-wrap">
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <span className="font-extrabold text-xs text-white">
-                                    {subComment.author_name}
-                                  </span>
+                          {replies.map((subComment) => {
+                            const isMySubComment = !!(user && subComment.firebase_uid === user.uid);
+                            const subCommentAuthor = getDisplayAuthorName(subComment.author_name, subComment.firebase_uid, subComment.is_anonymous);
+                            const repliedToDisplayName = getDisplayAuthorName(subComment.reply_to_author || comment.author_name, null, false);
 
-                                  {/* Indicador 'X ha respondido a @Y' */}
-                                  <span className="inline-flex items-center gap-1 bg-[#eab308]/15 text-[#eab308] border border-[#eab308]/30 text-[10px] font-bold px-2 py-0.5 rounded-md">
-                                    <CornerDownRight className="w-2.5 h-2.5" />
-                                    <span>ha respondido a @{subComment.reply_to_author || comment.author_name}</span>
-                                  </span>
+                            return (
+                              <div
+                                key={subComment.id}
+                                className={`p-3 rounded-xl space-y-1.5 transition-all ${
+                                  isMySubComment
+                                    ? 'bg-[#15130b] border-2 border-[#eab308]/70 shadow-sm ring-1 ring-[#eab308]/20'
+                                    : 'bg-[#0d0d10] border border-zinc-800/80 hover:border-zinc-700'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-2 flex-wrap">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="font-extrabold text-xs text-white">
+                                      {subCommentAuthor}
+                                    </span>
+                                    {isMySubComment && (
+                                      <span className="bg-[#eab308] text-black text-[9px] font-black uppercase px-1.5 py-0.5 rounded shadow-sm">
+                                        Tú
+                                      </span>
+                                    )}
 
-                                  <span className="text-[10px] text-zinc-500 font-medium">
-                                    {formatTimeAgo(subComment.created_at)}
-                                  </span>
-                                </div>
+                                    {/* Indicador 'X ha respondido a @Y' */}
+                                    <span className="inline-flex items-center gap-1 bg-[#eab308]/15 text-[#eab308] border border-[#eab308]/30 text-[10px] font-bold px-2 py-0.5 rounded-md">
+                                      <CornerDownRight className="w-2.5 h-2.5" />
+                                      <span>ha respondido a @{repliedToDisplayName}</span>
+                                    </span>
 
-                                <div className="flex items-center gap-1">
-                                  {/* Botón Responder en Nivel 2 */}
-                                  <button
-                                    type="button"
-                                    onClick={() => handleReplyToLevel2(comment.id, subComment)}
-                                    className="flex items-center gap-1 text-[10px] font-bold text-zinc-400 hover:text-amber-400 hover:bg-amber-500/10 px-1.5 py-0.5 rounded transition-all cursor-pointer"
-                                    title={`Responder a ${subComment.author_name || 'Anónimo'}`}
-                                  >
-                                    <CornerDownRight className="w-2.5 h-2.5" />
-                                    <span>Responder</span>
-                                  </button>
+                                    <span className="text-[10px] text-zinc-500 font-medium">
+                                      {formatTimeAgo(subComment.created_at)}
+                                    </span>
+                                  </div>
 
-                                  {user && subComment.firebase_uid === user.uid && (
+                                  <div className="flex items-center gap-1">
+                                    {/* Botón Responder en Nivel 2 */}
                                     <button
                                       type="button"
-                                      onClick={() => handleDeleteClick(subComment.id)}
-                                      className="p-1 rounded text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors cursor-pointer"
-                                      title="Eliminar mi respuesta"
+                                      onClick={() => handleReplyToLevel2(comment.id, subComment)}
+                                      className="flex items-center gap-1 text-[10px] font-bold text-zinc-400 hover:text-amber-400 hover:bg-amber-500/10 px-1.5 py-0.5 rounded transition-all cursor-pointer"
+                                      title={`Responder a ${subCommentAuthor}`}
                                     >
-                                      <Trash className="w-3 h-3" />
+                                      <CornerDownRight className="w-2.5 h-2.5" />
+                                      <span>Responder</span>
                                     </button>
-                                  )}
-                                </div>
-                              </div>
 
-                              <p className="text-xs text-zinc-200 leading-relaxed font-medium whitespace-pre-wrap">
-                                {subComment.content}
-                              </p>
-                            </div>
-                          ))}
+                                    {isMySubComment && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteClick(subComment.id)}
+                                        className="p-1 rounded text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors cursor-pointer"
+                                        title="Eliminar mi respuesta"
+                                      >
+                                        <Trash className="w-3 h-3" />
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <p className="text-xs text-zinc-200 leading-relaxed font-medium whitespace-pre-wrap">
+                                  {subComment.content}
+                                </p>
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                     </div>

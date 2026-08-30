@@ -75,13 +75,14 @@ import {
   formatTimeAgo, 
   CenterConfession, 
   ConfessionCategory, 
-  ReactionType,
+  ReactionType, 
   CONFESSIONS_SETUP_SQL,
   getConfessionComments,
   createConfessionComment,
   ConfessionComment,
   getMyConfessionIds,
-  deleteCenterConfession
+  deleteCenterConfession,
+  getDisplayAuthorName
 } from '@/src/lib/confessions';
 import AddMemberModal from '@/components/Modals/AddMemberModal';
 import PublishConfessionModal from '@/components/Modals/PublishConfessionModal';
@@ -1768,29 +1769,43 @@ export default function EducationalCenterProfileView({
                   categoryBadgeClass = 'bg-amber-950/40 text-amber-400 border-amber-500/30';
                 }
 
+                const isMyConfession = !!(((user?.uid && conf.firebase_uid === user.uid) || myConfessionIds.includes(conf.id)));
+                const displayAuthor = getDisplayAuthorName(conf.author_name, conf.firebase_uid, conf.is_anonymous);
+
+                const cardBorderClass = isMyConfession
+                  ? 'border-2 border-[#eab308] bg-[#121109] shadow-[0_0_30px_rgba(234,179,8,0.18)] ring-1 ring-[#eab308]/40'
+                  : isPink
+                  ? 'border border-pink-500/40 hover:border-pink-500/80 shadow-[0_0_25px_rgba(236,72,153,0.08)] bg-[#0d0d0d]'
+                  : isFire
+                  ? 'border border-amber-500/40 hover:border-amber-500/80 shadow-[0_0_25px_rgba(245,158,11,0.08)] bg-[#0d0d0d]'
+                  : 'border border-zinc-800/80 hover:border-zinc-700 shadow-sm bg-[#0d0d0d]';
+
                 return (
                   <div
                     key={conf.id}
-                    className={`bg-[#0d0d0d] rounded-2xl p-5 flex flex-col justify-between transition-all duration-300 ${
-                      isPink
-                        ? 'border border-pink-500/40 hover:border-pink-500/80 shadow-[0_0_25px_rgba(236,72,153,0.08)]'
-                        : isFire
-                        ? 'border border-amber-500/40 hover:border-amber-500/80 shadow-[0_0_25px_rgba(245,158,11,0.08)]'
-                        : 'border border-zinc-800/80 hover:border-zinc-700 shadow-sm'
-                    }`}
+                    className={`rounded-2xl p-5 flex flex-col justify-between transition-all duration-300 ${cardBorderClass}`}
                   >
                     <div>
                       {/* Header Author & Category */}
                       <div className="flex items-start justify-between gap-3 mb-3">
                         <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-full bg-[#181818] border border-amber-500/30 flex items-center justify-center text-[#eab308] shrink-0">
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+                            isMyConfession
+                              ? 'bg-[#eab308]/20 border border-[#eab308] text-[#eab308]'
+                              : 'bg-[#181818] border border-amber-500/30 text-[#eab308]'
+                          }`}>
                             <Building2 className="w-4 h-4" />
                           </div>
                           <div>
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-extrabold text-xs text-white tracking-wide">
-                                {conf.author_name}
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className={`font-extrabold text-xs tracking-wide ${isMyConfession ? 'text-[#eab308]' : 'text-white'}`}>
+                                {displayAuthor}
                               </span>
+                              {isMyConfession && (
+                                <span className="inline-flex items-center gap-1 bg-[#eab308] text-black text-[9px] font-black uppercase px-2 py-0.5 rounded shadow-sm tracking-wider">
+                                  Tu Confesión
+                                </span>
+                              )}
                               {!conf.is_anonymous && (
                                 <CheckCircle2 className="w-3.5 h-3.5 text-[#eab308] fill-[#eab308]/20 shrink-0" />
                               )}
