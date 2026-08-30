@@ -1,7 +1,17 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { X, Send, MessageCircle, Building2, CornerDownRight, CheckCircle2, Trash } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  X, 
+  Send, 
+  MessageCircle, 
+  Building2, 
+  CornerDownRight, 
+  CheckCircle2, 
+  Trash,
+  ChevronDown,
+  ChevronUp
+} from 'lucide-react';
 import { useAuth } from '@/src/context/AuthContext';
 import { 
   CenterConfession, 
@@ -33,6 +43,17 @@ export default function ConfessionCommentsModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Estado para responder a un comentario (Nivel 2)
+  // root_id: el ID del comentario de Nivel 1 donde se agrupará la respuesta
+  const [replyingTo, setReplyingTo] = useState<{ 
+    root_id: string; 
+    author_name: string 
+  } | null>(null);
+
+  // Estado para expandir/colapsar "Ver respuestas (X)" por cada comentario de nivel 1
+  const [expandedReplies, setExpandedReplies] = useState<Record<string, boolean>>({});
+
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const [commentToDelete, setCommentToDelete] = useState<string | null>(null);
 
   useEffect(() => {
@@ -42,7 +63,9 @@ export default function ConfessionCommentsModal({
       setComments([]);
       setContent('');
       setError(null);
+      setReplyingTo(null);
       setCommentToDelete(null);
+      setExpandedReplies({});
     }
   }, [isOpen, confession]);
 
@@ -60,6 +83,41 @@ export default function ConfessionCommentsModal({
     }
   };
 
+  const toggleReplies = (commentId: string) => {
+    setExpandedReplies(prev => ({
+      ...prev,
+      [commentId]: !prev[commentId]
+    }));
+  };
+
+  // Responder a un comentario de Nivel 1
+  const handleReplyToLevel1 = (comment: ConfessionComment) => {
+    setReplyingTo({
+      root_id: comment.id,
+      author_name: comment.author_name || 'Anónimo',
+    });
+    setExpandedReplies(prev => ({ ...prev, [comment.id]: true }));
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 50);
+  };
+
+  // Responder a una respuesta de Nivel 2 (se queda en Nivel 2 bajo la misma raíz)
+  const handleReplyToLevel2 = (rootCommentId: string, subComment: ConfessionComment) => {
+    setReplyingTo({
+      root_id: rootCommentId,
+      author_name: subComment.author_name || 'Anónimo',
+    });
+    setExpandedReplies(prev => ({ ...prev, [rootCommentId]: true }));
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 50);
+  };
+
+  const cancelReply = () => {
+    setReplyingTo(null);
+  };
+
   const handleDeleteClick = (commentId: string) => {
     setCommentToDelete(commentId);
   };
@@ -69,11 +127,8 @@ export default function ConfessionCommentsModal({
     const commentId = commentToDelete;
     setCommentToDelete(null);
     
-    // Guardar copia para rollback
     const previousComments = [...comments];
-    
-    // Optimistic Update: remover el comentario localmente al instante
-    setComments((prev) => prev.filter((c) => c.id !== commentId));
+    setComments((prev) => prev.filter((c) => c.id !== commentId && c.parent_id !== commentId));
     
     try {
       setError(null);
@@ -81,13 +136,11 @@ export default function ConfessionCommentsModal({
       if (success) {
         onCommentAdded(confession.id);
       } else {
-        // Rollback
         setComments(previousComments);
-        setError(deleteErr || 'No se pudo eliminar el comentario. Revisa las políticas RLS en tu editor SQL de Supabase.');
+        setError(deleteErr || 'No se pudo eliminar el comentario.');
       }
     } catch (err) {
       console.error('Error al eliminar comentario:', err);
-      // Rollback
       setComments(previousComments);
       setError('Error al conectar con la base de datos.');
     }
@@ -118,10 +171,16 @@ export default function ConfessionCommentsModal({
         author_name: authorName,
         content: trimmedContent,
         is_anonymous: true,
+        parent_id: replyingTo?.root_id || null,
+        reply_to_author: replyingTo?.author_name || null,
       });
 
       setComments((prev) => [...prev, newComment]);
+      if (replyingTo?.root_id) {
+        setExpandedReplies(prev => ({ ...prev, [replyingTo.root_id]: true }));
+      }
       setContent('');
+      setReplyingTo(null);
       promptNotificationOnAction('comment');
       onCommentAdded(confession.id);
     } catch (err: any) {
@@ -130,6 +189,13 @@ export default function ConfessionCommentsModal({
     } finally {
       setSubmitting(false);
     }
+  };
+
+  // Separación en 2 niveles
+  const commentIds = new Set(comments.map(c => c.id));
+  const level1Comments = comments.filter(c => !c.parent_id || !commentIds.has(c.parent_id));
+  const getRepliesForLevel1 = (parentId: string) => {
+    return comments.filter(c => c.parent_id === parentId);
   };
 
   // Category badge styling
@@ -219,17 +285,37 @@ export default function ConfessionCommentsModal({
             </div>
           </div>
 
-          {/* Form: Responder a esta confesión */}
+          {/* Form: Responder a la confesión o responder en Nivel 2 */}
           <form onSubmit={handleSubmit} className="bg-[#141414] border border-zinc-800/90 rounded-2xl p-4 sm:p-5 space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-extrabold text-white flex items-center gap-1.5 uppercase tracking-wider">
                 <CornerDownRight className="w-4 h-4 text-[#eab308]" />
-                <span>Responder a esta confesión</span>
+                <span>
+                  {replyingTo ? `Respondiendo a @${replyingTo.author_name}` : 'Responder a esta confesión'}
+                </span>
               </h3>
               <span className={`text-[11px] font-semibold ${content.length >= 480 ? 'text-amber-400' : 'text-zinc-500'}`}>
                 {content.length}/500
               </span>
             </div>
+
+            {/* Banner indicador de respuesta (Nivel 2) */}
+            {replyingTo && (
+              <div className="flex items-center justify-between bg-amber-500/10 border border-amber-500/30 px-3 py-1.5 rounded-xl text-xs">
+                <div className="flex items-center gap-1.5 text-amber-400 font-bold">
+                  <CornerDownRight className="w-3.5 h-3.5" />
+                  <span>En respuesta a <strong className="text-white">@{replyingTo.author_name}</strong></span>
+                </div>
+                <button
+                  type="button"
+                  onClick={cancelReply}
+                  className="text-zinc-400 hover:text-white p-0.5 rounded cursor-pointer"
+                  title="Cancelar respuesta a este usuario"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
 
             {error && (
               <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 p-2.5 rounded-xl">
@@ -239,11 +325,12 @@ export default function ConfessionCommentsModal({
 
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 pt-1">
               <textarea
+                ref={inputRef}
                 value={content}
                 onChange={(e) => setContent(e.target.value.slice(0, 500))}
                 maxLength={500}
                 rows={2}
-                placeholder="Escribe tu respuesta anónima (máx. 500 caracteres)..."
+                placeholder={replyingTo ? `Escribe tu respuesta para @${replyingTo.author_name}...` : "Escribe tu respuesta anónima (máx. 500 caracteres)..."}
                 className="flex-1 bg-[#0d0d0d] border border-zinc-800 rounded-xl p-3 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[#eab308] transition-colors resize-none leading-relaxed"
                 required
               />
@@ -265,7 +352,7 @@ export default function ConfessionCommentsModal({
             </div>
           </form>
 
-          {/* Respuestas de la comunidad */}
+          {/* Respuestas de la comunidad (2 niveles) */}
           <div className="space-y-3">
             <h3 className="text-xs font-extrabold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
               <span>💬 Respuestas de la comunidad</span>
@@ -279,43 +366,147 @@ export default function ConfessionCommentsModal({
                 <div className="w-6 h-6 border-2 border-[#eab308] border-t-transparent rounded-full animate-spin mx-auto" />
                 <p>Cargando respuestas...</p>
               </div>
-            ) : comments.length === 0 ? (
+            ) : level1Comments.length === 0 ? (
               <div className="p-8 bg-[#141414] border border-zinc-800/60 rounded-2xl text-center space-y-2 text-xs text-zinc-500">
                 <p className="text-white font-bold">Aún no hay respuestas en esta confesión.</p>
                 <p>Sé el primero en compartir tu opinión o apoyo.</p>
               </div>
             ) : (
-              <div className="space-y-2.5">
-                {comments.map((comment) => (
-                  <div
-                    key={comment.id}
-                    className="p-3.5 bg-[#141414] border border-zinc-800/80 rounded-2xl space-y-1.5 transition-all hover:border-zinc-700"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-extrabold text-xs text-[#eab308]">
-                        {comment.author_name}
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] text-zinc-500 font-medium">
-                          {formatTimeAgo(comment.created_at)}
-                        </span>
-                        {user && comment.firebase_uid === user.uid && (
+              <div className="space-y-3">
+                {level1Comments.map((comment) => {
+                  const replies = getRepliesForLevel1(comment.id);
+                  const hasReplies = replies.length > 0;
+                  const isExpanded = !!expandedReplies[comment.id];
+
+                  return (
+                    <div
+                      key={comment.id}
+                      className="p-3.5 bg-[#141414] border border-zinc-800/90 rounded-2xl space-y-2.5 transition-all hover:border-zinc-700 shadow-sm"
+                    >
+                      {/* Cabecera Nivel 1 */}
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-extrabold text-xs text-[#eab308]">
+                            {comment.author_name}
+                          </span>
+                          <span className="text-[10px] text-zinc-500 font-medium">
+                            {formatTimeAgo(comment.created_at)}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-1.5">
+                          {/* Botón Responder Nivel 1 */}
                           <button
                             type="button"
-                            onClick={() => handleDeleteClick(comment.id)}
-                            className="p-1 rounded text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors cursor-pointer"
-                            title="Eliminar mi respuesta"
+                            onClick={() => handleReplyToLevel1(comment)}
+                            className="flex items-center gap-1 text-[11px] font-bold text-zinc-400 hover:text-amber-400 hover:bg-amber-500/10 px-2 py-0.5 rounded-md transition-all cursor-pointer"
+                            title={`Responder a ${comment.author_name || 'Anónimo'}`}
                           >
-                            <Trash className="w-3.5 h-3.5" />
+                            <CornerDownRight className="w-3 h-3" />
+                            <span>Responder</span>
                           </button>
-                        )}
+
+                          {user && comment.firebase_uid === user.uid && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteClick(comment.id)}
+                              className="p-1 rounded text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors cursor-pointer"
+                              title="Eliminar mi respuesta"
+                            >
+                              <Trash className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </div>
+
+                      {/* Contenido Nivel 1 */}
+                      <p className="text-xs text-zinc-200 leading-relaxed font-medium whitespace-pre-wrap">
+                        {comment.content}
+                      </p>
+
+                      {/* Botón Ver Respuestas / Ocultar Respuestas (Nivel 2) */}
+                      {hasReplies && (
+                        <div className="pt-1 border-t border-zinc-800/60 flex items-center justify-between">
+                          <button
+                            type="button"
+                            onClick={() => toggleReplies(comment.id)}
+                            className="flex items-center gap-1.5 text-xs font-bold text-[#eab308] hover:text-[#facc15] py-1 cursor-pointer transition-colors"
+                          >
+                            {isExpanded ? (
+                              <>
+                                <ChevronUp className="w-3.5 h-3.5" />
+                                <span>Ocultar respuestas ({replies.length})</span>
+                              </>
+                            ) : (
+                              <>
+                                <ChevronDown className="w-3.5 h-3.5" />
+                                <span>Ver {replies.length} {replies.length === 1 ? 'respuesta' : 'respuestas'}</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Respuestas de Nivel 2 agrupadas */}
+                      {hasReplies && isExpanded && (
+                        <div className="space-y-2 pl-3.5 sm:pl-4 border-l-2 border-amber-500/30 pt-1">
+                          {replies.map((subComment) => (
+                            <div
+                              key={subComment.id}
+                              className="p-3 bg-[#0d0d10] border border-zinc-800/80 rounded-xl space-y-1.5 transition-all hover:border-zinc-700"
+                            >
+                              <div className="flex items-center justify-between gap-2 flex-wrap">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="font-extrabold text-xs text-white">
+                                    {subComment.author_name}
+                                  </span>
+
+                                  {/* Indicador 'X ha respondido a @Y' */}
+                                  <span className="inline-flex items-center gap-1 bg-[#eab308]/15 text-[#eab308] border border-[#eab308]/30 text-[10px] font-bold px-2 py-0.5 rounded-md">
+                                    <CornerDownRight className="w-2.5 h-2.5" />
+                                    <span>ha respondido a @{subComment.reply_to_author || comment.author_name}</span>
+                                  </span>
+
+                                  <span className="text-[10px] text-zinc-500 font-medium">
+                                    {formatTimeAgo(subComment.created_at)}
+                                  </span>
+                                </div>
+
+                                <div className="flex items-center gap-1">
+                                  {/* Botón Responder en Nivel 2 */}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleReplyToLevel2(comment.id, subComment)}
+                                    className="flex items-center gap-1 text-[10px] font-bold text-zinc-400 hover:text-amber-400 hover:bg-amber-500/10 px-1.5 py-0.5 rounded transition-all cursor-pointer"
+                                    title={`Responder a ${subComment.author_name || 'Anónimo'}`}
+                                  >
+                                    <CornerDownRight className="w-2.5 h-2.5" />
+                                    <span>Responder</span>
+                                  </button>
+
+                                  {user && subComment.firebase_uid === user.uid && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteClick(subComment.id)}
+                                      className="p-1 rounded text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors cursor-pointer"
+                                      title="Eliminar mi respuesta"
+                                    >
+                                      <Trash className="w-3 h-3" />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+
+                              <p className="text-xs text-zinc-200 leading-relaxed font-medium whitespace-pre-wrap">
+                                {subComment.content}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                    <p className="text-xs text-zinc-200 leading-relaxed font-medium">
-                      {comment.content}
-                    </p>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

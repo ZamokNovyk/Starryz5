@@ -38,6 +38,8 @@ export interface ConfessionComment {
   author_name: string;
   content: string;
   is_anonymous: boolean;
+  parent_id?: string | null;
+  reply_to_author?: string | null;
   created_at: string;
 }
 
@@ -75,7 +77,7 @@ CREATE TABLE IF NOT EXISTS public.confession_reactions (
     UNIQUE(confession_id, user_id, reaction_type)
 );
 
--- 3. Tabla de comentarios y respuestas a confesiones
+-- 3. Tabla de comentarios y respuestas a confesiones (Soporta 2 niveles de conversación)
 CREATE TABLE IF NOT EXISTS public.confession_comments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     confession_id UUID NOT NULL REFERENCES public.center_confessions(id) ON DELETE CASCADE,
@@ -83,14 +85,21 @@ CREATE TABLE IF NOT EXISTS public.confession_comments (
     author_name TEXT NOT NULL DEFAULT 'Anónimo',
     content TEXT NOT NULL,
     is_anonymous BOOLEAN NOT NULL DEFAULT true,
+    parent_id UUID REFERENCES public.confession_comments(id) ON DELETE CASCADE,
+    reply_to_author TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
+
+-- Migración segura para agregar columnas de respuesta si ya existe la tabla
+ALTER TABLE public.confession_comments ADD COLUMN IF NOT EXISTS parent_id UUID REFERENCES public.confession_comments(id) ON DELETE CASCADE;
+ALTER TABLE public.confession_comments ADD COLUMN IF NOT EXISTS reply_to_author TEXT;
 
 -- 4. Índices para rendimiento
 CREATE INDEX IF NOT EXISTS idx_center_confessions_center_id ON public.center_confessions(center_id);
 CREATE INDEX IF NOT EXISTS idx_center_confessions_created_at ON public.center_confessions(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_confession_reactions_confession ON public.confession_reactions(confession_id);
 CREATE INDEX IF NOT EXISTS idx_confession_comments_confession ON public.confession_comments(confession_id);
+CREATE INDEX IF NOT EXISTS idx_confession_comments_parent ON public.confession_comments(parent_id);
 CREATE INDEX IF NOT EXISTS idx_confession_comments_created_at ON public.confession_comments(created_at ASC);
 
 -- 5. Habilitar Row Level Security (RLS)
@@ -567,7 +576,7 @@ export async function getConfessionComments(confessionId: string): Promise<Confe
 }
 
 /**
- * Agrega un nuevo comentario / respuesta a una confesión
+ * Agrega un nuevo comentario / respuesta a una confesión (Nivel 1 o Nivel 2 en respuesta a alguien)
  */
 export async function createConfessionComment(payload: {
   confession_id: string;
@@ -575,8 +584,10 @@ export async function createConfessionComment(payload: {
   author_name: string;
   content: string;
   is_anonymous: boolean;
+  parent_id?: string | null;
+  reply_to_author?: string | null;
 }): Promise<ConfessionComment> {
-  const record = {
+  const record: Record<string, any> = {
     confession_id: payload.confession_id,
     firebase_uid: payload.firebase_uid,
     author_name: payload.author_name || 'Anónimo',
@@ -584,11 +595,47 @@ export async function createConfessionComment(payload: {
     is_anonymous: payload.is_anonymous,
   };
 
-  const { data, error } = await supabase
+  if (payload.parent_id) {
+    record.parent_id = payload.parent_id;
+  }
+  if (payload.reply_to_author) {
+    record.reply_to_author = payload.reply_to_author;
+  }
+
+  let data: any = null;
+  let error: any = null;
+
+  // Intento 1: Insertar con parent_id y reply_to_author
+  const res1 = await supabase
     .from('confession_comments')
     .insert([record])
     .select()
     .single();
+
+  data = res1.data;
+  error = res1.error;
+
+  // Fallback seguro si la tabla aún no tiene las columnas parent_id / reply_to_author en Supabase
+  if (error && (error.message?.includes('parent_id') || error.message?.includes('reply_to_author') || error.code === '42703')) {
+    const fallbackRecord = {
+      confession_id: payload.confession_id,
+      firebase_uid: payload.firebase_uid,
+      author_name: payload.author_name || 'Anónimo',
+      content: payload.content,
+      is_anonymous: payload.is_anonymous,
+    };
+    const res2 = await supabase
+      .from('confession_comments')
+      .insert([fallbackRecord])
+      .select()
+      .single();
+    data = res2.data;
+    error = res2.error;
+    if (data) {
+      data.parent_id = payload.parent_id || null;
+      data.reply_to_author = payload.reply_to_author || null;
+    }
+  }
 
   if (error) {
     console.error('Error al insertar comentario:', error);
@@ -618,21 +665,64 @@ export async function createConfessionComment(payload: {
           .eq('id', payload.confession_id);
       }
 
-      // Disparar la notificación si el autor del comentario no es el mismo dueño de la confesión
-      if (conf.firebase_uid && conf.firebase_uid !== payload.firebase_uid) {
-        let centerName = '';
-        if (conf.center_id) {
-          const { data: centerData } = await supabase
-            .from('educational_centers')
-            .select('name')
-            .eq('id', conf.center_id)
-            .maybeSingle();
-          if (centerData?.name) centerName = centerData.name;
-        }
+      let centerName = '';
+      if (conf.center_id) {
+        const { data: centerData } = await supabase
+          .from('educational_centers')
+          .select('name')
+          .eq('id', conf.center_id)
+          .maybeSingle();
+        if (centerData?.name) centerName = centerData.name;
+      }
+      const centerSuffix = centerName ? ` en ${centerName}` : '';
+      const senderName = payload.author_name || 'Alguien';
 
-        const senderName = payload.author_name || 'Alguien';
-        const centerSuffix = centerName ? ` en ${centerName}` : '';
-        const bodyText = `[${senderName}] ha respondido a tu confesión${centerSuffix}: "${payload.content.substring(0, 45)}${payload.content.length > 45 ? '...' : ''}"`;
+      // 1. Notificación Nivel 2: Si es una respuesta a otro comentario
+      let notifiedParentUser = false;
+      if (payload.parent_id) {
+        try {
+          const { data: parentComment } = await supabase
+            .from('confession_comments')
+            .select('firebase_uid, author_name')
+            .eq('id', payload.parent_id)
+            .maybeSingle();
+
+          if (parentComment?.firebase_uid && parentComment.firebase_uid !== payload.firebase_uid) {
+            notifiedParentUser = true;
+            const replyBody = `[${senderName}] te ha respondido a tu comentario${centerSuffix}: "${payload.content.substring(0, 45)}${payload.content.length > 45 ? '...' : ''}"`;
+            const notifLinkUrl = `/?show_confession=${payload.confession_id}&comment_id=${data.id}`;
+
+            const { error: notiError } = await supabase.from('notifications').insert([{
+              user_uid: parentComment.firebase_uid,
+              title: senderName,
+              body: replyBody,
+              link_url: notifLinkUrl,
+              is_read: false
+            }]);
+
+            if (!notiError) {
+              supabase.functions.invoke('rapid-processor', {
+                body: {
+                  user_uid: parentComment.firebase_uid,
+                  title: senderName,
+                  body: replyBody,
+                  link_url: notifLinkUrl,
+                  confession_id: payload.confession_id,
+                  comment_id: data.id
+                }
+              }).catch(() => {});
+            }
+          }
+        } catch (parentErr) {
+          console.warn('No se pudo notificar al autor del comentario padre:', parentErr);
+        }
+      }
+
+      // 2. Notificación al autor de la confesión (si no es el mismo que responde y no fue notificado arriba)
+      if (conf.firebase_uid && conf.firebase_uid !== payload.firebase_uid && (!notifiedParentUser || conf.firebase_uid !== payload.parent_id)) {
+        const bodyText = payload.reply_to_author 
+          ? `[${senderName}] ha respondido en tu confesión${centerSuffix} (a @${payload.reply_to_author}): "${payload.content.substring(0, 45)}${payload.content.length > 45 ? '...' : ''}"`
+          : `[${senderName}] ha respondido a tu confesión${centerSuffix}: "${payload.content.substring(0, 45)}${payload.content.length > 45 ? '...' : ''}"`;
 
         const notifLinkUrl = `/?show_confession=${payload.confession_id}&comment_id=${data.id}`;
 

@@ -26,7 +26,11 @@ import {
   ExternalLink,
   Share2,
   Trash,
-  ShieldCheck
+  ShieldCheck,
+  CornerDownRight,
+  Send,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import CommunityGuidelinesModal from './Modals/CommunityGuidelinesModal';
 import { useAuth } from '@/src/context/AuthContext';
@@ -35,6 +39,8 @@ import { useFCMNotifications } from '@/hooks/useFCMNotifications';
 import AutocompleteSearchBar from './AutocompleteSearchBar';
 import { SearchSuggestion } from '@/src/lib/search';
 import { supabase } from '@/src/lib/supabase';
+import { createConfessionComment } from '@/src/lib/confessions';
+import { promptNotificationOnAction } from '@/src/lib/notificationHelper';
 
 interface NotificationItem {
   id: string;
@@ -95,6 +101,14 @@ export default function Header({
   const [modalComments, setModalComments] = useState<any[]>([]);
   const [targetCommentId, setTargetCommentId] = useState<string | null>(null);
   const [modalReactionsCount, setModalReactionsCount] = useState<number>(0);
+
+  // States for 2-level reply conversation inside modal
+  const [modalReplyText, setModalReplyText] = useState('');
+  const [modalReplyingTo, setModalReplyingTo] = useState<{ root_id: string; author_name: string } | null>(null);
+  const [modalExpandedReplies, setModalExpandedReplies] = useState<Record<string, boolean>>({});
+  const [submittingModalReply, setSubmittingModalReply] = useState(false);
+  const [modalReplyError, setModalReplyError] = useState<string | null>(null);
+  const modalReplyInputRef = useRef<HTMLTextAreaElement>(null);
 
   const unreadCount = notifications.filter(n => !n.is_read).length;
 
@@ -241,6 +255,10 @@ export default function Header({
     setModalComments([]);
     setTargetCommentId(commentId);
     setModalReactionsCount(0);
+    setModalReplyText('');
+    setModalReplyingTo(null);
+    setModalReplyError(null);
+    setModalExpandedReplies({});
     
     try {
       // 1. Obtener la confesión
@@ -265,40 +283,23 @@ export default function Header({
           }
         }
 
-        // 3. Obtener únicamente la respuesta específica que generó la notificación
-        if (commentId) {
-          const { data: targetComment } = await supabase
-            .from('confession_comments')
-            .select('*')
-            .eq('id', commentId)
-            .maybeSingle();
+        // 3. Obtener TODAS las respuestas de la confesión para mostrar la conversación fluida (2 niveles)
+        const { data: comments } = await supabase
+          .from('confession_comments')
+          .select('*')
+          .eq('confession_id', confessionId)
+          .order('created_at', { ascending: true });
 
-          if (targetComment) {
-            setModalComments([targetComment]);
-          } else {
-            // Fallback: si no se encontró por ID directo, buscar en los comentarios de la confesión
-            const { data: comments } = await supabase
-              .from('confession_comments')
-              .select('*')
-              .eq('confession_id', confessionId)
-              .order('created_at', { ascending: false });
-
-            if (comments && comments.length > 0) {
-              const matched = comments.find(c => c.id === commentId);
-              setModalComments(matched ? [matched] : [comments[0]]);
+        if (comments) {
+          setModalComments(comments);
+          // Si la notificación apuntaba a un comentario específico, expandir su hilo
+          if (commentId) {
+            const target = comments.find(c => c.id === commentId);
+            if (target && target.parent_id) {
+              setModalExpandedReplies({ [target.parent_id]: true });
+            } else if (target) {
+              setModalExpandedReplies({ [target.id]: true });
             }
-          }
-        } else {
-          // Si no viene comment_id específico, obtener solo la respuesta más reciente
-          const { data: comments } = await supabase
-            .from('confession_comments')
-            .select('*')
-            .eq('confession_id', confessionId)
-            .order('created_at', { ascending: false })
-            .limit(1);
-
-          if (comments && comments.length > 0) {
-            setModalComments([comments[0]]);
           }
         }
       }
@@ -306,6 +307,49 @@ export default function Header({
       console.error('Error al cargar detalles de la confesión para la notificación:', err);
     } finally {
       setModalLoading(false);
+    }
+  };
+
+  const handleSendModalReply = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setModalReplyError(null);
+
+    const trimmed = modalReplyText.trim();
+    if (!trimmed) {
+      setModalReplyError('Por favor escribe tu respuesta.');
+      return;
+    }
+    if (!modalConfession) return;
+
+    const authorName = user ? (user.displayName || user.email?.split('@')[0] || 'Anónimo') : 'Anónimo';
+
+    try {
+      setSubmittingModalReply(true);
+      const newComment = await createConfessionComment({
+        confession_id: modalConfession.id,
+        firebase_uid: user?.uid || null,
+        author_name: authorName,
+        content: trimmed,
+        is_anonymous: true,
+        parent_id: modalReplyingTo?.root_id || null,
+        reply_to_author: modalReplyingTo?.author_name || null,
+      });
+
+      setModalComments((prev) => [...prev, newComment]);
+      if (modalReplyingTo?.root_id) {
+        setModalExpandedReplies(prev => ({ ...prev, [modalReplyingTo.root_id]: true }));
+      }
+      if (modalConfession) {
+        setModalConfession((prev: any) => prev ? { ...prev, comments_count: (prev.comments_count || 0) + 1 } : prev);
+      }
+      setModalReplyText('');
+      setModalReplyingTo(null);
+      promptNotificationOnAction('comment');
+    } catch (err: any) {
+      console.error('Error al enviar respuesta:', err);
+      setModalReplyError('Error al guardar tu respuesta en la base de datos.');
+    } finally {
+      setSubmittingModalReply(false);
     }
   };
 
@@ -1262,12 +1306,12 @@ export default function Header({
 
                   </div>
 
-                  {/* Respuesta Recibida */}
+                  {/* Respuestas y Conversación (2 Niveles) */}
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
                       <h4 className="text-xs font-black text-[#eab308] uppercase tracking-wider flex items-center gap-2">
                         <MessageSquare className="w-3.5 h-3.5 text-[#eab308]" />
-                        <span>Respuesta Recibida</span>
+                        <span>Conversación & Respuestas</span>
                         <span className="text-[10px] bg-[#eab308]/20 text-[#eab308] border border-[#eab308]/30 px-2 py-0.5 rounded-full font-bold">
                           {modalComments.length}
                         </span>
@@ -1275,60 +1319,250 @@ export default function Header({
                     </div>
 
                     {modalComments.length === 0 ? (
-                      <div className="p-8 rounded-xl bg-[#121317] border border-zinc-800/60 text-center">
-                        <p className="text-zinc-500 text-xs italic">No se encontró el comentario o ha sido eliminado.</p>
+                      <div className="p-6 rounded-xl bg-[#121317] border border-zinc-800/60 text-center">
+                        <p className="text-zinc-500 text-xs italic">Aún no hay respuestas. Sé el primero en iniciar la conversación.</p>
                       </div>
                     ) : (
-                      <div className="space-y-3">
-                        {modalComments.map((comment: any) => {
-                          const dateInfo = formatFullDateWithRelative(comment.created_at);
-                          return (
-                            <div 
-                              key={comment.id}
-                              className="p-4 rounded-xl border border-l-4 border-l-amber-500 bg-[#16171e] border-zinc-800/90 shadow-md ring-1 ring-amber-500/20 transition-all"
-                            >
-                              <div className="flex items-start gap-3">
-                                {/* Avatar */}
-                                <div className="w-9 h-9 rounded-xl bg-zinc-800/90 text-amber-400 border border-amber-500/30 flex items-center justify-center font-bold text-xs shrink-0 shadow-sm mt-0.5">
-                                  {(comment.author_name || 'Anónimo').substring(0, 2).toUpperCase()}
-                                </div>
+                      <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
+                        {(() => {
+                          const commentIds = new Set(modalComments.map((c: any) => c.id));
+                          const level1Comments = modalComments.filter((c: any) => !c.parent_id || !commentIds.has(c.parent_id));
+                          const getReplies = (parentId: string) => modalComments.filter((c: any) => c.parent_id === parentId);
 
-                                <div className="flex-1 min-w-0 space-y-1.5">
-                                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                      <span className="text-xs sm:text-sm font-bold text-white">
-                                        {comment.author_name || 'Anónimo'}
-                                      </span>
-                                      <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[10px] font-semibold px-2 py-0.5 rounded">
-                                        {modalCenterInfo?.name || 'Estudiante'}
-                                      </span>
-                                      <span className="text-[11px] text-zinc-400">
-                                        {dateInfo.fullDate}
-                                        {dateInfo.relative && <> • {dateInfo.relative}</>}
-                                      </span>
-                                    </div>
-                                    {user && comment.firebase_uid === user.uid && (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleDeleteModalCommentClick(comment.id)}
-                                        className="p-1 rounded text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors cursor-pointer"
-                                        title="Eliminar mi respuesta"
-                                      >
-                                        <Trash className="w-3.5 h-3.5" />
-                                      </button>
-                                    )}
+                          return level1Comments.map((comment: any) => {
+                            const dateInfo = formatFullDateWithRelative(comment.created_at);
+                            const isTarget = targetCommentId && comment.id === targetCommentId;
+                            const replies = getReplies(comment.id);
+                            const hasReplies = replies.length > 0;
+                            const isExpanded = !!modalExpandedReplies[comment.id];
+
+                            return (
+                              <div 
+                                key={comment.id}
+                                className={`p-3.5 rounded-xl border transition-all space-y-2.5 ${
+                                  isTarget 
+                                    ? 'bg-[#1c1a14] border-amber-500/70 shadow-lg ring-1 ring-amber-500/30' 
+                                    : 'bg-[#16171e] border-zinc-800/90 hover:border-zinc-700'
+                                }`}
+                              >
+                                <div className="flex items-start gap-3">
+                                  {/* Avatar */}
+                                  <div className="w-8 h-8 rounded-xl flex items-center justify-center font-bold text-[11px] shrink-0 shadow-sm mt-0.5 bg-zinc-800/90 text-amber-400 border border-amber-500/20">
+                                    {(comment.author_name || 'Anónimo').substring(0, 2).toUpperCase()}
                                   </div>
 
-                                  <p className="text-xs sm:text-sm text-zinc-100 font-medium leading-relaxed pt-0.5 whitespace-pre-wrap">
-                                    {comment.content}
-                                  </p>
+                                  <div className="flex-1 min-w-0 space-y-1">
+                                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="text-xs font-bold text-[#eab308]">
+                                          {comment.author_name || 'Anónimo'}
+                                        </span>
+
+                                        {isTarget && (
+                                          <span className="bg-amber-500 text-black text-[9px] font-black uppercase px-1.5 py-0.5 rounded shadow-sm">
+                                            Notificada
+                                          </span>
+                                        )}
+
+                                        <span className="text-[10px] text-zinc-400">
+                                          {dateInfo.fullDate}
+                                          {dateInfo.relative && <> • {dateInfo.relative}</>}
+                                        </span>
+                                      </div>
+
+                                      <div className="flex items-center gap-1.5">
+                                        {/* Botón Responder Nivel 1 */}
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setModalReplyingTo({ root_id: comment.id, author_name: comment.author_name || 'Anónimo' });
+                                            setModalExpandedReplies(prev => ({ ...prev, [comment.id]: true }));
+                                            setTimeout(() => modalReplyInputRef.current?.focus(), 50);
+                                          }}
+                                          className="flex items-center gap-1 text-[11px] font-bold text-zinc-400 hover:text-amber-400 hover:bg-amber-500/10 px-2 py-0.5 rounded-md transition-all cursor-pointer"
+                                          title={`Responder a ${comment.author_name || 'Anónimo'}`}
+                                        >
+                                          <CornerDownRight className="w-3 h-3" />
+                                          <span>Responder</span>
+                                        </button>
+
+                                        {user && comment.firebase_uid === user.uid && (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleDeleteModalCommentClick(comment.id)}
+                                            className="p-1 rounded text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors cursor-pointer"
+                                            title="Eliminar mi respuesta"
+                                          >
+                                            <Trash className="w-3.5 h-3.5" />
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    <p className="text-xs sm:text-[13px] text-zinc-100 font-medium leading-relaxed whitespace-pre-wrap pt-0.5">
+                                      {comment.content}
+                                    </p>
+                                  </div>
                                 </div>
+
+                                {/* Botón Ver Respuestas / Ocultar Respuestas (Nivel 2) */}
+                                {hasReplies && (
+                                  <div className="pt-1 border-t border-zinc-800/60">
+                                    <button
+                                      type="button"
+                                      onClick={() => setModalExpandedReplies(prev => ({ ...prev, [comment.id]: !prev[comment.id] }))}
+                                      className="flex items-center gap-1.5 text-xs font-bold text-[#eab308] hover:text-[#facc15] py-0.5 cursor-pointer transition-colors"
+                                    >
+                                      {isExpanded ? (
+                                        <>
+                                          <ChevronUp className="w-3.5 h-3.5" />
+                                          <span>Ocultar respuestas ({replies.length})</span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <ChevronDown className="w-3.5 h-3.5" />
+                                          <span>Ver {replies.length} {replies.length === 1 ? 'respuesta' : 'respuestas'}</span>
+                                        </>
+                                      )}
+                                    </button>
+                                  </div>
+                                )}
+
+                                {/* Respuestas de Nivel 2 agrupadas */}
+                                {hasReplies && isExpanded && (
+                                  <div className="space-y-2 pl-3 sm:pl-4 border-l-2 border-amber-500/30 pt-1">
+                                    {replies.map((subComment: any) => {
+                                      const subDateInfo = formatFullDateWithRelative(subComment.created_at);
+                                      const isSubTarget = targetCommentId && subComment.id === targetCommentId;
+
+                                      return (
+                                        <div
+                                          key={subComment.id}
+                                          className={`p-2.5 rounded-xl border transition-all ${
+                                            isSubTarget
+                                              ? 'bg-[#1e1c14] border-amber-500/70 ring-1 ring-amber-500/30'
+                                              : 'bg-[#0f1015] border-zinc-800/80 hover:border-zinc-700'
+                                          }`}
+                                        >
+                                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                              <span className="font-extrabold text-xs text-white">
+                                                {subComment.author_name || 'Anónimo'}
+                                              </span>
+
+                                              {/* Indicador 'X ha respondido a @Y' */}
+                                              <span className="inline-flex items-center gap-1 bg-[#eab308]/15 text-[#eab308] border border-[#eab308]/30 text-[10px] font-bold px-2 py-0.5 rounded-md">
+                                                <CornerDownRight className="w-2.5 h-2.5" />
+                                                <span>ha respondido a @{subComment.reply_to_author || comment.author_name}</span>
+                                              </span>
+
+                                              {isSubTarget && (
+                                                <span className="bg-amber-500 text-black text-[9px] font-black uppercase px-1.5 py-0.5 rounded shadow-sm">
+                                                  Notificada
+                                                </span>
+                                              )}
+
+                                              <span className="text-[10px] text-zinc-400">
+                                                {subDateInfo.fullDate}
+                                                {subDateInfo.relative && <> • {subDateInfo.relative}</>}
+                                              </span>
+                                            </div>
+
+                                            <div className="flex items-center gap-1">
+                                              {/* Botón Responder Nivel 2 */}
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  setModalReplyingTo({ root_id: comment.id, author_name: subComment.author_name || 'Anónimo' });
+                                                  setModalExpandedReplies(prev => ({ ...prev, [comment.id]: true }));
+                                                  setTimeout(() => modalReplyInputRef.current?.focus(), 50);
+                                                }}
+                                                className="flex items-center gap-1 text-[10px] font-bold text-zinc-400 hover:text-amber-400 hover:bg-amber-500/10 px-1.5 py-0.5 rounded transition-all cursor-pointer"
+                                                title={`Responder a ${subComment.author_name || 'Anónimo'}`}
+                                              >
+                                                <CornerDownRight className="w-2.5 h-2.5" />
+                                                <span>Responder</span>
+                                              </button>
+
+                                              {user && subComment.firebase_uid === user.uid && (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => handleDeleteModalCommentClick(subComment.id)}
+                                                  className="p-1 rounded text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors cursor-pointer"
+                                                  title="Eliminar mi respuesta"
+                                                >
+                                                  <Trash className="w-3 h-3" />
+                                                </button>
+                                              )}
+                                            </div>
+                                          </div>
+
+                                          <p className="text-xs text-zinc-200 leading-relaxed font-medium whitespace-pre-wrap pt-1">
+                                            {subComment.content}
+                                          </p>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
                               </div>
-                            </div>
-                          );
-                        })}
+                            );
+                          });
+                        })()}
                       </div>
                     )}
+
+                    {/* Formulario para Responder / Conversar */}
+                    <form onSubmit={handleSendModalReply} className="pt-3 border-t border-zinc-800/80 space-y-2">
+                      {modalReplyingTo && (
+                        <div className="flex items-center justify-between bg-amber-500/10 border border-amber-500/30 px-3 py-1.5 rounded-xl text-xs">
+                          <div className="flex items-center gap-1.5 text-amber-400 font-bold">
+                            <CornerDownRight className="w-3.5 h-3.5" />
+                            <span>En respuesta a <strong className="text-white">@{modalReplyingTo.author_name}</strong></span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setModalReplyingTo(null)}
+                            className="text-zinc-400 hover:text-white p-0.5 rounded cursor-pointer"
+                            title="Cancelar respuesta directa"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
+
+                      {modalReplyError && (
+                        <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 p-2 rounded-xl">
+                          {modalReplyError}
+                        </p>
+                      )}
+
+                      <div className="flex items-end gap-2">
+                        <textarea
+                          ref={modalReplyInputRef}
+                          value={modalReplyText}
+                          onChange={(e) => setModalReplyText(e.target.value.slice(0, 500))}
+                          maxLength={500}
+                          rows={2}
+                          placeholder={modalReplyingTo ? `Escribe tu respuesta para @${modalReplyingTo.author_name}...` : "Escribe tu respuesta a esta confesión..."}
+                          className="flex-1 bg-[#121318] border border-zinc-800 rounded-xl p-3 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[#eab308] transition-colors resize-none leading-relaxed"
+                        />
+                        <button
+                          type="submit"
+                          disabled={submittingModalReply || !modalReplyText.trim()}
+                          className="px-4 py-3 bg-[#eab308] hover:bg-[#d9a307] text-black font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 shrink-0 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          {submittingModalReply ? (
+                            <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <>
+                              <Send className="w-3.5 h-3.5 fill-current" />
+                              <span className="hidden sm:inline">Enviar</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </form>
                   </div>
 
                 </div>
