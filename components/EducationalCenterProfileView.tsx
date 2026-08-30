@@ -35,7 +35,8 @@ import {
   AlertTriangle,
   Settings,
   GraduationCap,
-  Eye
+  Eye,
+  X
 } from 'lucide-react';
 import { supabase } from '@/src/lib/supabase';
 import { Institution } from '@/lib/mockData';
@@ -177,6 +178,10 @@ export default function EducationalCenterProfileView({
   const [savingWiki, setSavingWiki] = useState(false);
   const [viewsCount, setViewsCount] = useState(0);
 
+  // Share Modal State
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [shareModalCopied, setShareModalCopied] = useState(false);
+
   // Edit form state
   const [editPhotoUrl, setEditPhotoUrl] = useState('');
   const [imgPreviewError, setImgPreviewError] = useState(false);
@@ -290,6 +295,63 @@ export default function EducationalCenterProfileView({
 
     loadCenterWiki();
   }, [institution]);
+
+  // Actualizar meta tags OpenGraph (og:image, og:title, og:description) para vista previa al compartir en WhatsApp / redes
+  useEffect(() => {
+    if (!institution || typeof window === 'undefined') return;
+
+    const rawImg = centerWikiData?.profile_photo_url || institution.image || '';
+    let absoluteImgUrl = '';
+    if (rawImg) {
+      if (rawImg.startsWith('http://') || rawImg.startsWith('https://') || rawImg.startsWith('data:')) {
+        absoluteImgUrl = rawImg;
+      } else {
+        try {
+          absoluteImgUrl = new URL(rawImg, window.location.origin).href;
+        } catch {
+          absoluteImgUrl = rawImg;
+        }
+      }
+    } else {
+      absoluteImgUrl = `${window.location.origin}/Logo/favicon.jpg`;
+    }
+
+    const titleText = `${institution.name} | STARRYZ`;
+    const descText = (centerWikiData?.description || '').trim() ||
+      `Explora el perfil de ${institution.name} en STARRYZ. Vota por alumnos y profesores, publica confesiones y conoce la comunidad.`;
+    const currentUrl = window.location.href;
+
+    const prevTitle = document.title;
+    document.title = titleText;
+
+    const metas: { attr: 'property' | 'name'; key: string; value: string }[] = [
+      { attr: 'property', key: 'og:title', value: institution.name },
+      { attr: 'property', key: 'og:description', value: descText },
+      { attr: 'property', key: 'og:image', value: absoluteImgUrl },
+      { attr: 'property', key: 'og:url', value: currentUrl },
+      { attr: 'property', key: 'og:type', value: 'website' },
+      { attr: 'property', key: 'og:site_name', value: 'STARRYZ' },
+      { attr: 'name', key: 'twitter:card', value: 'summary_large_image' },
+      { attr: 'name', key: 'twitter:title', value: institution.name },
+      { attr: 'name', key: 'twitter:description', value: descText },
+      { attr: 'name', key: 'twitter:image', value: absoluteImgUrl },
+      { attr: 'name', key: 'description', value: descText },
+    ];
+
+    metas.forEach(({ attr, key, value }) => {
+      let el = document.head.querySelector(`meta[${attr}="${key}"]`) as HTMLMetaElement | null;
+      if (!el) {
+        el = document.createElement('meta');
+        el.setAttribute(attr, key);
+        document.head.appendChild(el);
+      }
+      el.setAttribute('content', value);
+    });
+
+    return () => {
+      document.title = prevTitle;
+    };
+  }, [institution, centerWikiData]);
 
   const handleStartEditWiki = () => {
     setEditPhotoUrl(centerWikiData?.profile_photo_url || institution.image || '');
@@ -490,10 +552,15 @@ export default function EducationalCenterProfileView({
   }, [institution, activeTab, confessionCategory, confessionSort]);
 
   const handleShare = () => {
+    setIsShareModalOpen(true);
     if (typeof window !== 'undefined') {
-      navigator.clipboard.writeText(window.location.href);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      try {
+        navigator.clipboard.writeText(window.location.href);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2500);
+      } catch (e) {
+        // Ignorar si el portapapeles falla
+      }
     }
   };
 
@@ -2121,6 +2188,179 @@ export default function EducationalCenterProfileView({
                 )}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal / Card para Compartir en WhatsApp y Redes Sociales con Vista Previa (Open Graph) */}
+      {isShareModalOpen && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200"
+          onClick={() => setIsShareModalOpen(false)}
+        >
+          <div 
+            className="relative w-full max-w-lg bg-[#0d0d0d] border border-zinc-800/90 rounded-3xl p-6 sm:p-7 space-y-6 shadow-[0_25px_80px_rgba(0,0,0,0.95)] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Encabezado y botón cerrar */}
+            <div className="flex items-center justify-between pb-2 border-b border-zinc-800/80">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-[#eab308]/15 border border-[#eab308]/30 flex items-center justify-center text-[#eab308] shrink-0 shadow-sm">
+                  <Share2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-base sm:text-lg font-black text-white tracking-tight uppercase">
+                    Compartir Centro
+                  </h2>
+                  <p className="text-xs text-zinc-400 font-medium">
+                    Tarjeta de vista previa para WhatsApp y redes
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsShareModalOpen(false)}
+                className="w-8 h-8 rounded-full bg-[#181818] border border-zinc-800 flex items-center justify-center text-zinc-400 hover:text-white transition-all cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Vista Previa de la Tarjeta (Grapa / Open Graph Card) */}
+            <div className="bg-[#121212] border border-zinc-800/90 rounded-2xl overflow-hidden shadow-inner space-y-0 group">
+              <div className="relative w-full h-44 sm:h-52 bg-[#181818] overflow-hidden flex items-center justify-center">
+                {centerWikiData?.profile_photo_url || institution.image ? (
+                  <img
+                    src={centerWikiData?.profile_photo_url || institution.image}
+                    alt={institution.name}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    referrerPolicy="no-referrer"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                    }}
+                  />
+                ) : (
+                  <div className="flex flex-col items-center justify-center gap-2 text-zinc-600">
+                    <Building2 className="w-12 h-12 stroke-[1.2]" />
+                    <span className="text-xs font-bold uppercase">{institution.acronym || 'Centro'}</span>
+                  </div>
+                )}
+                <div className="absolute inset-0 bg-gradient-to-t from-[#121212] via-transparent to-black/30" />
+                
+                {/* Badge flotante de Categoria */}
+                <span className="absolute top-3 left-3 px-3 py-1 rounded-full bg-black/80 backdrop-blur-md border border-[#eab308]/40 text-[#eab308] text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 shadow">
+                  <Building2 className="w-3 h-3" />
+                  <span>{institution.category || 'Centro Educativo'}</span>
+                </span>
+              </div>
+
+              <div className="p-4 sm:p-5 space-y-2 bg-[#121212]">
+                <h3 className="text-sm sm:text-base font-black text-white uppercase tracking-tight line-clamp-1">
+                  {institution.name}
+                </h3>
+                <p className="text-xs text-zinc-400 font-normal line-clamp-2 leading-relaxed">
+                  {centerWikiData?.description?.trim() || 
+                    `Descubre el perfil oficial de ${institution.name} en STARRYZ. Consulta profesores, alumnos populares, confesiones y más.`}
+                </p>
+                <div className="pt-2 text-[11px] text-[#eab308] font-bold flex items-center gap-1.5 opacity-90">
+                  <span>starryz.app</span>
+                  <span>•</span>
+                  <span>Ver perfil en STARRYZ</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Opciones de Compartir */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+              {/* WhatsApp Directo */}
+              <a
+                href={`https://api.whatsapp.com/send?text=${encodeURIComponent(
+                  `*${institution.name}* en STARRYZ 🎓\n\n${(centerWikiData?.description || 'Descubre el perfil de este centro educativo').substring(0, 100)}...\n\n👉 ${typeof window !== 'undefined' ? window.location.href : ''}`
+                )}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2.5 px-4 py-3 rounded-2xl bg-[#25D366] hover:bg-[#20bd5a] text-black font-extrabold text-xs uppercase tracking-wider transition-all shadow-md active:scale-98 cursor-pointer"
+              >
+                <MessageCircle className="w-4 h-4 fill-black stroke-none" />
+                <span>Enviar por WhatsApp</span>
+              </a>
+
+              {/* Copiar Enlace */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (typeof window !== 'undefined') {
+                    navigator.clipboard.writeText(window.location.href);
+                    setShareModalCopied(true);
+                    setTimeout(() => setShareModalCopied(false), 2500);
+                  }
+                }}
+                className={`flex items-center justify-center gap-2.5 px-4 py-3 rounded-2xl border font-extrabold text-xs uppercase tracking-wider transition-all shadow-sm cursor-pointer ${
+                  shareModalCopied 
+                    ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400' 
+                    : 'bg-[#181818] hover:bg-[#222] border-zinc-800 text-white'
+                }`}
+              >
+                {shareModalCopied ? (
+                  <>
+                    <Check className="w-4 h-4 text-emerald-400 stroke-[3]" />
+                    <span>¡Enlace Copiado!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-4 h-4 text-zinc-400" />
+                    <span>Copiar Enlace</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Botones secundarios (Facebook, Twitter, Native Share) */}
+            <div className="flex items-center justify-between gap-2 pt-2 border-t border-zinc-800/60">
+              <div className="flex items-center gap-2">
+                <a
+                  href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(typeof window !== 'undefined' ? window.location.href : '')}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-2.5 rounded-xl bg-[#181818] hover:bg-[#252525] border border-zinc-800 text-zinc-300 hover:text-blue-400 transition-all cursor-pointer"
+                  title="Compartir en Facebook"
+                >
+                  <FacebookIcon className="w-4 h-4" />
+                </a>
+                <a
+                  href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(`Mira el perfil de ${institution.name} en STARRYZ 🎓`)}&url=${encodeURIComponent(typeof window !== 'undefined' ? window.location.href : '')}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-2.5 rounded-xl bg-[#181818] hover:bg-[#252525] border border-zinc-800 text-zinc-300 hover:text-cyan-400 transition-all cursor-pointer"
+                  title="Compartir en X / Twitter"
+                >
+                  <TwitterXIcon className="w-4 h-4" />
+                </a>
+              </div>
+
+              {typeof navigator !== 'undefined' && (navigator as any).share && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await (navigator as any).share({
+                        title: institution.name,
+                        text: `¡Mira el perfil de ${institution.name} en STARRYZ! 🎓`,
+                        url: window.location.href,
+                      });
+                    } catch (e) {
+                      // user cancelled
+                    }
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#181818] hover:bg-[#252525] border border-zinc-800 text-xs font-bold text-zinc-300 hover:text-[#eab308] transition-all cursor-pointer"
+                >
+                  <Share2 className="w-3.5 h-3.5" />
+                  <span>Más Opciones</span>
+                </button>
+              )}
+            </div>
+
           </div>
         </div>
       )}
