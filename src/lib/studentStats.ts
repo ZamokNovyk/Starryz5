@@ -108,30 +108,10 @@ export async function getStudentHistoricalStats(
       return {
         ...existing,
         day_label: dayLabel,
-        // Si es hoy, nos aseguramos de mostrar el valor en vivo más reciente
-        knows_count: isToday ? Math.max(existing.knows_count, currentValues.knowsCount) : existing.knows_count,
-        fans_count: isToday ? Math.max(existing.fans_count, currentValues.fansCount) : existing.fans_count,
-        crushes_count: isToday ? Math.max(existing.crushes_count, currentValues.crushesCount) : existing.crushes_count,
-        score: isToday && currentValues.score > 0 ? currentValues.score : existing.score,
-        views_count: isToday ? Math.max(existing.views_count, currentValues.viewsCount || 0) : existing.views_count,
       };
     }
 
-    // Si es hoy y aún no hay snapshot en la BD, mostramos los valores reales en vivo del perfil
-    if (isToday) {
-      return {
-        student_id: studentId,
-        date: dateStr,
-        day_label: dayLabel,
-        knows_count: currentValues.knowsCount || 0,
-        fans_count: currentValues.fansCount || 0,
-        crushes_count: currentValues.crushesCount || 0,
-        score: currentValues.score || 0.0,
-        views_count: currentValues.viewsCount || 0,
-      };
-    }
-
-    // Para los días anteriores sin datos en el rango
+    // Para cualquier día sin datos en la base de datos (incluso hoy si aún no corre el snapshot)
     return {
       student_id: studentId,
       date: dateStr,
