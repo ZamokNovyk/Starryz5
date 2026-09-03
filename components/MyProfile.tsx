@@ -938,19 +938,27 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                         <label className="block text-[10px] font-extrabold uppercase tracking-widest text-[#eab308] flex items-center gap-1.5">
                           <User className="w-3.5 h-3.5" /> Nombre de Usuario / Apodo Público
                         </label>
-                        {isOwnProfile && usernameAvailability.status === 'checking' && (
-                          <span className="text-[10px] text-zinc-400 font-mono flex items-center gap-1 lowercase">
-                            <Loader2 className="w-3 h-3 animate-spin text-[#eab308]" /> comprobando...
-                          </span>
-                        )}
+                        <div className="flex items-center gap-2">
+                          {isOwnProfile && (
+                            <span className="text-[10px] text-zinc-400 font-mono">
+                              {displayNameInput.length}/10 máx.
+                            </span>
+                          )}
+                          {isOwnProfile && usernameAvailability.status === 'checking' && (
+                            <span className="text-[10px] text-zinc-400 font-mono flex items-center gap-1 lowercase">
+                              <Loader2 className="w-3 h-3 animate-spin text-[#eab308]" /> comprobando...
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <div className="relative">
                         <input
                           type="text"
                           value={displayNameInput}
-                          onChange={(e) => setDisplayNameInput(e.target.value)}
+                          onChange={(e) => setDisplayNameInput(e.target.value.slice(0, 10))}
+                          maxLength={10}
                           disabled={!isOwnProfile || saving}
-                          placeholder="Ej. Valeria Morales"
+                          placeholder="Ej. vegano1"
                           className={`w-full rounded-xl px-4 py-3 text-sm text-white outline-none transition-all pr-10 ${
                             isOwnProfile 
                               ? usernameAvailability.status === 'taken' || usernameAvailability.status === 'error'
