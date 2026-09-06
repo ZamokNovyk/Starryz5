@@ -149,6 +149,7 @@ export default function StudentTrendsEngine({
 }: StudentTrendsEngineProps) {
   const [selectedMetric, setSelectedMetric] = useState<MetricType>('knows');
   const [periodDays, setPeriodDays] = useState<number>(7);
+  const [calculationMode, setCalculationMode] = useState<'daily' | 'cumulative'>('daily');
   const [compareAverage, setCompareAverage] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [summaryData, setSummaryData] = useState<StudentStatsSummary | null>(null);
@@ -179,11 +180,17 @@ export default function StudentTrendsEngine({
 
   const activeMetricConfig = METRICS_CONFIG[selectedMetric];
 
+  // El filtro Diario vs Acumulativo aplica específicamente a visualizaciones y calificación
+  const isToggleApplicable = selectedMetric === 'views' || selectedMetric === 'score';
+  const isDaily = isToggleApplicable && calculationMode === 'daily';
+
   // Extraer valores para la métrica activa
   const chartPoints = useMemo(() => {
-    if (!summaryData || summaryData.stats.length === 0) return { student: [], campus: [], yMin: 0, yMax: 10, yTicks: [] };
+    if (!summaryData || summaryData.stats.length === 0) {
+      return { student: [], campus: [], yMin: 0, yMax: 10, yTicks: [], zeroY: undefined };
+    }
 
-    const getMetricVal = (s: StudentDailyStat, m: MetricType): number => {
+    const getRawMetricVal = (s: StudentDailyStat, m: MetricType): number => {
       switch (m) {
         case 'views': return s.views_count;
         case 'crushes': return s.crushes_count;
@@ -193,8 +200,46 @@ export default function StudentTrendsEngine({
       }
     };
 
-    const studentVals = summaryData.stats.map(s => getMetricVal(s, selectedMetric));
-    const campusVals = summaryData.campusAverage.map(s => getMetricVal(s, selectedMetric));
+    // Calcular valores finales considerando el modo Diario (incremental) vs Acumulativo
+    const getCalculatedVal = (
+      list: StudentDailyStat[],
+      idx: number,
+      isStudent: boolean
+    ): number => {
+      const current = list[idx];
+      if (!isDaily) {
+        return getRawMetricVal(current, selectedMetric);
+      }
+
+      if (selectedMetric === 'views') {
+        if (idx === 0) {
+          if (isStudent && summaryData.baseline) {
+            return Math.max(0, current.views_count - summaryData.baseline.views_count);
+          }
+          return 0;
+        }
+        return Math.max(0, current.views_count - list[idx - 1].views_count);
+      }
+
+      if (selectedMetric === 'score') {
+        if (idx === 0) {
+          if (isStudent && summaryData.baseline) {
+            return Number((current.score - summaryData.baseline.score).toFixed(2));
+          }
+          return 0.0;
+        }
+        return Number((current.score - list[idx - 1].score).toFixed(2));
+      }
+
+      return getRawMetricVal(current, selectedMetric);
+    };
+
+    const studentVals = summaryData.stats.map((_, idx) =>
+      getCalculatedVal(summaryData.stats, idx, true)
+    );
+    const campusVals = summaryData.campusAverage.map((_, idx) =>
+      getCalculatedVal(summaryData.campusAverage, idx, false)
+    );
 
     const allVals = compareAverage ? [...studentVals, ...campusVals] : studentVals;
     let minVal = Math.min(...allVals);
@@ -202,8 +247,18 @@ export default function StudentTrendsEngine({
 
     // Escala limpia y robusta para cada métrica
     if (selectedMetric === 'score') {
+      if (isDaily) {
+        const maxAbs = Math.max(0.2, ...allVals.map(v => Math.abs(v)));
+        const rounded = Number((Math.ceil(maxAbs * 5) / 5).toFixed(1));
+        minVal = -rounded;
+        maxVal = rounded;
+      } else {
+        minVal = 0;
+        maxVal = 5.0;
+      }
+    } else if (selectedMetric === 'views' && isDaily) {
       minVal = 0;
-      maxVal = 5.0;
+      maxVal = Math.max(4, Math.ceil(maxVal * 1.25));
     } else {
       const padding = Math.max(2, Math.round((maxVal - minVal) * 0.15));
       minVal = Math.max(0, minVal - padding);
@@ -231,16 +286,18 @@ export default function StudentTrendsEngine({
 
     const studentCoords = summaryData.stats.map((s, idx) => ({
       x: mapX(idx),
-      y: mapY(getMetricVal(s, selectedMetric)),
-      rawVal: getMetricVal(s, selectedMetric),
+      y: mapY(studentVals[idx]),
+      rawVal: studentVals[idx],
+      cumulativeVal: getRawMetricVal(s, selectedMetric),
       label: s.day_label,
       date: s.date,
     }));
 
     const campusCoords = summaryData.campusAverage.map((s, idx) => ({
       x: mapX(idx),
-      y: mapY(getMetricVal(s, selectedMetric)),
-      rawVal: getMetricVal(s, selectedMetric),
+      y: mapY(campusVals[idx]),
+      rawVal: campusVals[idx],
+      cumulativeVal: getRawMetricVal(s, selectedMetric),
       label: s.day_label,
       date: s.date,
     }));
@@ -250,11 +307,23 @@ export default function StudentTrendsEngine({
     const steps = 4;
     for (let i = 0; i <= steps; i++) {
       const val = minVal + (i / steps) * (maxVal - minVal);
+      let tickLabel = '';
+      if (selectedMetric === 'score') {
+        if (isDaily) {
+          tickLabel = val > 0 ? `+${val.toFixed(1)}` : val.toFixed(1);
+        } else {
+          tickLabel = val.toFixed(1);
+        }
+      } else {
+        tickLabel = Math.round(val).toString();
+      }
       yTicks.push({
         y: padTop + (1 - i / steps) * plotH,
-        val: selectedMetric === 'score' ? val.toFixed(1) : Math.round(val).toString(),
+        val: tickLabel,
       });
     }
+
+    const zeroY = isDaily && selectedMetric === 'score' ? mapY(0) : undefined;
 
     return {
       student: studentCoords,
@@ -262,6 +331,7 @@ export default function StudentTrendsEngine({
       yMin: minVal,
       yMax: maxVal,
       yTicks,
+      zeroY,
       width,
       height,
       padLeft,
@@ -270,7 +340,7 @@ export default function StudentTrendsEngine({
       padBottom,
       plotH,
     };
-  }, [summaryData, selectedMetric, compareAverage]);
+  }, [summaryData, selectedMetric, compareAverage, isDaily]);
 
   // Generación de rutas SVG
   const studentLinePath = useMemo(() => buildSmoothPath(chartPoints.student), [chartPoints.student]);
@@ -338,8 +408,38 @@ export default function StudentTrendsEngine({
         </div>
 
 
-        {/* CONTROLES DERECHA: Periodo */}
+        {/* CONTROLES DERECHA: Modo y Periodo */}
         <div className="flex flex-wrap items-center gap-2.5">
+          {/* Selector de Modo: Diario vs Acumulado (activo solo para visualizaciones y calificación) */}
+          {isToggleApplicable && (
+            <div className="flex items-center bg-[#14151b] border border-zinc-700/80 rounded-xl p-1 text-xs">
+              <button
+                type="button"
+                onClick={() => setCalculationMode('daily')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  calculationMode === 'daily'
+                    ? 'bg-[#eab308] text-black shadow-md font-black'
+                    : 'text-zinc-400 hover:text-white'
+                }`}
+                title="Muestra los registros específicos generados en cada día"
+              >
+                Diario
+              </button>
+              <button
+                type="button"
+                onClick={() => setCalculationMode('cumulative')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  calculationMode === 'cumulative'
+                    ? 'bg-[#eab308] text-black shadow-md font-black'
+                    : 'text-zinc-400 hover:text-white'
+                }`}
+                title="Muestra el total histórico acumulado progresivamente"
+              >
+                Acumulado
+              </button>
+            </div>
+          )}
+
           {/* Selector de Rango */}
           <div className="relative">
             <select
@@ -412,6 +512,33 @@ export default function StudentTrendsEngine({
           </div>
         ) : (
           <div className="w-full relative">
+            {/* ENCABEZADO SUPERIOR DEL GRÁFICO CON MODO ACTIVO */}
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-3 mb-2 border-b border-zinc-800/60">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-bold text-white flex items-center gap-2">
+                  <activeMetricConfig.icon className="w-4 h-4" style={{ color: activeMetricConfig.color }} />
+                  {activeMetricConfig.label}
+                </span>
+                {isToggleApplicable && (
+                  <span className="px-2 py-0.5 text-[10px] font-extrabold rounded-full bg-amber-500/10 text-[#eab308] border border-amber-500/30 uppercase tracking-wider">
+                    {calculationMode === 'daily' ? 'Modo Diario (Neto)' : 'Modo Acumulado (Total)'}
+                  </span>
+                )}
+              </div>
+
+              {isToggleApplicable && (
+                <div className="text-[11px] text-zinc-400 font-medium">
+                  {calculationMode === 'daily'
+                    ? selectedMetric === 'views'
+                      ? 'Nuevas visualizaciones por día'
+                      : 'Variación neta diaria (± puntos)'
+                    : selectedMetric === 'views'
+                      ? 'Historial acumulado total'
+                      : 'Evolución de promedio general'}
+                </div>
+              )}
+            </div>
+
             <svg
               viewBox={`0 0 ${chartPoints.width || 840} ${chartPoints.height || 280}`}
               className="w-full h-auto max-h-[340px] overflow-visible"
@@ -475,6 +602,30 @@ export default function StudentTrendsEngine({
                   </text>
                 </g>
               ))}
+
+              {/* LÍNEA CERO DE REFERENCIA PARA VARIACIÓN DIARIA DE NOTA */}
+              {isDaily && selectedMetric === 'score' && chartPoints.zeroY !== undefined && (
+                <g>
+                  <line
+                    x1={chartPoints.padLeft}
+                    y1={chartPoints.zeroY}
+                    x2={chartPoints.width - chartPoints.padRight}
+                    y2={chartPoints.zeroY}
+                    stroke="#52525b"
+                    strokeWidth="1.5"
+                    strokeDasharray="4 4"
+                    opacity="0.8"
+                  />
+                  <text
+                    x={chartPoints.padLeft - 10}
+                    y={chartPoints.zeroY + 4}
+                    textAnchor="end"
+                    className="fill-zinc-400 text-[10px] font-mono font-bold select-none"
+                  >
+                    0.0
+                  </text>
+                </g>
+              )}
 
               {/* LÍNEA DE PROMEDIO DEL CAMPUS (COMPARACIÓN) */}
               {compareAverage && campusLinePath && (
@@ -589,16 +740,55 @@ export default function StudentTrendsEngine({
                   <span>{chartPoints.student[hoveredIndex].label} ({chartPoints.student[hoveredIndex].date})</span>
                 </div>
                 <div className="flex items-center justify-between gap-3 pt-0.5">
-                  <span className="text-zinc-300 font-medium">{activeMetricConfig.label}:</span>
+                  <span className="text-zinc-300 font-medium">
+                    {activeMetricConfig.label}
+                    {isToggleApplicable && (
+                      <span className="text-[10px] text-zinc-400 ml-1">
+                        ({calculationMode === 'daily' ? 'Diario' : 'Acumulado'})
+                      </span>
+                    )}:
+                  </span>
                   <span className="font-black text-amber-400">
-                    {activeMetricConfig.formatValue(chartPoints.student[hoveredIndex].rawVal)}
+                    {selectedMetric === 'views' ? (
+                      isDaily
+                        ? `${chartPoints.student[hoveredIndex].rawVal} ${chartPoints.student[hoveredIndex].rawVal === 1 ? 'vista hoy' : 'vistas hoy'}`
+                        : `${chartPoints.student[hoveredIndex].rawVal.toLocaleString()} vistas`
+                    ) : selectedMetric === 'score' ? (
+                      isDaily
+                        ? `${chartPoints.student[hoveredIndex].rawVal > 0 ? '+' : ''}${chartPoints.student[hoveredIndex].rawVal.toFixed(2)} pts`
+                        : `${chartPoints.student[hoveredIndex].rawVal.toFixed(1)} / 5.0`
+                    ) : (
+                      activeMetricConfig.formatValue(chartPoints.student[hoveredIndex].rawVal)
+                    )}
                   </span>
                 </div>
+
+                {isDaily && (selectedMetric === 'views' || selectedMetric === 'score') && (
+                  <div className="flex items-center justify-between gap-3 text-[10px] text-zinc-400 pt-1 border-t border-zinc-800">
+                    <span>Total acumulado:</span>
+                    <span className="font-mono text-zinc-200">
+                      {selectedMetric === 'views'
+                        ? `${chartPoints.student[hoveredIndex].cumulativeVal.toLocaleString()} vistas`
+                        : `${chartPoints.student[hoveredIndex].cumulativeVal.toFixed(1)} / 5.0`}
+                    </span>
+                  </div>
+                )}
+
                 {compareAverage && chartPoints.campus[hoveredIndex] && (
                   <div className="flex items-center justify-between gap-3 text-[10px] text-zinc-400">
                     <span>Promedio Campus:</span>
                     <span className="font-bold text-zinc-200">
-                      {activeMetricConfig.formatValue(chartPoints.campus[hoveredIndex].rawVal)}
+                      {selectedMetric === 'views' ? (
+                        isDaily
+                          ? `${chartPoints.campus[hoveredIndex].rawVal} vistas`
+                          : `${chartPoints.campus[hoveredIndex].rawVal.toLocaleString()} vistas`
+                      ) : selectedMetric === 'score' ? (
+                        isDaily
+                          ? `${chartPoints.campus[hoveredIndex].rawVal > 0 ? '+' : ''}${chartPoints.campus[hoveredIndex].rawVal.toFixed(2)} pts`
+                          : `${chartPoints.campus[hoveredIndex].rawVal.toFixed(1)} / 5.0`
+                      ) : (
+                        activeMetricConfig.formatValue(chartPoints.campus[hoveredIndex].rawVal)
+                      )}
                     </span>
                   </div>
                 )}

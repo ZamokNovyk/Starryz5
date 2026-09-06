@@ -17,6 +17,7 @@ export interface StudentStatsSummary {
   periodDays: number;
   stats: StudentDailyStat[];
   campusAverage: StudentDailyStat[];
+  baseline?: StudentDailyStat;
   totals: {
     views: number;
     crushes: number;
@@ -75,6 +76,15 @@ export async function getStudentHistoricalStats(
 
   const todayStr = dateList[dateList.length - 1];
   const startDate = dateList[0];
+
+  // Fecha 1 día antes para calcular variación diaria del primer día
+  const preDate = new Date();
+  preDate.setDate(today.getDate() - days);
+  const preYear = preDate.getFullYear();
+  const preMonth = String(preDate.getMonth() + 1).padStart(2, '0');
+  const preDay = String(preDate.getDate()).padStart(2, '0');
+  const queryStartDate = `${preYear}-${preMonth}-${preDay}`;
+
   let dbRows: StudentDailyStat[] = [];
 
   try {
@@ -82,7 +92,7 @@ export async function getStudentHistoricalStats(
       .from('student_daily_stats')
       .select('*')
       .eq('student_id', studentId)
-      .gte('date', startDate)
+      .gte('date', queryStartDate)
       .order('date', { ascending: true });
 
     if (!error && data && data.length > 0) {
@@ -98,6 +108,8 @@ export async function getStudentHistoricalStats(
     console.debug('Error consultando student_daily_stats:', err);
   }
 
+  const baselineRow = dbRows.find(r => r.date === queryStartDate);
+
   // Mapeamos los datos de la serie temporal combinando historial y valores en tiempo real para hoy
   const stats: StudentDailyStat[] = dateList.map((dateStr) => {
     const isToday = dateStr === todayStr;
@@ -105,13 +117,38 @@ export async function getStudentHistoricalStats(
     const dayLabel = formatDayLabel(dateStr);
 
     if (existing) {
+      if (isToday) {
+        return {
+          ...existing,
+          day_label: dayLabel,
+          knows_count: Math.max(existing.knows_count, currentValues.knowsCount ?? 0),
+          fans_count: Math.max(existing.fans_count, currentValues.fansCount ?? 0),
+          crushes_count: Math.max(existing.crushes_count, currentValues.crushesCount ?? 0),
+          score: (currentValues.score && currentValues.score > 0) ? currentValues.score : existing.score,
+          views_count: Math.max(existing.views_count, currentValues.viewsCount ?? 0),
+        };
+      }
       return {
         ...existing,
         day_label: dayLabel,
       };
     }
 
-    // Para cualquier día sin datos en la base de datos (incluso hoy si aún no corre el snapshot)
+    // Si es hoy pero aún no corre el snapshot de la medianoche, usamos los valores en vivo
+    if (isToday) {
+      return {
+        student_id: studentId,
+        date: dateStr,
+        day_label: dayLabel,
+        knows_count: currentValues.knowsCount ?? 0,
+        fans_count: currentValues.fansCount ?? 0,
+        crushes_count: currentValues.crushesCount ?? 0,
+        score: currentValues.score ?? 0.0,
+        views_count: currentValues.viewsCount ?? 0,
+      };
+    }
+
+    // Para cualquier día anterior sin datos en la base de datos
     return {
       student_id: studentId,
       date: dateStr,
@@ -147,6 +184,7 @@ export async function getStudentHistoricalStats(
     periodDays: days,
     stats,
     campusAverage,
+    baseline: baselineRow,
     totals: {
       views: lastStat.views_count,
       crushes: lastStat.crushes_count,
