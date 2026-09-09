@@ -13,7 +13,8 @@ import {
   Plus,
   Scissors,
   Disc,
-  Users
+  Users,
+  FileCheck2
 } from 'lucide-react';
 import { supabase } from '@/src/lib/supabase';
 import { useAuth } from '@/src/context/AuthContext';
@@ -130,6 +131,18 @@ export default function ToolsView({ onBack, onNavigate }: ToolsViewProps) {
       isAvailable: true,
       isExternal: true,
       icon: <FileText className="w-8 h-8 text-white" />
+    },
+    {
+      id: 'compresor-pdf',
+      title: 'Compresor de PDF',
+      description: 'Reduce el tamaño y peso de tus documentos PDF con algoritmo de compresión 100% local, seguro y sin límites.',
+      category: 'Optimización de Archivos',
+      url: '/herramientas/comprimirpdf',
+      brandColor: 'from-[#2563eb] to-[#10b981]',
+      buttonGradient: 'bg-gradient-to-r from-[#2563eb] to-[#0d9488] shadow-[0_4px_16px_rgba(37,99,235,0.25)]',
+      isAvailable: true,
+      isExternal: false,
+      icon: <FileCheck2 className="w-8 h-8 text-white" />
     }
   ];
 
