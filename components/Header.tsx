@@ -41,6 +41,7 @@ import { SearchSuggestion } from '@/src/lib/search';
 import { supabase } from '@/src/lib/supabase';
 import { createConfessionComment, getDisplayAuthorName, getMyConfessionIds } from '@/src/lib/confessions';
 import { promptNotificationOnAction } from '@/src/lib/notificationHelper';
+import { usePwaTabs } from '@/src/context/PwaTabsContext';
 
 interface NotificationItem {
   id: string;
@@ -85,6 +86,12 @@ export default function Header({
   // Lógica de PWA (deferredPrompt y comprobación de instalabilidad)
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isPwaInstallable, setIsPwaInstallable] = useState(false);
+  const { 
+    isPwa: isPwaMode, 
+    tabs: pwaTabs, 
+    setIsTabsSwitcherOpen, 
+    togglePwaSimulation 
+  } = usePwaTabs();
 
   // Lógica de Notificaciones In-App
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
@@ -650,14 +657,16 @@ export default function Header({
               <Search className="w-5 h-5" />
             </button>
 
-            {/* BOTÓN DE DESCARGA PWA EN MÓVILES */}
-            <button
-              onClick={handlePwaInstallClick}
-              className="sm:hidden p-2 rounded-xl bg-[#141414] border border-[#ffffff15] text-[#eab308] hover:text-white hover:border-[#eab308]/40 hover:bg-[#1a1a1a] transition-all active:scale-95 cursor-pointer"
-              title="Descargar Aplicación (PWA)"
-            >
-              <Download className="w-5 h-5" />
-            </button>
+            {/* BOTÓN DE DESCARGA PWA EN MÓVILES (OCULTO EN MODO PWA) */}
+            {!isPwaMode && (
+              <button
+                onClick={handlePwaInstallClick}
+                className="sm:hidden p-2 rounded-xl bg-[#141414] border border-[#ffffff15] text-[#eab308] hover:text-white hover:border-[#eab308]/40 hover:bg-[#1a1a1a] transition-all active:scale-95 cursor-pointer"
+                title="Descargar Aplicación (PWA)"
+              >
+                <Download className="w-5 h-5" />
+              </button>
+            )}
 
             {/* NOTIFICACIONES EN MÓVILES CON DROPDOWN REAL */}
             <div className="relative sm:hidden" ref={mobileNotificationsRef}>
@@ -726,16 +735,32 @@ export default function Header({
               )}
             </div>
 
+            {/* BOTÓN DE PESTAÑAS PWA EN MÓVILES (AL LADO DERECHO DE LA CAMPANA - SOLO EN PWA) */}
+            {isPwaMode && (
+              <button
+                onClick={() => setIsTabsSwitcherOpen(true)}
+                className="sm:hidden p-2 min-w-[38px] h-[38px] rounded-xl bg-[#141414] border border-[#eab308]/40 text-[#eab308] hover:bg-[#1a1a1a] hover:border-[#eab308] transition-all active:scale-95 cursor-pointer flex items-center justify-center font-black relative shadow-[0_0_12px_rgba(234,179,8,0.15)]"
+                title={`Pestañas abiertas (${pwaTabs.length})`}
+                aria-label="Abrir gestor de pestañas"
+              >
+                <div className="w-5 h-5 rounded-md border-2 border-[#eab308] flex items-center justify-center text-[10px] font-black leading-none text-[#eab308]">
+                  {pwaTabs.length}
+                </div>
+              </button>
+            )}
+
             {/* BOTONES DE USUARIO Y CONFIGURACIÓN (DESKTOP) */}
             <div className="hidden md:flex items-center gap-3">
-              {/* BOTÓN DE DESCARGA PWA EN ESCRITORIO */}
-              <button
-                onClick={handlePwaInstallClick}
-                className="p-2.5 rounded-xl bg-[#141414] border border-[#ffffff10] text-[#eab308] hover:text-white hover:border-[#eab308]/40 hover:bg-[#1a1a1a] transition-all cursor-pointer"
-                title="Descargar Aplicación (PWA)"
-              >
-                <Download className="w-4 h-4" />
-              </button>
+              {/* BOTÓN DE DESCARGA PWA EN ESCRITORIO (OCULTO EN MODO PWA) */}
+              {!isPwaMode && (
+                <button
+                  onClick={handlePwaInstallClick}
+                  className="p-2.5 rounded-xl bg-[#141414] border border-[#ffffff10] text-[#eab308] hover:text-white hover:border-[#eab308]/40 hover:bg-[#1a1a1a] transition-all cursor-pointer"
+                  title="Descargar Aplicación (PWA)"
+                >
+                  <Download className="w-4 h-4" />
+                </button>
+              )}
 
               {/* NOTIFICACIONES EN ESCRITORIO CON DROPDOWN REAL */}
               <div className="relative" ref={notificationsRef}>
@@ -803,6 +828,20 @@ export default function Header({
                   </div>
                 )}
               </div>
+
+              {/* BOTÓN DE PESTAÑAS EN ESCRITORIO (SOLO EN PWA) */}
+              {isPwaMode && (
+                <button
+                  onClick={() => setIsTabsSwitcherOpen(true)}
+                  className="p-2.5 rounded-xl bg-[#141414] border border-[#eab308]/30 text-[#eab308] hover:border-[#eab308] hover:bg-[#1a1a1a] transition-all cursor-pointer flex items-center gap-2 shadow-[0_0_12px_rgba(234,179,8,0.1)]"
+                  title={`Pestañas abiertas (${pwaTabs.length})`}
+                >
+                  <div className="w-4 h-4 rounded border-2 border-[#eab308] flex items-center justify-center text-[9px] font-black leading-none">
+                    {pwaTabs.length}
+                  </div>
+                  <span className="text-xs font-bold text-zinc-300 hidden lg:inline">Pestañas</span>
+                </button>
+              )}
 
               {user ? (
                 <div className="flex items-center gap-2.5 relative" ref={settingsRef}>
@@ -909,6 +948,28 @@ export default function Header({
                            >
                              <ShieldCheck className="w-4 h-4 text-amber-400 group-hover:scale-110 transition-transform" />
                              <span>Normas de la Comunidad</span>
+                           </button>
+                         </div>
+
+                         {/* OPCIÓN: MODO PWA / PESTAÑAS */}
+                         <div className="px-1 py-1 border-b border-zinc-800/80 mb-1">
+                           <button
+                             type="button"
+                             onClick={() => {
+                               togglePwaSimulation();
+                             }}
+                             className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-bold text-zinc-300 hover:text-amber-400 hover:bg-zinc-800/60 transition-all cursor-pointer text-left group"
+                             title="Activar o desactivar visualización de modo PWA y pestañas"
+                           >
+                             <div className="flex items-center gap-2.5">
+                               <Smartphone className="w-4 h-4 text-amber-400 group-hover:scale-110 transition-transform" />
+                               <span>Modo PWA (Pestañas)</span>
+                             </div>
+                             <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded ${
+                               isPwaMode ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-zinc-800 text-zinc-500'
+                             }`}>
+                               {isPwaMode ? 'Activo' : 'Inactivo'}
+                             </span>
                            </button>
                          </div>
 
@@ -1066,6 +1127,26 @@ export default function Header({
               <ShieldCheck className="w-4 h-4 text-amber-400" />
               <span>Normas de la Comunidad</span>
             </button>
+
+            {/* GESTOR DE PESTAÑAS EN MÓVIL (SI ES PWA) */}
+            {isPwaMode && (
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  setIsTabsSwitcherOpen(true);
+                }}
+                className="w-full py-3 px-4 rounded-xl border border-amber-500/40 text-[#eab308] font-bold text-xs tracking-wider bg-amber-500/10 hover:bg-amber-500/15 flex items-center justify-between transition-all cursor-pointer shadow-[0_0_12px_rgba(234,179,8,0.1)]"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Smartphone className="w-4 h-4 text-amber-400" />
+                  <span>Pestañas de la App</span>
+                </div>
+                <span className="w-6 h-6 rounded-lg border-2 border-amber-400 flex items-center justify-center text-[10px] font-black text-amber-400">
+                  {pwaTabs.length}
+                </span>
+              </button>
+            )}
 
             {/* ACTIVAR NOTIFICACIONES EN MÓVIL */}
             {permission !== 'granted' && permission !== 'unsupported' && (

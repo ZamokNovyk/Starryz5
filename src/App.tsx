@@ -28,6 +28,8 @@ import { useFCMNotifications } from '@/hooks/useFCMNotifications';
 import { Institution, Student } from '@/lib/mockData';
 import { getEducationalCenters, EducationalCenter } from '@/src/lib/centers';
 import { supabase } from '@/src/lib/supabase';
+import { usePwaTabs } from '@/src/context/PwaTabsContext';
+import PwaTabsSwitcherModal from '@/components/Modals/PwaTabsSwitcherModal';
 
 function generateAcronym(name: string): string {
   const cleanWords = name
@@ -63,6 +65,7 @@ function matchSlug(name: string, targetSlug: string): boolean {
 export default function App() {
   const { user } = useAuth();
   const { toastNotification, closeToast } = useFCMNotifications();
+  const { syncCurrentRoute } = usePwaTabs();
   const [searchQuery, setSearchQuery] = useState('');
   const [autoNavigateToProfile, setAutoNavigateToProfile] = useState(false);
 
@@ -122,6 +125,11 @@ export default function App() {
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
+
+  // Sincronizar ruta activa con la pestaña actual de la PWA
+  useEffect(() => {
+    syncCurrentRoute(route.pathname, route.search);
+  }, [route.pathname, route.search, syncCurrentRoute]);
 
   const navigate = (pathname: string, search: string = '') => {
     window.history.pushState(null, '', pathname + search);
@@ -533,6 +541,11 @@ export default function App() {
           </button>
         </div>
       )}
+
+      {/* PWA Tabs Switcher Modal */}
+      <PwaTabsSwitcherModal
+        onNavigate={(pathname, search = '') => navigate(pathname, search)}
+      />
 
       {/* Technical integration badge */}
       <SupabaseStatusBadge />
