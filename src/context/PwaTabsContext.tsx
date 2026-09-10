@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
 import html2canvas from 'html2canvas';
 
 export type TabType = 
@@ -418,8 +418,26 @@ export function PwaTabsProvider({ children }: { children: ReactNode }) {
     const finalTitle = customTitle || meta.title;
 
     setTabs(prev => {
-      const exists = prev.some(t => t.id === activeTabId);
-      if (!exists) {
+      const existingTab = prev.find(t => t.id === activeTabId);
+      if (existingTab) {
+        // Evitar actualizar estado si la ruta, título y metadatos no han cambiado
+        const titleSame = existingTab.title === finalTitle;
+        const pathSame = existingTab.pathname === pathname;
+        const searchSame = existingTab.search === search;
+        const metaSame = !customMeta || (
+          existingTab.meta?.institutionName === customMeta.institutionName &&
+          existingTab.meta?.toolType === customMeta.toolType &&
+          existingTab.meta?.searchQuery === customMeta.searchQuery &&
+          existingTab.meta?.professorName === customMeta.professorName &&
+          existingTab.meta?.studentName === customMeta.studentName
+        );
+
+        if (titleSame && pathSame && searchSame && metaSame) {
+          return prev; // Misma referencia -> React omite el re-render por completo
+        }
+      }
+
+      if (!existingTab) {
         const newTab: PwaTab = {
           id: activeTabId || 'tab_' + Math.random().toString(36).substring(2, 9),
           title: finalTitle,
@@ -546,25 +564,40 @@ export function PwaTabsProvider({ children }: { children: ReactNode }) {
 
   const activeTab = tabs.find(t => t.id === activeTabId);
 
+  const contextValue = useMemo(() => ({
+    isPwa,
+    togglePwaSimulation,
+    tabs,
+    activeTabId,
+    activeTab,
+    isTabsSwitcherOpen,
+    setIsTabsSwitcherOpen,
+    openTabsSwitcher,
+    captureActiveTabSnapshot,
+    switchTab,
+    closeTab,
+    closeAllTabs,
+    createNewTab,
+    syncCurrentRoute
+  }), [
+    isPwa,
+    togglePwaSimulation,
+    tabs,
+    activeTabId,
+    activeTab,
+    isTabsSwitcherOpen,
+    setIsTabsSwitcherOpen,
+    openTabsSwitcher,
+    captureActiveTabSnapshot,
+    switchTab,
+    closeTab,
+    closeAllTabs,
+    createNewTab,
+    syncCurrentRoute
+  ]);
+
   return (
-    <PwaTabsContext.Provider
-      value={{
-        isPwa,
-        togglePwaSimulation,
-        tabs,
-        activeTabId,
-        activeTab,
-        isTabsSwitcherOpen,
-        setIsTabsSwitcherOpen,
-        openTabsSwitcher,
-        captureActiveTabSnapshot,
-        switchTab,
-        closeTab,
-        closeAllTabs,
-        createNewTab,
-        syncCurrentRoute
-      }}
-    >
+    <PwaTabsContext.Provider value={contextValue}>
       {children}
     </PwaTabsContext.Provider>
   );

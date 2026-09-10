@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Header from '@/components/Header';
 import HeroSection from '@/components/HeroSection';
 import RegisteredInstitutions from '@/components/RegisteredInstitutions';
@@ -149,34 +149,36 @@ export default function App() {
   }, [institutionsRefreshKey]);
 
   // Map centers to Institution type
-  const mappedDbCenters: Institution[] = dbCenters.map(center => {
-    const category: 'Universidad' | 'Instituto' | 'Colegio' = 
-      center.type === 'colegio' 
-        ? 'Colegio' 
-        : center.type === 'instituto' 
-          ? 'Instituto' 
-          : 'Universidad';
-
+  const mappedDbCenters: Institution[] = useMemo(() => {
     const fallbackImages = {
       'Colegio': 'https://images.unsplash.com/photo-1503676260728-1c00da094a0b?q=80&w=800&auto=format&fit=crop',
       'Instituto': 'https://images.unsplash.com/photo-1562774053-701939374585?q=80&w=800&auto=format&fit=crop',
       'Universidad': 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?q=80&w=800&auto=format&fit=crop'
     };
 
-    return {
-      id: center.id,
-      name: center.name,
-      acronym: generateAcronym(center.name),
-      category,
-      campus: 'Sede Principal',
-      city: 'Registrado por Alumno',
-      studentsCount: 1,
-      popularityScore: 7.0,
-      verified: false,
-      image: center.profile_photo_url || fallbackImages[category],
-      topStudent: 'Sin líder',
-    };
-  });
+    return dbCenters.map(center => {
+      const category: 'Universidad' | 'Instituto' | 'Colegio' = 
+        center.type === 'colegio' 
+          ? 'Colegio' 
+          : center.type === 'instituto' 
+            ? 'Instituto' 
+            : 'Universidad';
+
+      return {
+        id: center.id,
+        name: center.name,
+        acronym: generateAcronym(center.name),
+        category,
+        campus: 'Sede Principal',
+        city: 'Registrado por Alumno',
+        studentsCount: 1,
+        popularityScore: 7.0,
+        verified: false,
+        image: center.profile_photo_url || fallbackImages[category],
+        topStudent: 'Sin líder',
+      };
+    });
+  }, [dbCenters]);
 
   const allInstitutions = mappedDbCenters;
 
@@ -261,13 +263,18 @@ export default function App() {
   const isSearchRoute = route.pathname === '/search' || (route.pathname === '/' && new URLSearchParams(route.search).has('q'));
   const currentQuery = new URLSearchParams(route.search).get('q') || searchQuery;
 
-  const searchResults = allInstitutions.filter(inst => {
-    if (!currentQuery) return true;
-    return (
-      inst.name.toLowerCase().includes(currentQuery.toLowerCase()) ||
-      inst.acronym.toLowerCase().includes(currentQuery.toLowerCase())
-    );
-  });
+  const searchResults = useMemo(() => {
+    return allInstitutions.filter(inst => {
+      if (!currentQuery) return true;
+      return (
+        inst.name.toLowerCase().includes(currentQuery.toLowerCase()) ||
+        inst.acronym.toLowerCase().includes(currentQuery.toLowerCase())
+      );
+    });
+  }, [allInstitutions, currentQuery]);
+
+  const currentProfileInstId = currentProfileInstitution?.id;
+  const currentProfileInstName = currentProfileInstitution?.name;
 
   // Sincronizar ruta activa y título real con la pestaña actual de la PWA
   useEffect(() => {
@@ -345,10 +352,11 @@ export default function App() {
     route.search,
     searchQuery,
     searchResults.length,
-    allInstitutions,
+    dbCenters.length,
     isProfileRoute,
     profileSlug,
-    currentProfileInstitution,
+    currentProfileInstId,
+    currentProfileInstName,
     isProfessorRoute,
     professorSlug,
     isStudentRoute,
