@@ -669,8 +669,8 @@ export default function Header({
               </button>
             )}
 
-            {/* NOTIFICACIONES EN MÓVILES CON DROPDOWN REAL */}
-            <div className="relative sm:hidden" ref={mobileNotificationsRef}>
+            {/* NOTIFICACIONES EN MÓVILES CON VENTANA CENTRADA */}
+            <div className="sm:hidden" ref={mobileNotificationsRef}>
               <button
                 onClick={() => setMobileNotificationsOpen(!mobileNotificationsOpen)}
                 className="p-2 rounded-xl bg-[#141414] border border-[#ffffff15] text-[#eab308] hover:bg-[#1a1a1a] transition-all active:scale-95 cursor-pointer relative"
@@ -685,54 +685,80 @@ export default function Header({
               </button>
 
               {mobileNotificationsOpen && (
-                <div 
-                  id="mobile-notifs-dropdown"
-                  className="absolute right-0 mt-2 z-50 w-80 bg-[#101114]/95 border border-[#eab308]/40 backdrop-blur-md rounded-2xl shadow-[0_15px_40px_rgba(0,0,0,0.85)] overflow-hidden animate-fade-in"
-                >
-                  <div className="flex items-center justify-between px-4 py-3.5 border-b border-zinc-800/80 bg-[#14151a]">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.8)]" />
-                      <span className="text-xs font-black text-white uppercase tracking-wider">Notificaciones</span>
-                    </div>
-                    {unreadCount > 0 && (
-                      <button 
-                        onClick={markAllAsRead}
-                        className="text-[11px] text-[#eab308] hover:text-[#ca9a07] font-bold transition-colors cursor-pointer"
-                      >
-                        Marcar todas como leídas
-                      </button>
-                    )}
-                  </div>
-                  <div className="max-h-72 overflow-y-auto divide-y divide-zinc-800/60">
-                    {notifications.length === 0 ? (
-                      <div className="p-8 text-center text-zinc-500 text-xs">
-                        No tienes notificaciones nuevas
+                <>
+                  {/* Backdrop para cerrar tocando fuera en móviles */}
+                  <div 
+                    className="fixed inset-0 bg-black/60 backdrop-blur-xs z-40 sm:hidden"
+                    onClick={() => setMobileNotificationsOpen(false)}
+                  />
+
+                  {/* Ventana de notificaciones centrada horizontalmente */}
+                  <div 
+                    id="mobile-notifs-dropdown"
+                    className="fixed left-3 right-3 top-[68px] max-w-sm mx-auto z-50 bg-[#101114]/98 border border-[#eab308]/40 backdrop-blur-xl rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.9)] overflow-hidden animate-fade-in flex flex-col max-h-[75vh]"
+                  >
+                    <div className="flex items-center justify-between px-4 py-3.5 border-b border-zinc-800/80 bg-[#14151a] shrink-0">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.8)]" />
+                        <span className="text-xs font-black text-white uppercase tracking-wider">Notificaciones</span>
+                        {unreadCount > 0 && (
+                          <span className="px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 text-[10px] font-bold">
+                            {unreadCount}
+                          </span>
+                        )}
                       </div>
-                    ) : (
-                      notifications.map((notif) => (
-                        <div 
-                          key={notif.id}
-                          onClick={() => handleNotificationClick(notif)}
-                          className={`p-3.5 text-left transition-all hover:bg-zinc-800/40 cursor-pointer ${
-                            !notif.is_read ? 'bg-amber-500/10 border-l-2 border-l-amber-500' : 'border-l-2 border-l-transparent'
-                          }`}
+                      <div className="flex items-center gap-2.5">
+                        {unreadCount > 0 && (
+                          <button 
+                            onClick={markAllAsRead}
+                            className="text-[11px] text-[#eab308] hover:text-[#ca9a07] font-bold transition-colors cursor-pointer"
+                          >
+                            Marcar leídas
+                          </button>
+                        )}
+                        <button
+                          onClick={() => setMobileNotificationsOpen(false)}
+                          className="p-1 rounded-full text-zinc-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                          title="Cerrar"
                         >
-                          <div className="flex justify-between items-start gap-2">
-                            <span className="text-xs text-amber-400 font-bold">
-                              {notif.title || 'Wikibot'}
-                            </span>
-                            <span className="text-[10px] text-zinc-500 shrink-0">
-                              {formatNotifDate(notif.created_at)}
-                            </span>
-                          </div>
-                          <p className="text-xs text-zinc-300 mt-1 leading-snug">
-                            {renderNotificationBody(notif.body)}
-                          </p>
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="overflow-y-auto divide-y divide-zinc-800/60 flex-1">
+                      {notifications.length === 0 ? (
+                        <div className="p-8 text-center text-zinc-500 text-xs">
+                          No tienes notificaciones nuevas
                         </div>
-                      ))
-                    )}
+                      ) : (
+                        notifications.map((notif) => (
+                          <div 
+                            key={notif.id}
+                            onClick={() => {
+                              handleNotificationClick(notif);
+                              setMobileNotificationsOpen(false);
+                            }}
+                            className={`p-3.5 text-left transition-all hover:bg-zinc-800/40 cursor-pointer ${
+                              !notif.is_read ? 'bg-amber-500/10 border-l-2 border-l-amber-500' : 'border-l-2 border-l-transparent'
+                            }`}
+                          >
+                            <div className="flex justify-between items-start gap-2">
+                              <span className="text-xs text-amber-400 font-bold">
+                                {notif.title || 'Wikibot'}
+                              </span>
+                              <span className="text-[10px] text-zinc-500 shrink-0">
+                                {formatNotifDate(notif.created_at)}
+                              </span>
+                            </div>
+                            <p className="text-xs text-zinc-300 mt-1 leading-snug">
+                              {renderNotificationBody(notif.body)}
+                            </p>
+                          </div>
+                        ))
+                      )}
+                    </div>
                   </div>
-                </div>
+                </>
               )}
             </div>
 
