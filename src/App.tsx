@@ -28,7 +28,7 @@ import { useFCMNotifications } from '@/hooks/useFCMNotifications';
 import { Institution, Student } from '@/lib/mockData';
 import { getEducationalCenters, EducationalCenter } from '@/src/lib/centers';
 import { supabase } from '@/src/lib/supabase';
-import { usePwaTabs, formatSlug } from '@/src/context/PwaTabsContext';
+import { usePwaTabs, formatSlug, TabRichMeta } from '@/src/context/PwaTabsContext';
 import PwaTabsSwitcherModal from '@/components/Modals/PwaTabsSwitcherModal';
 
 function generateAcronym(name: string): string {
@@ -272,31 +272,80 @@ export default function App() {
   // Sincronizar ruta activa y título real con la pestaña actual de la PWA
   useEffect(() => {
     let customTitle: string | undefined;
+    let customMeta: TabRichMeta | undefined;
 
     if (isProfileRoute) {
-      customTitle = currentProfileInstitution?.name || formatSlug(profileSlug);
+      const instName = currentProfileInstitution?.name || formatSlug(profileSlug);
+      customTitle = instName;
+      customMeta = {
+        institutionName: instName,
+        institutionAcronym: generateAcronym(instName),
+        institutionType: currentProfileInstitution?.type || 'Centro de Educación Superior',
+        institutionCity: currentProfileInstitution?.department || currentProfileInstitution?.province || 'Perú',
+        institutionRating: currentProfileInstitution?.rating || 4.8,
+        institutionReviews: currentProfileInstitution?.reviewCount || 34,
+        institutionBanner: currentProfileInstitution?.bannerUrl,
+        institutionLogo: currentProfileInstitution?.logoUrl
+      };
     } else if (isProfessorRoute && professorSlug) {
-      customTitle = `Prof. ${formatSlug(professorSlug)}`;
+      const profName = formatSlug(professorSlug);
+      customTitle = `Prof. ${profName}`;
+      customMeta = {
+        professorName: profName,
+        professorRating: 4.8,
+        professorSubject: 'Docencia & Cátedra'
+      };
     } else if (isStudentRoute && studentSlug) {
-      customTitle = formatSlug(studentSlug);
+      const studName = formatSlug(studentSlug);
+      customTitle = studName;
+      customMeta = {
+        studentName: studName,
+        studentCrushes: 142,
+        studentRating: 4.9
+      };
     } else if (isPdfCompressorRoute) {
       customTitle = 'Compresor PDF';
+      customMeta = { toolType: 'compressor' };
     } else if (isPdfOrganizerRoute) {
       customTitle = 'Organizador PDF';
+      customMeta = { toolType: 'organizer' };
     } else if (isPdfSplitterRoute) {
       customTitle = 'Dividir PDF';
+      customMeta = { toolType: 'splitter' };
     } else if (isRuletaRoute) {
       customTitle = 'Ruleta de Sorteos';
+      customMeta = { toolType: 'ruleta' };
     } else if (isFormadorGruposRoute) {
       customTitle = 'Formador de Grupos';
+      customMeta = { toolType: 'grupos' };
     } else if (isAdminRoute) {
       customTitle = 'Panel Admin';
+    } else if (route.pathname === '/search' || (route.pathname === '/' && route.search)) {
+      const queryParam = new URLSearchParams(route.search).get('q') || searchQuery;
+      customTitle = queryParam ? `Búsqueda: ${queryParam}` : 'Buscador';
+      customMeta = {
+        searchQuery: queryParam,
+        searchTotalResults: searchResults.length
+      };
+    } else if (route.pathname === '/') {
+      customTitle = 'Inicio • Campus';
+      customMeta = {
+        topInstitutions: allInstitutions.slice(0, 3).map(inst => ({
+          name: inst.name,
+          acronym: generateAcronym(inst.name),
+          rating: inst.rating || 4.8,
+          city: inst.department || inst.province || 'Perú'
+        }))
+      };
     }
 
-    syncCurrentRoute(route.pathname, route.search, customTitle);
+    syncCurrentRoute(route.pathname, route.search, customTitle, customMeta);
   }, [
     route.pathname,
     route.search,
+    searchQuery,
+    searchResults.length,
+    allInstitutions,
     isProfileRoute,
     profileSlug,
     currentProfileInstitution,

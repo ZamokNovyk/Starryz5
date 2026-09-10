@@ -20,7 +20,9 @@ import {
   FileText,
   Sliders,
   Compass,
-  Star
+  Star,
+  MapPin,
+  CheckCircle2
 } from 'lucide-react';
 import { usePwaTabs, PwaTab, TabType } from '@/src/context/PwaTabsContext';
 
@@ -92,214 +94,368 @@ function TabPreviewSnapshot({ tab, isActive }: { tab: PwaTab; isActive: boolean 
     );
   }
 
-  // 2. Renderizado alternativo dinámico con los datos específicos de la pestaña
-  switch (tab.type) {
-    case 'student':
-      return (
-        <div className="w-full h-full bg-[#14151a] p-3 flex flex-col justify-between text-left select-none relative overflow-hidden">
-          {/* Cabecera del perfil */}
-          <div>
-            <div className="h-10 w-full rounded-t-lg bg-gradient-to-r from-amber-600/40 via-purple-600/30 to-amber-500/40 relative">
-              <div className="absolute -bottom-3 left-2 w-7 h-7 rounded-full bg-amber-500/30 border-2 border-[#14151a] flex items-center justify-center text-amber-300 font-black text-[10px]">
-                {tab.title.charAt(0).toUpperCase()}
-              </div>
+  // 2. Renderizado fotorrealista adaptado a la identidad visual exacta de cada página
+  const isCenter = tab.type === 'center' || tab.pathname.includes('/educational_centers/') || tab.pathname.includes('/centros/');
+  const isSearch = tab.type === 'search' || tab.pathname === '/search' || tab.pathname.includes('?q=');
+  const isTools = tab.type === 'tools' || tab.pathname.includes('/herramientas');
+  const isProfessor = tab.type === 'professor' || tab.pathname.includes('/profesores/');
+  const isStudent = tab.type === 'student' || tab.pathname.includes('/estudiantes/');
+
+  // Barra de estado móvil simulada (similar a la barra superior del celular en Chrome)
+  const MobileStatusBar = () => (
+    <div className="h-3.5 px-2 flex items-center justify-between text-[7px] text-zinc-400/80 font-mono select-none">
+      <span>12:00</span>
+      <div className="flex items-center gap-1">
+        <span className="text-[6px]">4G</span>
+        <span className="w-2.5 h-1.5 border border-zinc-500 rounded-[1px] relative inline-block">
+          <span className="absolute inset-0 bg-zinc-300 w-[70%]" />
+        </span>
+      </div>
+    </div>
+  );
+
+  // A. CENTRO EDUCATIVO / UNIVERSIDAD (Ficha institucional de alta fidelidad)
+  if (isCenter) {
+    const centerName = tab.meta?.institutionName || tab.title;
+    const acronym = tab.meta?.institutionAcronym || centerName.split(' ').filter(w => w.length > 2).map(w => w[0]).slice(0, 4).join('').toUpperCase() || 'IES';
+    const city = tab.meta?.institutionCity || 'Perú';
+    const rating = tab.meta?.institutionRating || 4.8;
+    const reviews = tab.meta?.institutionReviews || 34;
+    const centerType = tab.meta?.institutionType || 'Instituto Superior';
+
+    return (
+      <div className="w-full h-full bg-[#0b0e14] flex flex-col justify-between text-left select-none overflow-hidden text-zinc-100">
+        <div>
+          <MobileStatusBar />
+          {/* Banner de portada universitario */}
+          <div className="h-14 w-full bg-gradient-to-r from-blue-950 via-sky-900 to-indigo-950 relative p-2 flex items-end">
+            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-sky-400/10 via-transparent to-black/40" />
+            
+            {/* Escudo / Sello institucional con siglas */}
+            <div className="absolute -bottom-3.5 left-2.5 w-8 h-8 rounded-xl bg-[#0f172a] border-2 border-sky-400 shadow-md flex items-center justify-center text-sky-300 font-black text-[9px] tracking-wider z-10">
+              {acronym}
             </div>
-            <div className="mt-4 px-1">
-              <div className="text-[11px] font-black text-white truncate">{tab.title}</div>
-              <div className="text-[9px] text-zinc-400 truncate">Estudiante verificado</div>
+
+            <div className="ml-9 min-w-0 z-10">
+              <span className="text-[7px] px-1.5 py-0.5 rounded-full bg-sky-500/30 text-sky-200 font-bold uppercase tracking-wider">
+                {centerType}
+              </span>
             </div>
           </div>
 
-          {/* Mini métricas */}
-          <div className="grid grid-cols-2 gap-1.5 my-2">
-            <div className="p-1.5 rounded-lg bg-zinc-900/90 border border-zinc-800 text-center">
-              <span className="text-[9px] text-rose-400 font-extrabold block">❤️ 120+</span>
-              <span className="text-[7px] text-zinc-500 uppercase">Flechazos</span>
-            </div>
-            <div className="p-1.5 rounded-lg bg-zinc-900/90 border border-zinc-800 text-center">
-              <span className="text-[9px] text-amber-400 font-extrabold block">⭐ 4.9</span>
-              <span className="text-[7px] text-zinc-500 uppercase">Valoración</span>
-            </div>
-          </div>
+          {/* Información del Centro */}
+          <div className="pt-4 px-2.5 space-y-1">
+            <h4 className="text-[10px] font-black text-white leading-tight line-clamp-2">
+              {centerName}
+            </h4>
 
-          {/* Botones de acción mini */}
-          <div className="space-y-1">
-            <div className="w-full py-1 rounded-md bg-amber-500/20 border border-amber-500/40 text-[8px] font-bold text-amber-300 text-center">
-              Ver perfil completo
-            </div>
-          </div>
-        </div>
-      );
-
-    case 'professor':
-      return (
-        <div className="w-full h-full bg-[#12131a] p-3 flex flex-col justify-between text-left select-none">
-          <div>
-            <div className="flex items-center gap-2 mb-2 pb-2 border-b border-zinc-800/80">
-              <div className="w-7 h-7 rounded-full bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center text-indigo-300 text-[10px] font-bold">
-                <GraduationCap className="w-3.5 h-3.5" />
-              </div>
-              <div className="min-w-0">
-                <div className="text-[11px] font-black text-white truncate">{tab.title}</div>
-                <div className="text-[8px] text-indigo-400 font-semibold">Docente Evaluado</div>
-              </div>
-            </div>
-
-            <div className="space-y-1.5 mt-2">
-              <div className="flex items-center gap-1">
-                {[1, 2, 3, 4, 5].map((s) => (
-                  <span key={s} className="text-amber-400 text-[10px]">★</span>
-                ))}
-                <span className="text-[8px] text-zinc-400 font-bold ml-1">4.8 / 5.0</span>
-              </div>
-              <div className="p-1.5 rounded-md bg-zinc-900/80 border border-zinc-800/60 text-[8px] text-zinc-300 leading-tight line-clamp-2">
-                &quot;Excelente docente, explica con claridad y apoya en prácticas.&quot;
-              </div>
-            </div>
-          </div>
-
-          <div className="w-full py-1 rounded bg-indigo-500/20 text-indigo-300 font-bold text-[8px] text-center">
-            Calificaciones & Reseñas
-          </div>
-        </div>
-      );
-
-    case 'center':
-      return (
-        <div className="w-full h-full bg-[#111317] p-2.5 flex flex-col justify-between text-left select-none">
-          <div>
-            <div className="h-11 w-full rounded-md bg-gradient-to-br from-sky-600/30 to-blue-900/40 p-2 flex items-end">
-              <div className="text-[10px] font-black text-white truncate drop-shadow">
-                {tab.title}
-              </div>
-            </div>
-            <div className="mt-2 space-y-1">
-              <div className="flex items-center gap-1.5 text-[8px] text-sky-400 font-bold">
-                <Building2 className="w-3 h-3 shrink-0" />
-                <span className="truncate">Instituto de Educación Superior</span>
-              </div>
-              <div className="grid grid-cols-3 gap-1 pt-1 text-center">
-                <div className="bg-zinc-900 p-1 rounded border border-zinc-800 text-[7px] text-zinc-300">
-                  Carreras
-                </div>
-                <div className="bg-zinc-900 p-1 rounded border border-zinc-800 text-[7px] text-zinc-300">
-                  Docentes
-                </div>
-                <div className="bg-zinc-900 p-1 rounded border border-zinc-800 text-[7px] text-zinc-300">
-                  Alumnos
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="w-full py-1 rounded bg-sky-500/20 text-sky-300 font-bold text-[8px] text-center border border-sky-500/30">
-            Explorar Centro
-          </div>
-        </div>
-      );
-
-    case 'tools':
-      return (
-        <div className="w-full h-full bg-[#131318] p-3 flex flex-col justify-between text-left select-none">
-          <div>
-            <div className="flex items-center gap-1.5 mb-2 pb-1.5 border-b border-zinc-800">
-              <Wrench className="w-3.5 h-3.5 text-purple-400" />
-              <span className="text-[10px] font-bold text-white">Utilidades de Estudio</span>
-            </div>
-            <div className="grid grid-cols-2 gap-1.5">
-              <div className="p-2 rounded-lg bg-rose-500/10 border border-rose-500/30 flex flex-col items-center justify-center text-center">
-                <FileText className="w-3.5 h-3.5 text-rose-400 mb-0.5" />
-                <span className="text-[8px] font-bold text-zinc-200">Comprimir</span>
-              </div>
-              <div className="p-2 rounded-lg bg-purple-500/10 border border-purple-500/30 flex flex-col items-center justify-center text-center">
-                <Sliders className="w-3.5 h-3.5 text-purple-400 mb-0.5" />
-                <span className="text-[8px] font-bold text-zinc-200">Organizar</span>
-              </div>
-              <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/30 flex flex-col items-center justify-center text-center col-span-2">
-                <span className="text-[8px] font-bold text-amber-300">🎡 Ruleta de Sorteos</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="text-[7px] text-zinc-500 text-center">
-            Procesamiento 100% local
-          </div>
-        </div>
-      );
-
-    case 'search':
-      return (
-        <div className="w-full h-full bg-[#131418] p-3 flex flex-col justify-between text-left select-none">
-          <div>
-            {/* Barra de búsqueda mini */}
-            <div className="w-full px-2 py-1.5 rounded-full bg-zinc-900 border border-zinc-700 flex items-center gap-1.5 mb-2.5">
-              <Search className="w-2.5 h-2.5 text-blue-400 shrink-0" />
-              <span className="text-[9px] text-zinc-300 truncate">
-                {tab.previewSubtitle?.replace('Filtro ', '') || 'Buscar personas...'}
+            <div className="flex items-center gap-2 text-[7px] text-zinc-300 pt-0.5">
+              <span className="flex items-center gap-0.5 text-amber-400 font-bold">
+                ★ {rating} <span className="text-zinc-400 font-normal">({reviews})</span>
+              </span>
+              <span>•</span>
+              <span className="text-sky-300 font-medium truncate flex items-center gap-0.5">
+                <MapPin className="w-2 h-2 shrink-0" /> {city}
               </span>
             </div>
 
-            {/* Chips de filtro */}
-            <div className="flex gap-1 mb-2">
-              <span className="text-[7px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 font-bold">Todo</span>
-              <span className="text-[7px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">Docentes</span>
-              <span className="text-[7px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">Centros</span>
+            {/* Pestañas de navegación simuladas */}
+            <div className="flex gap-1 pt-1.5 border-b border-zinc-800/80 pb-1">
+              <span className="text-[7px] px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300 font-bold">Perfil</span>
+              <span className="text-[7px] px-1.5 py-0.5 rounded bg-zinc-900 text-zinc-400">Carreras</span>
+              <span className="text-[7px] px-1.5 py-0.5 rounded bg-zinc-900 text-zinc-400">Docentes</span>
             </div>
 
-            {/* Mini resultados */}
-            <div className="space-y-1.5">
-              <div className="p-1.5 rounded bg-zinc-900/90 border border-zinc-800/80">
-                <div className="text-[8px] font-bold text-blue-400 truncate">Resultados encontrados</div>
-                <div className="text-[7px] text-zinc-400 mt-0.5 line-clamp-1">Perfiles coincidentes con la búsqueda</div>
+            {/* Tarjeta de Carreras */}
+            <div className="p-1.5 rounded-lg bg-zinc-900/80 border border-zinc-800/80 mt-1">
+              <div className="text-[7px] font-bold text-zinc-300 flex items-center gap-1">
+                <Building2 className="w-2.5 h-2.5 text-sky-400" /> Carreras Populares
+              </div>
+              <div className="text-[6.5px] text-zinc-400 mt-0.5 truncate">
+                Sistemas • Educación • Administración
               </div>
             </div>
-          </div>
-
-          <div className="w-full py-1 rounded bg-blue-500/20 text-blue-300 font-bold text-[8px] text-center">
-            Ver resultados
           </div>
         </div>
-      );
 
-    case 'home':
-    default:
-      return (
-        <div className="w-full h-full bg-[#0f1013] p-3 flex flex-col justify-between text-left select-none relative">
-          <div>
-            {/* Header Starryz Mini */}
-            <div className="flex items-center justify-between pb-2 border-b border-zinc-800/80 mb-2">
-              <div className="flex items-center gap-1">
-                <Star className="w-3.5 h-3.5 fill-[#eab308] text-[#eab308]" />
-                <span className="text-[10px] font-black text-white tracking-wider">Starryz</span>
-              </div>
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-            </div>
-
-            {/* Hero mini */}
-            <div className="w-full p-2 rounded-lg bg-gradient-to-r from-amber-500/15 via-zinc-900 to-amber-500/10 border border-amber-500/20 mb-2">
-              <div className="text-[9px] font-black text-white">Campus Digital</div>
-              <div className="text-[7px] text-zinc-400 mt-0.5">Rankings y Comunidades</div>
-            </div>
-
-            {/* Accesos rápidos mini */}
-            <div className="grid grid-cols-2 gap-1">
-              <div className="p-1.5 rounded bg-zinc-900 border border-zinc-800 flex items-center gap-1">
-                <Crown className="w-2.5 h-2.5 text-amber-400 shrink-0" />
-                <span className="text-[7px] text-zinc-300 font-bold truncate">Rankings</span>
-              </div>
-              <div className="p-1.5 rounded bg-zinc-900 border border-zinc-800 flex items-center gap-1">
-                <Compass className="w-2.5 h-2.5 text-sky-400 shrink-0" />
-                <span className="text-[7px] text-zinc-300 font-bold truncate">Explorar</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="w-full py-1 rounded bg-amber-500/20 text-amber-400 font-bold text-[8px] text-center border border-amber-500/30">
-            {isActive ? 'Pestaña actual' : 'Abrir campus'}
+        {/* Botón inferior institucional */}
+        <div className="p-2 pt-0">
+          <div className="w-full py-1 rounded-lg bg-sky-600/25 border border-sky-500/40 text-sky-300 font-bold text-[8px] text-center shadow-sm">
+            Ver Campus y Carreras
           </div>
         </div>
-      );
+      </div>
+    );
   }
+
+  // B. HERRAMIENTAS (Compresor PDF, Ruleta de Sorteos, Organizador)
+  if (isTools) {
+    const isCompressor = tab.pathname.includes('comprimir') || tab.meta?.toolType === 'compressor';
+    const isRuleta = tab.pathname.includes('ruleta') || tab.meta?.toolType === 'ruleta';
+
+    if (isCompressor) {
+      return (
+        <div className="w-full h-full bg-[#121014] flex flex-col justify-between text-left select-none p-2.5 overflow-hidden text-zinc-100">
+          <div>
+            <MobileStatusBar />
+            {/* Header Compresor PDF */}
+            <div className="flex items-center gap-1.5 mb-2 pb-1.5 border-b border-zinc-800">
+              <div className="w-5 h-5 rounded-md bg-rose-600/20 border border-rose-500/40 flex items-center justify-center text-rose-400">
+                <FileText className="w-3 h-3" />
+              </div>
+              <div>
+                <div className="text-[9px] font-black text-white leading-none">Compresor PDF</div>
+                <div className="text-[7px] text-zinc-400">Optimización ultrarrápida</div>
+              </div>
+            </div>
+
+            {/* Zona Dropzone punteada */}
+            <div className="p-2.5 rounded-xl border border-dashed border-rose-500/40 bg-rose-500/5 text-center my-1 flex flex-col items-center justify-center">
+              <FileText className="w-5 h-5 text-rose-400 mb-1 animate-pulse" />
+              <div className="text-[8px] font-bold text-zinc-200">Arrastra tu archivo PDF</div>
+              <div className="text-[6.5px] text-zinc-400">o pulsa para examinar</div>
+            </div>
+
+            {/* Archivo simulado con reducción */}
+            <div className="p-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-[7px] text-zinc-300 flex items-center justify-between mt-1.5">
+              <span className="font-semibold text-rose-300 truncate">documento.pdf</span>
+              <span className="text-emerald-400 font-bold shrink-0">-80%</span>
+            </div>
+          </div>
+
+          <div className="w-full py-1 rounded-lg bg-rose-600/25 border border-rose-500/40 text-rose-300 font-bold text-[8px] text-center">
+            Comprimir Archivo
+          </div>
+        </div>
+      );
+    }
+
+    if (isRuleta) {
+      return (
+        <div className="w-full h-full bg-[#130f1e] flex flex-col justify-between text-left select-none p-2.5 overflow-hidden text-zinc-100">
+          <div>
+            <MobileStatusBar />
+            <div className="text-center mb-1">
+              <span className="text-[9px] font-black text-amber-300 tracking-wide">🎡 RULETA DE SORTEOS</span>
+            </div>
+
+            {/* Gráfico circular de ruleta fotorrealista */}
+            <div className="w-20 h-20 mx-auto my-1 rounded-full border-2 border-amber-400/60 relative flex items-center justify-center overflow-hidden shadow-[0_0_15px_rgba(245,158,11,0.2)]">
+              <div className="absolute inset-0 bg-[conic-gradient(#ef4444_0deg_45deg,#3b82f6_45deg_90deg,#eab308_90deg_135deg,#10b981_135deg_180deg,#8b5cf6_180deg_225deg,#ec4899_225deg_270deg,#06b6d4_270deg_315deg,#f97316_315deg_360deg)] opacity-80" />
+              <div className="w-6 h-6 rounded-full bg-zinc-950 border-2 border-amber-400 z-10 flex items-center justify-center">
+                <span className="text-[7px] text-amber-300 font-black">★</span>
+              </div>
+            </div>
+
+            <div className="text-center text-[7px] text-zinc-400">
+              6 opciones cargadas listas
+            </div>
+          </div>
+
+          <div className="w-full py-1 rounded-lg bg-amber-500/30 border border-amber-500/50 text-amber-300 font-black text-[8px] text-center">
+            ¡GIRAR RULETA!
+          </div>
+        </div>
+      );
+    }
+
+    // Otras herramientas
+    return (
+      <div className="w-full h-full bg-[#111217] flex flex-col justify-between text-left select-none p-2.5 text-zinc-100">
+        <div>
+          <MobileStatusBar />
+          <div className="flex items-center gap-1.5 mb-2 pb-1 border-b border-zinc-800">
+            <Wrench className="w-3.5 h-3.5 text-purple-400" />
+            <span className="text-[9px] font-bold text-white">Utilidades Starryz</span>
+          </div>
+          <div className="grid grid-cols-2 gap-1.5">
+            <div className="p-2 rounded-lg bg-purple-500/10 border border-purple-500/30 text-center">
+              <Sliders className="w-3.5 h-3.5 text-purple-400 mx-auto mb-1" />
+              <span className="text-[7.5px] font-bold text-zinc-200">Organizar</span>
+            </div>
+            <div className="p-2 rounded-lg bg-sky-500/10 border border-sky-500/30 text-center">
+              <FileText className="w-3.5 h-3.5 text-sky-400 mx-auto mb-1" />
+              <span className="text-[7.5px] font-bold text-zinc-200">Dividir</span>
+            </div>
+          </div>
+        </div>
+        <div className="text-[7px] text-zinc-500 text-center">Procesamiento 100% privado</div>
+      </div>
+    );
+  }
+
+  // C. BUSCADOR (Estilo Google Chrome Search Results)
+  if (isSearch) {
+    const query = tab.meta?.searchQuery || tab.previewSubtitle?.replace('Resultados para "', '').replace('"', '') || 'Directorio';
+    const total = tab.meta?.searchTotalResults || 16;
+
+    return (
+      <div className="w-full h-full bg-[#141518] flex flex-col justify-between text-left select-none p-2.5 overflow-hidden text-zinc-100">
+        <div>
+          <MobileStatusBar />
+          {/* Barra de búsqueda de Google */}
+          <div className="w-full px-2.5 py-1.5 rounded-full bg-[#202124] border border-zinc-700/80 flex items-center gap-1.5 mb-2 shadow-sm">
+            <Search className="w-2.5 h-2.5 text-blue-400 shrink-0" />
+            <span className="text-[8.5px] text-zinc-200 font-medium truncate">
+              {query}
+            </span>
+          </div>
+
+          {/* Chips de filtro */}
+          <div className="flex gap-1 mb-2 border-b border-zinc-800 pb-1.5">
+            <span className="text-[7px] px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 font-bold">Todo ({total})</span>
+            <span className="text-[7px] px-1.5 py-0.5 rounded-full bg-zinc-800 text-zinc-400">Centros</span>
+            <span className="text-[7px] px-1.5 py-0.5 rounded-full bg-zinc-800 text-zinc-400">Docentes</span>
+          </div>
+
+          {/* Resultados tipo Google */}
+          <div className="space-y-1.5">
+            <div className="p-1.5 rounded-md bg-[#1b1c20] border border-zinc-800">
+              <div className="text-[6.5px] text-zinc-500 truncate">starryz.com &gt; centros &gt; superior</div>
+              <div className="text-[8px] font-bold text-sky-400 truncate">Instituto Superior Tecnológico...</div>
+              <div className="text-[6.5px] text-zinc-400 line-clamp-1 mt-0.5">
+                Plana docente evaluada, carreras acreditadas y rankings...
+              </div>
+            </div>
+
+            <div className="p-1.5 rounded-md bg-[#1b1c20] border border-zinc-800">
+              <div className="text-[6.5px] text-zinc-500 truncate">starryz.com &gt; docentes</div>
+              <div className="text-[8px] font-bold text-sky-400 truncate">Docentes mejor calificados ★ 4.9</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="w-full py-1 rounded-lg bg-blue-500/20 text-blue-300 font-bold text-[8px] text-center border border-blue-500/30">
+          Explorar Resultados
+        </div>
+      </div>
+    );
+  }
+
+  // D. DOCENTE / PROFESOR
+  if (isProfessor) {
+    const profName = tab.meta?.professorName || tab.title.replace('Prof. ', '');
+    const rating = tab.meta?.professorRating || 4.8;
+
+    return (
+      <div className="w-full h-full bg-[#12121a] flex flex-col justify-between text-left select-none p-2.5 overflow-hidden text-zinc-100">
+        <div>
+          <MobileStatusBar />
+          <div className="flex items-center gap-2 mb-2 pb-2 border-b border-indigo-500/20">
+            <div className="w-8 h-8 rounded-full bg-indigo-500/20 border-2 border-indigo-400 flex items-center justify-center text-indigo-300 text-[10px] font-bold shrink-0">
+              <GraduationCap className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-[10px] font-black text-white truncate leading-tight">Prof. {profName}</div>
+              <div className="text-[7.5px] text-indigo-400 font-medium">Cátedra Universitaria</div>
+            </div>
+          </div>
+
+          <div className="space-y-1.5 mt-1">
+            <div className="flex items-center gap-1">
+              {[1, 2, 3, 4, 5].map((s) => (
+                <span key={s} className="text-amber-400 text-[9px]">★</span>
+              ))}
+              <span className="text-[7.5px] text-zinc-300 font-bold ml-1">{rating} / 5.0</span>
+            </div>
+            <div className="p-1.5 rounded-lg bg-zinc-900/90 border border-zinc-800 text-[7px] text-zinc-300 leading-snug">
+              &quot;Excelente docente, metodología didáctica y dominio de los temas.&quot;
+            </div>
+          </div>
+        </div>
+
+        <div className="w-full py-1 rounded-lg bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 font-bold text-[8px] text-center">
+          Ver Reseñas Docentes
+        </div>
+      </div>
+    );
+  }
+
+  // E. ESTUDIANTE
+  if (isStudent) {
+    const studName = tab.meta?.studentName || tab.title;
+
+    return (
+      <div className="w-full h-full bg-[#131218] flex flex-col justify-between text-left select-none p-2.5 overflow-hidden text-zinc-100">
+        <div>
+          <MobileStatusBar />
+          <div className="h-10 w-full rounded-lg bg-gradient-to-r from-purple-700/40 via-amber-600/30 to-purple-800/40 relative mb-3">
+            <div className="absolute -bottom-2.5 left-2 w-7 h-7 rounded-full bg-amber-500/30 border-2 border-amber-400 flex items-center justify-center text-amber-300 font-black text-[9px]">
+              {studName.charAt(0).toUpperCase()}
+            </div>
+          </div>
+
+          <div className="px-1">
+            <div className="text-[10px] font-black text-white truncate">{studName}</div>
+            <div className="text-[7.5px] text-zinc-400">Estudiante Verificado</div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-1 my-2">
+            <div className="p-1 rounded bg-zinc-900/90 border border-zinc-800 text-center">
+              <span className="text-[8px] text-rose-400 font-extrabold block">❤️ 140+</span>
+              <span className="text-[6px] text-zinc-500 uppercase">Flechazos</span>
+            </div>
+            <div className="p-1 rounded bg-zinc-900/90 border border-zinc-800 text-center">
+              <span className="text-[8px] text-amber-400 font-extrabold block">⭐ 4.9</span>
+              <span className="text-[6px] text-zinc-500 uppercase">Popularidad</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="w-full py-1 rounded-lg bg-purple-500/25 border border-purple-500/40 text-purple-300 font-bold text-[8px] text-center">
+          Ver Perfil
+        </div>
+      </div>
+    );
+  }
+
+  // F. INICIO • CAMPUS (Página Principal de Starryz)
+  return (
+    <div className="w-full h-full bg-[#0d0e11] flex flex-col justify-between text-left select-none p-2.5 overflow-hidden text-zinc-100 relative">
+      <div>
+        <MobileStatusBar />
+        {/* Cabecera Starryz Gold */}
+        <div className="flex items-center justify-between pb-1.5 border-b border-zinc-800 mb-2">
+          <div className="flex items-center gap-1.5">
+            <div className="w-4 h-4 rounded-full bg-amber-500/20 flex items-center justify-center">
+              <Star className="w-2.5 h-2.5 fill-[#eab308] text-[#eab308]" />
+            </div>
+            <span className="text-[10px] font-black text-white tracking-wider">Starryz 5</span>
+          </div>
+          <span className="text-[7px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-bold">
+            Campus Activo
+          </span>
+        </div>
+
+        {/* Buscador integrado del Campus */}
+        <div className="w-full px-2 py-1 rounded-lg bg-zinc-900 border border-zinc-800 text-[7.5px] text-zinc-400 flex items-center gap-1.5 mb-2">
+          <Search className="w-2.5 h-2.5 text-[#eab308]" />
+          <span className="truncate">Buscar colegios, institutos, docentes...</span>
+        </div>
+
+        {/* Podio / Novedades del Campus */}
+        <div className="p-2 rounded-xl bg-gradient-to-br from-amber-500/15 via-zinc-900 to-zinc-900 border border-amber-500/25 space-y-1">
+          <div className="text-[8px] font-black text-white flex items-center gap-1">
+            <Crown className="w-2.5 h-2.5 text-amber-400" /> Ranking Nacional 2025
+          </div>
+          <div className="text-[7px] text-zinc-300 space-y-0.5">
+            <div className="flex justify-between">
+              <span className="font-semibold text-amber-300">1º Univ. Nac. Trujillo</span>
+              <span className="text-zinc-400">★ 4.9</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-zinc-300">2º SENATI Perú</span>
+              <span className="text-zinc-400">★ 4.8</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="w-full py-1 rounded-lg bg-amber-500/20 text-amber-400 font-bold text-[8px] text-center border border-amber-500/30">
+        {isActive ? 'Pestaña activa' : 'Abrir Campus'}
+      </div>
+    </div>
+  );
 }
 
 export default function PwaTabsSwitcherModal({ onNavigate }: PwaTabsSwitcherModalProps) {

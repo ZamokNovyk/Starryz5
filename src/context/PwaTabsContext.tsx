@@ -14,6 +14,27 @@ export type TabType =
   | 'profile' 
   | 'general';
 
+export interface TabRichMeta {
+  institutionName?: string;
+  institutionAcronym?: string;
+  institutionType?: string;
+  institutionCity?: string;
+  institutionRating?: number;
+  institutionReviews?: number;
+  institutionBanner?: string;
+  institutionLogo?: string;
+  professorName?: string;
+  professorRating?: number;
+  professorSubject?: string;
+  studentName?: string;
+  studentCrushes?: number;
+  studentRating?: number;
+  searchQuery?: string;
+  searchTotalResults?: number;
+  toolType?: 'compressor' | 'organizer' | 'splitter' | 'ruleta' | 'grupos';
+  topInstitutions?: { name: string; acronym: string; rating: number; city?: string }[];
+}
+
 export interface PwaTab {
   id: string;
   title: string;
@@ -23,6 +44,7 @@ export interface PwaTab {
   previewSubtitle?: string;
   updatedAt: number;
   snapshotUrl?: string; // Captura de pantalla real en miniatura (estilo Google Chrome)
+  meta?: TabRichMeta; // Metadatos detallados de la página para un render fotorrealista idéntico a Chrome
 }
 
 interface PwaTabsContextValue {
@@ -39,7 +61,7 @@ interface PwaTabsContextValue {
   closeTab: (id: string, onNavigate?: (path: string, search?: string) => void) => void;
   closeAllTabs: (onNavigate?: (path: string, search?: string) => void) => void;
   createNewTab: (initialPath?: string, onNavigate?: (path: string, search?: string) => void) => void;
-  syncCurrentRoute: (pathname: string, search: string, customTitle?: string) => void;
+  syncCurrentRoute: (pathname: string, search: string, customTitle?: string, customMeta?: TabRichMeta) => void;
 }
 
 const PwaTabsContext = createContext<PwaTabsContextValue | undefined>(undefined);
@@ -217,7 +239,8 @@ async function captureDomSnapshot(): Promise<string | null> {
     const canvas = await html2canvas(target, {
       scale: 0.35, // Escala pequeña: súper rápida y genera ~25KB por imagen
       useCORS: true,
-      allowTaint: true,
+      allowTaint: false, // CRÍTICO: false para evitar SecurityError en toDataURL()
+      imageTimeout: 1200,
       logging: false,
       backgroundColor: '#0a0a0a',
       width: viewportWidth,
@@ -377,14 +400,20 @@ export function PwaTabsProvider({ children }: { children: ReactNode }) {
     return () => clearTimeout(timer);
   }, [activeTabId, isTabsSwitcherOpen, captureActiveTabSnapshot]);
 
-  // Abrir modal de pestañas capturando antes el snapshot actual
+  // Abrir modal de pestañas capturando antes el snapshot actual de forma ágil
   const openTabsSwitcher = useCallback(async () => {
-    captureActiveTabSnapshot().catch(() => {});
+    try {
+      // Damos una ventana breve de hasta 280ms para capturar la pantalla antes de superponer el modal
+      await Promise.race([
+        captureActiveTabSnapshot(),
+        new Promise(resolve => setTimeout(resolve, 280))
+      ]);
+    } catch (_) {}
     setIsTabsSwitcherOpen(true);
   }, [captureActiveTabSnapshot]);
 
-  // Sincronizar ruta activa con la pestaña actual
-  const syncCurrentRoute = useCallback((pathname: string, search: string, customTitle?: string) => {
+  // Sincronizar ruta activa con la pestaña actual con soporte para metadatos fotorrealistas
+  const syncCurrentRoute = useCallback((pathname: string, search: string, customTitle?: string, customMeta?: TabRichMeta) => {
     const meta = getTabMetadata(pathname, search);
     const finalTitle = customTitle || meta.title;
 
@@ -398,7 +427,8 @@ export function PwaTabsProvider({ children }: { children: ReactNode }) {
           search,
           type: meta.type,
           previewSubtitle: meta.previewSubtitle,
-          updatedAt: Date.now()
+          updatedAt: Date.now(),
+          meta: customMeta
         };
         return [...prev, newTab];
       }
@@ -412,7 +442,8 @@ export function PwaTabsProvider({ children }: { children: ReactNode }) {
             search,
             type: meta.type,
             previewSubtitle: meta.previewSubtitle,
-            updatedAt: Date.now()
+            updatedAt: Date.now(),
+            meta: customMeta ? { ...tab.meta, ...customMeta } : tab.meta
           };
         }
         return tab;
