@@ -77,7 +77,22 @@ function getFaviconIcon(type: TabType) {
  * Renderiza la miniatura fotorrealista de la página similar a Google Chrome mobile
  */
 function TabPreviewSnapshot({ tab, isActive }: { tab: PwaTab; isActive: boolean }) {
-  // Renderizado según el tipo de pestaña
+  // 1. Si la pestaña tiene una captura real (snapshot del DOM de la página), la renderizamos como Google Chrome
+  if (tab.snapshotUrl) {
+    return (
+      <div className="w-full h-full bg-[#121316] relative overflow-hidden flex items-start justify-center select-none">
+        <img
+          src={tab.snapshotUrl}
+          alt={tab.title}
+          className="w-full h-full object-cover object-top pointer-events-none select-none transition-transform duration-200"
+          loading="lazy"
+        />
+        <div className="absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-black/40 to-transparent pointer-events-none" />
+      </div>
+    );
+  }
+
+  // 2. Renderizado alternativo dinámico con los datos específicos de la pestaña
   switch (tab.type) {
     case 'student':
       return (

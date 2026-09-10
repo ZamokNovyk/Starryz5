@@ -89,6 +89,7 @@ export default function Header({
   const { 
     isPwa: isPwaMode, 
     tabs: pwaTabs, 
+    openTabsSwitcher,
     setIsTabsSwitcherOpen, 
     togglePwaSimulation 
   } = usePwaTabs();
@@ -738,7 +739,7 @@ export default function Header({
             {/* BOTÓN DE PESTAÑAS PWA EN MÓVILES (AL LADO DERECHO DE LA CAMPANA - SOLO EN PWA) */}
             {isPwaMode && (
               <button
-                onClick={() => setIsTabsSwitcherOpen(true)}
+                onClick={openTabsSwitcher}
                 className="sm:hidden p-2 min-w-[38px] h-[38px] rounded-xl bg-[#141414] border border-[#eab308]/40 text-[#eab308] hover:bg-[#1a1a1a] hover:border-[#eab308] transition-all active:scale-95 cursor-pointer flex items-center justify-center font-black relative shadow-[0_0_12px_rgba(234,179,8,0.15)]"
                 title={`Pestañas abiertas (${pwaTabs.length})`}
                 aria-label="Abrir gestor de pestañas"
@@ -832,7 +833,7 @@ export default function Header({
               {/* BOTÓN DE PESTAÑAS EN ESCRITORIO (SOLO EN PWA) */}
               {isPwaMode && (
                 <button
-                  onClick={() => setIsTabsSwitcherOpen(true)}
+                  onClick={openTabsSwitcher}
                   className="p-2.5 rounded-xl bg-[#141414] border border-[#eab308]/30 text-[#eab308] hover:border-[#eab308] hover:bg-[#1a1a1a] transition-all cursor-pointer flex items-center gap-2 shadow-[0_0_12px_rgba(234,179,8,0.1)]"
                   title={`Pestañas abiertas (${pwaTabs.length})`}
                 >
@@ -1134,7 +1135,7 @@ export default function Header({
                 type="button"
                 onClick={() => {
                   setMobileMenuOpen(false);
-                  setIsTabsSwitcherOpen(true);
+                  openTabsSwitcher();
                 }}
                 className="w-full py-3 px-4 rounded-xl border border-amber-500/40 text-[#eab308] font-bold text-xs tracking-wider bg-amber-500/10 hover:bg-amber-500/15 flex items-center justify-between transition-all cursor-pointer shadow-[0_0_12px_rgba(234,179,8,0.1)]"
               >

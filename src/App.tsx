@@ -28,7 +28,7 @@ import { useFCMNotifications } from '@/hooks/useFCMNotifications';
 import { Institution, Student } from '@/lib/mockData';
 import { getEducationalCenters, EducationalCenter } from '@/src/lib/centers';
 import { supabase } from '@/src/lib/supabase';
-import { usePwaTabs } from '@/src/context/PwaTabsContext';
+import { usePwaTabs, formatSlug } from '@/src/context/PwaTabsContext';
 import PwaTabsSwitcherModal from '@/components/Modals/PwaTabsSwitcherModal';
 
 function generateAcronym(name: string): string {
@@ -125,11 +125,6 @@ export default function App() {
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
-
-  // Sincronizar ruta activa con la pestaña actual de la PWA
-  useEffect(() => {
-    syncCurrentRoute(route.pathname, route.search);
-  }, [route.pathname, route.search, syncCurrentRoute]);
 
   const navigate = (pathname: string, search: string = '') => {
     window.history.pushState(null, '', pathname + search);
@@ -273,6 +268,50 @@ export default function App() {
       inst.acronym.toLowerCase().includes(currentQuery.toLowerCase())
     );
   });
+
+  // Sincronizar ruta activa y título real con la pestaña actual de la PWA
+  useEffect(() => {
+    let customTitle: string | undefined;
+
+    if (isProfileRoute) {
+      customTitle = currentProfileInstitution?.name || formatSlug(profileSlug);
+    } else if (isProfessorRoute && professorSlug) {
+      customTitle = `Prof. ${formatSlug(professorSlug)}`;
+    } else if (isStudentRoute && studentSlug) {
+      customTitle = formatSlug(studentSlug);
+    } else if (isPdfCompressorRoute) {
+      customTitle = 'Compresor PDF';
+    } else if (isPdfOrganizerRoute) {
+      customTitle = 'Organizador PDF';
+    } else if (isPdfSplitterRoute) {
+      customTitle = 'Dividir PDF';
+    } else if (isRuletaRoute) {
+      customTitle = 'Ruleta de Sorteos';
+    } else if (isFormadorGruposRoute) {
+      customTitle = 'Formador de Grupos';
+    } else if (isAdminRoute) {
+      customTitle = 'Panel Admin';
+    }
+
+    syncCurrentRoute(route.pathname, route.search, customTitle);
+  }, [
+    route.pathname,
+    route.search,
+    isProfileRoute,
+    profileSlug,
+    currentProfileInstitution,
+    isProfessorRoute,
+    professorSlug,
+    isStudentRoute,
+    studentSlug,
+    isPdfCompressorRoute,
+    isPdfOrganizerRoute,
+    isPdfSplitterRoute,
+    isRuletaRoute,
+    isFormadorGruposRoute,
+    isAdminRoute,
+    syncCurrentRoute
+  ]);
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-zinc-100 flex flex-col font-sans selection:bg-[#eab308] selection:text-black">

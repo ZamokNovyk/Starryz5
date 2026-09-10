@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import html2canvas from 'html2canvas';
 
 export type TabType = 
   | 'home' 
@@ -21,6 +22,7 @@ export interface PwaTab {
   type: TabType;
   previewSubtitle?: string;
   updatedAt: number;
+  snapshotUrl?: string; // Captura de pantalla real en miniatura (estilo Google Chrome)
 }
 
 interface PwaTabsContextValue {
@@ -31,6 +33,8 @@ interface PwaTabsContextValue {
   activeTab: PwaTab | undefined;
   isTabsSwitcherOpen: boolean;
   setIsTabsSwitcherOpen: (open: boolean) => void;
+  openTabsSwitcher: () => Promise<void>;
+  captureActiveTabSnapshot: (customTabId?: string) => Promise<string | null>;
   switchTab: (id: string, onNavigate?: (path: string, search?: string) => void) => void;
   closeTab: (id: string, onNavigate?: (path: string, search?: string) => void) => void;
   closeAllTabs: (onNavigate?: (path: string, search?: string) => void) => void;
@@ -40,18 +44,30 @@ interface PwaTabsContextValue {
 
 const PwaTabsContext = createContext<PwaTabsContextValue | undefined>(undefined);
 
-const STORAGE_KEY = 'starryz_pwa_tabs_v1';
-const ACTIVE_TAB_KEY = 'starryz_pwa_active_tab_v1';
+const STORAGE_KEY = 'starryz_pwa_tabs_v2';
+const ACTIVE_TAB_KEY = 'starryz_pwa_active_tab_v2';
 const FORCE_PWA_KEY = 'starryz_force_pwa_mode';
 
-function formatSlug(slug: string): string {
+/**
+ * Formatea un slug a texto limpio y legible
+ */
+export function formatSlug(slug: string): string {
   if (!slug) return '';
-  return slug
-    .split('-')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ');
+  try {
+    const decoded = decodeURIComponent(slug);
+    return decoded
+      .split(/[\.-]/)
+      .filter(w => w.trim().length > 0)
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
+  } catch (_) {
+    return slug;
+  }
 }
 
+/**
+ * Obtiene los metadatos y título según la ruta actual
+ */
 export function getTabMetadata(pathname: string, search: string): { title: string; type: TabType; previewSubtitle: string } {
   const urlParams = new URLSearchParams(search);
   const q = urlParams.get('q');
@@ -60,7 +76,7 @@ export function getTabMetadata(pathname: string, search: string): { title: strin
     return {
       title: q ? `Búsqueda: ${q}` : 'Buscador',
       type: 'search',
-      previewSubtitle: q ? `Filtro "${q}"` : 'Directorio escolar'
+      previewSubtitle: q ? `Resultados para "${q}"` : 'Directorio escolar y perfiles'
     };
   }
 
@@ -92,13 +108,20 @@ export function getTabMetadata(pathname: string, search: string): { title: strin
     };
   }
 
-  if (pathname.startsWith('/centros/') || pathname.startsWith('/instituciones/')) {
-    const slug = pathname.replace('/centros/', '').replace('/instituciones/', '');
-    const name = formatSlug(slug) || 'Institución';
+  if (
+    pathname.startsWith('/educational_centers/') ||
+    pathname.startsWith('/centros/') ||
+    pathname.startsWith('/instituciones/')
+  ) {
+    const slug = pathname
+      .replace('/educational_centers/', '')
+      .replace('/centros/', '')
+      .replace('/instituciones/', '');
+    const name = formatSlug(slug) || 'Centro Educativo';
     return {
       title: `${name}`,
       type: 'center',
-      previewSubtitle: 'Comunidad del centro educativo'
+      previewSubtitle: 'Campus, docentes y carreras'
     };
   }
 
@@ -110,7 +133,11 @@ export function getTabMetadata(pathname: string, search: string): { title: strin
     };
   }
 
-  if (pathname === '/herramientas/comprimirpdf' || pathname === '/herramientas/compresor-pdf') {
+  if (
+    pathname === '/herramientas/comprimirpdf' ||
+    pathname === '/herramientas/compresor-pdf' ||
+    pathname === '/herramientas/comprimir-pdf'
+  ) {
     return {
       title: 'Compresor PDF',
       type: 'tools',
@@ -142,7 +169,7 @@ export function getTabMetadata(pathname: string, search: string): { title: strin
     };
   }
 
-  if (pathname === '/herramientas/grupos') {
+  if (pathname === '/herramientas/grupos' || pathname === '/herramientas/formador-grupos') {
     return {
       title: 'Formador Grupos',
       type: 'tools',
@@ -173,11 +200,51 @@ export function getTabMetadata(pathname: string, search: string): { title: strin
   };
 }
 
+/**
+ * Función interna para capturar una miniatura del DOM actual usando html2canvas
+ */
+async function captureDomSnapshot(): Promise<string | null> {
+  if (typeof window === 'undefined') return null;
+  try {
+    const target = (document.querySelector('main') as HTMLElement) || 
+                   (document.getElementById('root') as HTMLElement) || 
+                   (document.body as HTMLElement);
+    if (!target) return null;
+
+    const viewportWidth = Math.min(window.innerWidth, 450);
+    const viewportHeight = Math.min(window.innerHeight, 850);
+
+    const canvas = await html2canvas(target, {
+      scale: 0.35, // Escala pequeña: súper rápida y genera ~25KB por imagen
+      useCORS: true,
+      allowTaint: true,
+      logging: false,
+      backgroundColor: '#0a0a0a',
+      width: viewportWidth,
+      height: viewportHeight,
+      windowWidth: viewportWidth,
+      windowHeight: viewportHeight,
+      ignoreElements: (el) => {
+        return (
+          el.id === 'pwa-tabs-switcher-modal' ||
+          el.id === 'fcm-toast' ||
+          el.classList.contains('pwa-modal-ignore')
+        );
+      }
+    });
+
+    return canvas.toDataURL('image/jpeg', 0.65);
+  } catch (err) {
+    console.warn('Error capturando miniatura de pestaña con html2canvas:', err);
+    return null;
+  }
+}
+
 export function PwaTabsProvider({ children }: { children: ReactNode }) {
   const [isPwa, setIsPwa] = useState(false);
   const [isTabsSwitcherOpen, setIsTabsSwitcherOpen] = useState(false);
 
-  // Tabs list and active tab
+  // Lista de pestañas y pestaña activa
   const [tabs, setTabs] = useState<PwaTab[]>(() => {
     if (typeof window === 'undefined') return [];
     try {
@@ -216,7 +283,7 @@ export function PwaTabsProvider({ children }: { children: ReactNode }) {
     return savedActive || 'tab_init';
   });
 
-  // Detect PWA mode
+  // Detección del estado PWA
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
@@ -244,18 +311,29 @@ export function PwaTabsProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // Save tabs to local storage
+  // Guardar pestañas en localStorage con resguardo de espacio
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(tabs));
       localStorage.setItem(ACTIVE_TAB_KEY, activeTabId);
     } catch (e) {
-      console.error('Error guardando pestañas en localStorage:', e);
+      // Si se excede el límite de localStorage, guardar solo snapshots de las 3 más recientes
+      try {
+        const trimmed = tabs.map((t, idx) => {
+          if (idx < tabs.length - 3) {
+            const { snapshotUrl, ...rest } = t;
+            return rest;
+          }
+          return t;
+        });
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
+        localStorage.setItem(ACTIVE_TAB_KEY, activeTabId);
+      } catch (_) {}
     }
   }, [tabs, activeTabId]);
 
-  // Toggle PWA Simulation for testing/preview
+  // Alternar simulación PWA
   const togglePwaSimulation = useCallback(() => {
     setIsPwa(prev => {
       const next = !prev;
@@ -266,7 +344,46 @@ export function PwaTabsProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  // Sync current active tab with the active route
+  // Capturar snapshot real de la pestaña activa
+  const captureActiveTabSnapshot = useCallback(async (customTabId?: string): Promise<string | null> => {
+    const targetId = customTabId || activeTabId;
+    if (!targetId || typeof window === 'undefined') return null;
+
+    try {
+      const snapshot = await captureDomSnapshot();
+      if (snapshot) {
+        setTabs(prev => prev.map(t => {
+          if (t.id === targetId) {
+            return { ...t, snapshotUrl: snapshot, updatedAt: Date.now() };
+          }
+          return t;
+        }));
+        return snapshot;
+      }
+    } catch (err) {
+      console.warn('Error al capturar snapshot de pestaña activa:', err);
+    }
+    return null;
+  }, [activeTabId]);
+
+  // Capturar periódicamente la pestaña activa cuando se estabiliza la página
+  useEffect(() => {
+    if (isTabsSwitcherOpen || typeof window === 'undefined') return;
+
+    const timer = setTimeout(() => {
+      captureActiveTabSnapshot().catch(() => {});
+    }, 1200);
+
+    return () => clearTimeout(timer);
+  }, [activeTabId, isTabsSwitcherOpen, captureActiveTabSnapshot]);
+
+  // Abrir modal de pestañas capturando antes el snapshot actual
+  const openTabsSwitcher = useCallback(async () => {
+    captureActiveTabSnapshot().catch(() => {});
+    setIsTabsSwitcherOpen(true);
+  }, [captureActiveTabSnapshot]);
+
+  // Sincronizar ruta activa con la pestaña actual
   const syncCurrentRoute = useCallback((pathname: string, search: string, customTitle?: string) => {
     const meta = getTabMetadata(pathname, search);
     const finalTitle = customTitle || meta.title;
@@ -303,10 +420,13 @@ export function PwaTabsProvider({ children }: { children: ReactNode }) {
     });
   }, [activeTabId]);
 
-  // Switch to an existing tab
+  // Cambiar a una pestaña existente capturando el estado previo
   const switchTab = useCallback((id: string, onNavigate?: (path: string, search?: string) => void) => {
     const target = tabs.find(t => t.id === id);
     if (!target) return;
+
+    // Guardar snapshot de la pestaña que se está abandonando
+    captureActiveTabSnapshot().catch(() => {});
 
     setActiveTabId(id);
     setIsTabsSwitcherOpen(false);
@@ -314,10 +434,12 @@ export function PwaTabsProvider({ children }: { children: ReactNode }) {
     if (onNavigate) {
       onNavigate(target.pathname, target.search);
     }
-  }, [tabs]);
+  }, [tabs, captureActiveTabSnapshot]);
 
-  // Create and switch to a new tab
+  // Crear y cambiar a una nueva pestaña
   const createNewTab = useCallback((initialPath = '/', onNavigate?: (path: string, search?: string) => void) => {
+    captureActiveTabSnapshot().catch(() => {});
+
     const meta = getTabMetadata(initialPath, '');
     const newId = 'tab_' + Math.random().toString(36).substring(2, 9);
     const newTab: PwaTab = {
@@ -337,9 +459,9 @@ export function PwaTabsProvider({ children }: { children: ReactNode }) {
     if (onNavigate) {
       onNavigate(initialPath, '');
     }
-  }, []);
+  }, [captureActiveTabSnapshot]);
 
-  // Close a specific tab
+  // Cerrar pestaña específica
   const closeTab = useCallback((id: string, onNavigate?: (path: string, search?: string) => void) => {
     setTabs(prev => {
       const remaining = prev.filter(t => t.id !== id);
@@ -358,7 +480,6 @@ export function PwaTabsProvider({ children }: { children: ReactNode }) {
         return [defaultTab];
       }
 
-      // If closing the active tab, switch to the last remaining tab
       if (id === activeTabId) {
         const nextActive = remaining[remaining.length - 1];
         setActiveTabId(nextActive.id);
@@ -371,7 +492,7 @@ export function PwaTabsProvider({ children }: { children: ReactNode }) {
     });
   }, [activeTabId]);
 
-  // Close all tabs and reset to home
+  // Cerrar todas las pestañas y reiniciar a Inicio
   const closeAllTabs = useCallback((onNavigate?: (path: string, search?: string) => void) => {
     const resetTab: PwaTab = {
       id: 'tab_' + Math.random().toString(36).substring(2, 9),
@@ -404,6 +525,8 @@ export function PwaTabsProvider({ children }: { children: ReactNode }) {
         activeTab,
         isTabsSwitcherOpen,
         setIsTabsSwitcherOpen,
+        openTabsSwitcher,
+        captureActiveTabSnapshot,
         switchTab,
         closeTab,
         closeAllTabs,
