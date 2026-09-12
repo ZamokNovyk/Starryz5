@@ -128,14 +128,14 @@ export default function ReportProfileModal({
 
         {/* Formulario */}
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
-          {/* Explicación de la dinámica Left 4 Dead */}
+          {/* Explicación de la moderación comunitaria */}
           <div className="p-3.5 rounded-xl bg-red-950/20 border border-red-500/20 flex gap-3 text-xs text-zinc-300">
             <ShieldAlert className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
             <div className="space-y-1">
-              <p className="font-bold text-red-300">¿Cómo funciona la moderación comunitaria?</p>
+              <p className="font-bold text-red-300">Moderación comunitaria activa</p>
               <p className="text-[11px] text-zinc-400 leading-relaxed">
-                Al reportar, se abrirá un banner de votación estilo <strong>Left 4 Dead (F1 / F2)</strong> visible en la cabecera de este perfil para todos los miembros del instituto.
-                Si la comunidad vota por expulsar (5 votos), el perfil será eliminado automáticamente.
+                Al reportar, se abrirá una votación comunitaria en la cabecera de este perfil visible para todos los miembros del instituto.
+                Si la comunidad confirma el reporte (5 votos para expulsar), el perfil será eliminado automáticamente del campus.
               </p>
             </div>
           </div>

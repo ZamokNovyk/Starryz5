@@ -43,7 +43,7 @@ import { supabase } from '@/src/lib/supabase';
 import BookmarkButton from '@/components/BookmarkButton';
 import ProfessorNotificationModal from '@/components/Modals/ProfessorNotificationModal';
 import { promptNotificationOnAction } from '@/src/lib/notificationHelper';
-import { getActiveProfileReport, ProfileReport } from '@/src/lib/profileReports';
+import { getActiveProfileReport, ProfileReport, extractReportFromBiography, embedReportIntoBiography } from '@/src/lib/profileReports';
 import CommunityVoteBanner from '@/components/CommunityVoteBanner';
 import ReportProfileModal from '@/components/Modals/ReportProfileModal';
 
@@ -92,7 +92,7 @@ export default function ProfessorProfile({
   // Views Count State
   const [viewsCount, setViewsCount] = useState(0);
 
-  // Moderation / Community Report States (Left 4 Dead F1/F2)
+  // Moderation / Community Report States
   const [activeReport, setActiveReport] = useState<ProfileReport | null>(null);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
 
@@ -153,7 +153,7 @@ export default function ProfessorProfile({
           setCrushCount(crushStatus.count);
           setHasCrushed(crushStatus.hasCrushed);
 
-          // Cargar reporte activo de moderación si existe (Estilo Left 4 Dead F1/F2)
+          // Cargar reporte activo de moderación si existe
           try {
             const rep = await getActiveProfileReport(data.id || slug, 'professor');
             setActiveReport(rep);
@@ -294,6 +294,47 @@ export default function ProfessorProfile({
               setHasCrushed(crushStatus.hasCrushed);
             } catch (err) {
               console.error('Error al refrescar crushes en tiempo real:', err);
+            }
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'professors',
+        },
+        async (payload) => {
+          if (payload.eventType === 'DELETE' && payload.old && (payload.old as any).id === profId) {
+            onBack();
+          } else if (payload.new && (payload.new as any).id === profId) {
+            try {
+              const rep = await getActiveProfileReport(profId, 'professor');
+              setActiveReport(rep);
+              const updatedData = payload.new as any;
+              setProfessor(prev => prev ? { ...prev, ...updatedData } : prev);
+            } catch (err) {
+              console.error('Error actualizando reporte de profesor en tiempo real:', err);
+            }
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'profile_reports',
+        },
+        async (payload) => {
+          const repTargetId = (payload.new as any)?.target_id || (payload.old as any)?.target_id;
+          if (repTargetId === profId) {
+            try {
+              const rep = await getActiveProfileReport(profId, 'professor');
+              setActiveReport(rep);
+            } catch (err) {
+              console.error('Error refrescando profile_reports para profesor:', err);
             }
           }
         }
@@ -780,6 +821,8 @@ export default function ProfessorProfile({
         <CommunityVoteBanner
           report={activeReport}
           targetName={professor.nombre_completo || `${professor.nombre} ${professor.apellidos}`}
+          targetId={professor.id || slug}
+          targetType="professor"
           currentUserId={user?.uid || null}
           onRequireAuth={onRequireAuth}
           onVoteUpdated={(updatedRep) => {
@@ -1603,7 +1646,7 @@ export default function ProfessorProfile({
         />
       )}
 
-      {/* Modal de Reporte / Moderación Comunitaria (Left 4 Dead F1/F2) */}
+      {/* Modal de Reporte / Moderación Comunitaria */}
       {professor && (
         <ReportProfileModal
           isOpen={isReportModalOpen}

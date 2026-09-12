@@ -53,7 +53,7 @@ import StudentNotificationModal from '@/components/Modals/StudentNotificationMod
 import { promptNotificationOnAction } from '@/src/lib/notificationHelper';
 import StudentTrendsEngine from '@/src/components/StudentTrendsEngine';
 import GenderBadge from '@/components/GenderBadge';
-import { getActiveProfileReport, ProfileReport } from '@/src/lib/profileReports';
+import { getActiveProfileReport, ProfileReport, extractReportFromBiography, embedReportIntoBiography } from '@/src/lib/profileReports';
 import CommunityVoteBanner from '@/components/CommunityVoteBanner';
 import ReportProfileModal from '@/components/Modals/ReportProfileModal';
 
@@ -113,7 +113,7 @@ export default function StudentProfile({
   const [currentUserGender, setCurrentUserGender] = useState<string | null>(null);
   const [userAvatarUrl, setUserAvatarUrl] = useState<string | null>(null);
 
-  // Moderation / Community Report States (Left 4 Dead F1/F2)
+  // Moderation / Community Report States
   const [activeReport, setActiveReport] = useState<ProfileReport | null>(null);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
 
@@ -182,7 +182,7 @@ export default function StudentProfile({
             console.warn('Error al cargar mensajes de amor:', mErr);
           }
 
-          // Cargar reporte activo de moderación si existe (Estilo Left 4 Dead F1/F2)
+          // Cargar reporte activo de moderación comunitaria si existe
           try {
             const rep = await getActiveProfileReport(data.id || slug, 'student');
             setActiveReport(rep);
@@ -383,6 +383,47 @@ export default function StudentProfile({
               setLoveMessages(msgs);
             } catch (err) {
               console.error('Error al refrescar mensajes de amor en tiempo real:', err);
+            }
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'students',
+        },
+        async (payload) => {
+          if (payload.eventType === 'DELETE' && payload.old && (payload.old as any).id === studentId) {
+            onBack();
+          } else if (payload.new && (payload.new as any).id === studentId) {
+            try {
+              const rep = await getActiveProfileReport(studentId, 'student');
+              setActiveReport(rep);
+              const updatedData = payload.new as any;
+              setStudent(prev => prev ? { ...prev, ...updatedData } : prev);
+            } catch (err) {
+              console.error('Error actualizando reporte en tiempo real:', err);
+            }
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'profile_reports',
+        },
+        async (payload) => {
+          const repTargetId = (payload.new as any)?.target_id || (payload.old as any)?.target_id;
+          if (repTargetId === studentId) {
+            try {
+              const rep = await getActiveProfileReport(studentId, 'student');
+              setActiveReport(rep);
+            } catch (err) {
+              console.error('Error refrescando profile_reports:', err);
             }
           }
         }
@@ -915,6 +956,8 @@ export default function StudentProfile({
         <CommunityVoteBanner
           report={activeReport}
           targetName={studentFullName}
+          targetId={student.id || slug}
+          targetType="student"
           currentUserId={user?.uid || null}
           onRequireAuth={onRequireAuth}
           onVoteUpdated={(updatedRep) => {
@@ -2048,7 +2091,7 @@ export default function StudentProfile({
         />
       )}
 
-      {/* Modal de Reporte / Moderación Comunitaria (Left 4 Dead F1/F2) */}
+      {/* Modal de Reporte / Moderación Comunitaria */}
       {student && (
         <ReportProfileModal
           isOpen={isReportModalOpen}
