@@ -309,6 +309,12 @@ export default function ProfessorProfile({
           if (payload.eventType === 'DELETE' && payload.old && (payload.old as any).id === profId) {
             onBack();
           } else if (payload.new && (payload.new as any).id === profId) {
+            const bio = (payload.new as any).biography || '';
+            const fullName = (payload.new as any).nombre_completo || '';
+            if (bio.includes('__EXPELLED_BY_COMMUNITY__') || fullName.includes('[EXPULSADO')) {
+              onBack();
+              return;
+            }
             try {
               const rep = await getActiveProfileReport(profId, 'professor');
               setActiveReport(rep);

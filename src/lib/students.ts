@@ -103,6 +103,14 @@ export async function getStudentById(slug: string): Promise<Student | null> {
       return null;
     }
 
+    if (data) {
+      const bio = data.biography || '';
+      const name = data.nombre_completo || data.nombre || '';
+      if (bio.includes('__EXPELLED_BY_COMMUNITY__') || name.includes('[EXPULSADO')) {
+        return null;
+      }
+    }
+
     return data as Student | null;
   } catch (err) {
     console.warn('Excepción al obtener estudiante por ID:', err);
@@ -132,7 +140,18 @@ export async function getStudentsByInstitute(instituteId: string): Promise<Stude
       return [];
     }
 
-    const studentIds = students.map((p: any) => p.id);
+    // Filtrar perfiles que hayan sido expulsados por moderación comunitaria
+    const activeStudents = students.filter((s: any) => {
+      const bio = s.biography || '';
+      const name = s.nombre_completo || s.nombre || '';
+      return !bio.includes('__EXPELLED_BY_COMMUNITY__') && !name.includes('[EXPULSADO');
+    });
+
+    if (activeStudents.length === 0) {
+      return [];
+    }
+
+    const studentIds = activeStudents.map((p: any) => p.id);
 
     // Obtener interacciones (knows / fan) en batch para todos los estudiantes
     const interactionsMap: Record<string, { knows: number; fan: number }> = {};

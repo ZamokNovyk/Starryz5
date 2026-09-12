@@ -103,6 +103,14 @@ export async function getProfessorById(slug: string): Promise<Professor | null> 
       return null;
     }
 
+    if (data) {
+      const bio = data.biography || '';
+      const name = data.nombre_completo || data.nombre || '';
+      if (bio.includes('__EXPELLED_BY_COMMUNITY__') || name.includes('[EXPULSADO')) {
+        return null;
+      }
+    }
+
     return data as Professor | null;
   } catch (err) {
     console.warn('Excepción de red al obtener profesor por ID:', err);
@@ -132,7 +140,18 @@ export async function getProfessorsByInstitute(instituteId: string): Promise<Pro
       return [];
     }
 
-    const profIds = profs.map((p: any) => p.id);
+    // Filtrar perfiles que hayan sido expulsados por moderación comunitaria
+    const activeProfs = profs.filter((p: any) => {
+      const bio = p.biography || '';
+      const name = p.nombre_completo || p.nombre || '';
+      return !bio.includes('__EXPELLED_BY_COMMUNITY__') && !name.includes('[EXPULSADO');
+    });
+
+    if (activeProfs.length === 0) {
+      return [];
+    }
+
+    const profIds = activeProfs.map((p: any) => p.id);
 
     // Obtener interacciones (knows / fan) en batch para todos los profesores del instituto
     const interactionsMap: Record<string, { knows: number; fan: number }> = {};

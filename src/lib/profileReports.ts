@@ -307,22 +307,33 @@ export async function submitReportVote(params: {
   // 2. Persistir en la base de datos de Supabase
   const table = targetType === 'student' ? 'students' : 'professors';
   try {
-    const { data: record } = await supabase
-      .from(table)
-      .select('biography')
-      .eq('id', targetId)
-      .maybeSingle();
+    if (outcome === 'expelled') {
+      // Marcar de inmediato como expulsado para que desaparezca de consultas y vistas
+      await supabase
+        .from(table)
+        .update({
+          biography: '<!--__EXPELLED_BY_COMMUNITY__-->',
+          nombre_completo: '[EXPULSADO POR LA COMUNIDAD]',
+        })
+        .or(`id.eq.${targetId},id.eq.${targetId.toLowerCase().trim()}`);
+    } else {
+      const { data: record } = await supabase
+        .from(table)
+        .select('biography')
+        .eq('id', targetId)
+        .maybeSingle();
 
-    const currentBio = record?.biography || '';
-    // Si fue expulsado o desestimado, limpiamos el reporte de la biografía
-    const bioToSave = newStatus === 'active' 
-      ? embedReportIntoBiography(currentBio, updatedReport)
-      : embedReportIntoBiography(currentBio, null);
+      const currentBio = record?.biography || '';
+      // Si fue desestimado, limpiamos el reporte de la biografía
+      const bioToSave = newStatus === 'active' 
+        ? embedReportIntoBiography(currentBio, updatedReport)
+        : embedReportIntoBiography(currentBio, null);
 
-    await supabase
-      .from(table)
-      .update({ biography: bioToSave })
-      .eq('id', targetId);
+      await supabase
+        .from(table)
+        .update({ biography: bioToSave })
+        .eq('id', targetId);
+    }
   } catch (upErr) {
     console.error('Error guardando voto en Supabase:', upErr);
   }
@@ -359,20 +370,77 @@ export async function submitReportVote(params: {
  * Elimina completamente a un estudiante y todos sus registros asociados en Supabase
  */
 export async function deleteStudentProfile(studentId: string): Promise<boolean> {
+  const cleanedId = studentId.toLowerCase().trim();
   try {
+    // 1. Intentar primero con la función RPC 'expel_profile' (SECURITY DEFINER)
+    try {
+      const { data: rpcData, error: rpcError } = await supabase.rpc('expel_profile', {
+        p_target_id: studentId,
+        p_target_type: 'student',
+      });
+
+      if (!rpcError && rpcData?.success) {
+        console.log('Perfil de estudiante expulsado exitosamente vía RPC:', rpcData);
+        return true;
+      }
+      if (rpcError) {
+        console.warn('RPC expel_profile no disponible o retornó error:', rpcError.message);
+      }
+    } catch (rpcEx) {
+      console.warn('Excepción llamando RPC expel_profile:', rpcEx);
+    }
+
+    // 2. Eliminación directa en orden para respetar claves foráneas
+    // A. Corazones de mensajes de amor
+    try {
+      const { data: messages } = await supabase
+        .from('student_love_messages')
+        .select('id')
+        .or(`student_id.eq.${studentId},student_id.eq.${cleanedId}`);
+      if (messages && messages.length > 0) {
+        const msgIds = messages.map(m => m.id);
+        await supabase.from('student_love_message_hearts').delete().in('message_id', msgIds);
+      }
+    } catch {}
+
+    // B. Tablas hijas del estudiante
     await Promise.allSettled([
-      supabase.from('student_votes').delete().eq('student_id', studentId),
-      supabase.from('student_interactions').delete().eq('student_id', studentId),
-      supabase.from('student_crushes').delete().eq('student_id', studentId),
-      supabase.from('student_daily_stats').delete().eq('student_id', studentId),
-      supabase.from('student_love_messages').delete().eq('student_id', studentId),
-      supabase.from('student_notification_subscriptions').delete().eq('student_id', studentId),
+      supabase.from('student_love_messages').delete().or(`student_id.eq.${studentId},student_id.eq.${cleanedId}`),
+      supabase.from('student_votes').delete().or(`student_id.eq.${studentId},student_id.eq.${cleanedId}`),
+      supabase.from('student_interactions').delete().or(`student_id.eq.${studentId},student_id.eq.${cleanedId}`),
+      supabase.from('student_crushes').delete().or(`student_id.eq.${studentId},student_id.eq.${cleanedId}`),
+      supabase.from('student_daily_stats').delete().or(`student_id.eq.${studentId},student_id.eq.${cleanedId}`),
+      supabase.from('student_notification_subscriptions').delete().or(`student_id.eq.${studentId},student_id.eq.${cleanedId}`),
+      supabase.from('collection_items').delete().or(`item_id.eq.${studentId},item_id.eq.${cleanedId}`),
     ]);
 
-    const { error } = await supabase.from('students').delete().eq('id', studentId);
-    if (error) {
-      console.warn('Error eliminando estudiante en Supabase:', error);
+    // C. Eliminar reportes asociados si existen
+    try {
+      await supabase.from('profile_reports').delete().or(`target_id.eq.${studentId},target_id.eq.${cleanedId}`);
+    } catch {}
+
+    // D. Eliminar el registro principal en 'students'
+    const { error: delError } = await supabase.from('students').delete().or(`id.eq.${studentId},id.eq.${cleanedId}`);
+    if (delError) {
+      console.warn('Error eliminando en tabla students, asegurando marca de expulsado:', delError.message);
+      await supabase.from('students').update({
+        biography: '<!--__EXPELLED_BY_COMMUNITY__-->',
+        nombre_completo: '[EXPULSADO POR LA COMUNIDAD]',
+      }).or(`id.eq.${studentId},id.eq.${cleanedId}`);
     }
+
+    // E. Si el estudiante fue registrado en 'professors' (ej. role = 'Alumno')
+    await supabase.from('professors').delete().or(`id.eq.${studentId},id.eq.${cleanedId}`);
+
+    // Limpieza de caches locales
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.removeItem(`student_love_messages_${studentId}`);
+        localStorage.removeItem(`active_report_student_${studentId}`);
+        localStorage.removeItem(`report_votes_${studentId}`);
+      } catch {}
+    }
+
     return true;
   } catch (err) {
     console.error('Error al ejecutar eliminación completa de estudiante:', err);
@@ -384,18 +452,58 @@ export async function deleteStudentProfile(studentId: string): Promise<boolean> 
  * Elimina completamente a un profesor y todos sus registros asociados en Supabase
  */
 export async function deleteProfessorProfile(professorId: string): Promise<boolean> {
+  const cleanedId = professorId.toLowerCase().trim();
   try {
+    // 1. Intentar primero con la función RPC 'expel_profile' (SECURITY DEFINER)
+    try {
+      const { data: rpcData, error: rpcError } = await supabase.rpc('expel_profile', {
+        p_target_id: professorId,
+        p_target_type: 'professor',
+      });
+
+      if (!rpcError && rpcData?.success) {
+        console.log('Perfil de profesor expulsado exitosamente vía RPC:', rpcData);
+        return true;
+      }
+      if (rpcError) {
+        console.warn('RPC expel_profile no disponible o retornó error:', rpcError.message);
+      }
+    } catch (rpcEx) {
+      console.warn('Excepción llamando RPC expel_profile:', rpcEx);
+    }
+
+    // 2. Tablas hijas del profesor
     await Promise.allSettled([
-      supabase.from('professor_votes').delete().eq('professor_id', professorId),
-      supabase.from('professor_interactions').delete().eq('professor_id', professorId),
-      supabase.from('professor_crushes').delete().eq('professor_id', professorId),
-      supabase.from('professor_notification_subscriptions').delete().eq('professor_id', professorId),
+      supabase.from('professor_votes').delete().or(`professor_id.eq.${professorId},professor_id.eq.${cleanedId}`),
+      supabase.from('professor_interactions').delete().or(`professor_id.eq.${professorId},professor_id.eq.${cleanedId}`),
+      supabase.from('professor_crushes').delete().or(`professor_id.eq.${professorId},professor_id.eq.${cleanedId}`),
+      supabase.from('professor_notification_subscriptions').delete().or(`professor_id.eq.${professorId},professor_id.eq.${cleanedId}`),
+      supabase.from('collection_items').delete().or(`item_id.eq.${professorId},item_id.eq.${cleanedId}`),
     ]);
 
-    const { error } = await supabase.from('professors').delete().eq('id', professorId);
-    if (error) {
-      console.warn('Error eliminando profesor en Supabase:', error);
+    // Reportes asociados
+    try {
+      await supabase.from('profile_reports').delete().or(`target_id.eq.${professorId},target_id.eq.${cleanedId}`);
+    } catch {}
+
+    // Eliminar el registro principal en 'professors'
+    const { error: delError } = await supabase.from('professors').delete().or(`id.eq.${professorId},id.eq.${cleanedId}`);
+    if (delError) {
+      console.warn('Error eliminando en tabla professors, asegurando marca de expulsado:', delError.message);
+      await supabase.from('professors').update({
+        biography: '<!--__EXPELLED_BY_COMMUNITY__-->',
+        nombre_completo: '[EXPULSADO POR LA COMUNIDAD]',
+      }).or(`id.eq.${professorId},id.eq.${cleanedId}`);
     }
+
+    // Limpieza de caches locales
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.removeItem(`active_report_professor_${professorId}`);
+        localStorage.removeItem(`report_votes_${professorId}`);
+      } catch {}
+    }
+
     return true;
   } catch (err) {
     console.error('Error al ejecutar eliminación completa de profesor:', err);
