@@ -162,6 +162,9 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
 
       setSuccessMsg('¡Excelente! Tu cuenta ha sido vinculada con Google de forma segura. Se ha conservado tu nombre de usuario anterior.');
     } catch (err: any) {
+      if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request' || err?.isUserCancellation) {
+        return;
+      }
       console.error('Error al vincular con Google:', err);
       setErrorMsg(err?.message || 'Error al vincular tu cuenta con Google. Por favor, vuelve a intentarlo.');
     } finally {

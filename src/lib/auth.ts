@@ -93,25 +93,42 @@ export async function loginWithGoogle(): Promise<AuthUser> {
     await syncUserWithSupabase(user);
     return user;
   } catch (error: any) {
-    console.error('[Auth Error] Error detallado al iniciar sesión con Google:', {
-      message: error?.message,
-      code: error?.code,
-      stack: error?.stack,
-      authStatus: auth ? 'Inicializado' : 'Undefined',
-      config: {
-        appId: auth?.app?.options?.appId ? 'Presente' : 'Ausente',
-        projectId: auth?.app?.options?.projectId ? 'Presente' : 'Ausente'
-      }
-    });
+    const isUserCancellation = 
+      error?.code === 'auth/popup-closed-by-user' || 
+      error?.code === 'auth/cancelled-popup-request';
+
+    if (!isUserCancellation) {
+      console.error('[Auth Error] Error detallado al iniciar sesión con Google:', {
+        message: error?.message,
+        code: error?.code,
+        stack: error?.stack,
+        authStatus: auth ? 'Inicializado' : 'Undefined',
+        config: {
+          appId: auth?.app?.options?.appId ? 'Presente' : 'Ausente',
+          projectId: auth?.app?.options?.projectId ? 'Presente' : 'Ausente'
+        }
+      });
+    } else {
+      console.debug('[Auth] Inicio de sesión cancelado o ventana cerrada por el usuario.');
+    }
+
     // Manejo de errores específicos y amigables para el usuario
     if (error?.code === 'auth/popup-blocked') {
-      throw new Error('La ventana emergente de inicio de sesión fue bloqueada por tu navegador. Por favor, permite las ventanas emergentes para este sitio e inténtalo de nuevo.');
+      const err: any = new Error('La ventana emergente de inicio de sesión fue bloqueada por tu navegador. Por favor, permite las ventanas emergentes para este sitio e inténtalo de nuevo.');
+      err.code = error.code;
+      throw err;
     }
     if (error?.code === 'auth/popup-closed-by-user') {
-      throw new Error('Cerraste la ventana de Google antes de completar el inicio de sesión.');
+      const err: any = new Error('Cerraste la ventana de Google antes de completar el inicio de sesión.');
+      err.code = error.code;
+      err.isUserCancellation = true;
+      throw err;
     }
     if (error?.code === 'auth/cancelled-popup-request') {
-      throw new Error('Se canceló la ventana de inicio de sesión anterior por una nueva solicitud.');
+      const err: any = new Error('Se canceló la ventana de inicio de sesión anterior por una nueva solicitud.');
+      err.code = error.code;
+      err.isUserCancellation = true;
+      throw err;
     }
     throw error;
   }
@@ -214,12 +231,32 @@ export async function linkAnonymousWithGoogle(): Promise<AuthUser> {
 
     return user;
   } catch (error: any) {
-    console.error('Error al vincular cuenta con Google:', error);
+    const isUserCancellation = 
+      error?.code === 'auth/popup-closed-by-user' || 
+      error?.code === 'auth/cancelled-popup-request';
+
+    if (!isUserCancellation) {
+      console.error('Error al vincular cuenta con Google:', error);
+    } else {
+      console.debug('[Auth] Vinculación cancelada o ventana cerrada por el usuario.');
+    }
+
     if (error?.code === 'auth/popup-blocked') {
-      throw new Error('La ventana emergente de vinculación fue bloqueada por tu navegador. Por favor permite las ventanas emergentes.');
+      const err: any = new Error('La ventana emergente de vinculación fue bloqueada por tu navegador. Por favor permite las ventanas emergentes.');
+      err.code = error.code;
+      throw err;
     }
     if (error?.code === 'auth/popup-closed-by-user') {
-      throw new Error('Cancelaste la vinculación de cuenta al cerrar la ventana flotante.');
+      const err: any = new Error('Cancelaste la vinculación de cuenta al cerrar la ventana flotante.');
+      err.code = error.code;
+      err.isUserCancellation = true;
+      throw err;
+    }
+    if (error?.code === 'auth/cancelled-popup-request') {
+      const err: any = new Error('Se canceló la solicitud de vinculación.');
+      err.code = error.code;
+      err.isUserCancellation = true;
+      throw err;
     }
     throw error;
   }

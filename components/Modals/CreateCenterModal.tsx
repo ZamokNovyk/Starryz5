@@ -38,6 +38,9 @@ export default function CreateCenterModal({ isOpen, onClose, onSuccess }: Create
         await loginWithGoogle();
       }
     } catch (err: any) {
+      if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request' || err?.isUserCancellation) {
+        return;
+      }
       console.error('Error al autenticar con Google:', err);
       setErrorMsg('No se pudo completar el inicio de sesión con Google. Intenta nuevamente.');
     } finally {

@@ -24,6 +24,9 @@ export default function JoinModal({ isOpen, onClose }: JoinModalProps) {
       await loginWithGoogle();
       onClose();
     } catch (err: any) {
+      if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request' || err?.isUserCancellation) {
+        return;
+      }
       console.error('Error al iniciar sesión con Google:', err);
       setErrorMsg(err?.message || 'Ocurrió un error al conectar con Google.');
     } finally {

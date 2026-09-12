@@ -19,7 +19,8 @@ import {
   Loader2,
   Bell,
   BellRing,
-  Eye
+  Eye,
+  Flag
 } from 'lucide-react';
 import { 
   getProfessorById, 
@@ -42,6 +43,9 @@ import { supabase } from '@/src/lib/supabase';
 import BookmarkButton from '@/components/BookmarkButton';
 import ProfessorNotificationModal from '@/components/Modals/ProfessorNotificationModal';
 import { promptNotificationOnAction } from '@/src/lib/notificationHelper';
+import { getActiveProfileReport, ProfileReport } from '@/src/lib/profileReports';
+import CommunityVoteBanner from '@/components/CommunityVoteBanner';
+import ReportProfileModal from '@/components/Modals/ReportProfileModal';
 
 interface ProfessorProfileProps {
   slug: string;
@@ -87,6 +91,10 @@ export default function ProfessorProfile({
 
   // Views Count State
   const [viewsCount, setViewsCount] = useState(0);
+
+  // Moderation / Community Report States (Left 4 Dead F1/F2)
+  const [activeReport, setActiveReport] = useState<ProfileReport | null>(null);
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
 
   // Wiki Editing States
   const [isEditingWiki, setIsEditingWiki] = useState(false);
@@ -144,6 +152,14 @@ export default function ProfessorProfile({
           const crushStatus = await getProfessorCrushStatus(data.id || slug, user?.uid);
           setCrushCount(crushStatus.count);
           setHasCrushed(crushStatus.hasCrushed);
+
+          // Cargar reporte activo de moderación si existe (Estilo Left 4 Dead F1/F2)
+          try {
+            const rep = await getActiveProfileReport(data.id || slug, 'professor');
+            setActiveReport(rep);
+          } catch (rErr) {
+            console.debug('Error consultando reporte activo de profesor:', rErr);
+          }
 
           // Cargar interacciones, votos y suscripción del usuario si está logueado
           if (user) {
@@ -655,10 +671,11 @@ export default function ProfessorProfile({
       <div className="flex items-center justify-between">
         <button
           onClick={onBack}
-          className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-zinc-500 hover:text-[#eab308] transition-colors cursor-pointer"
+          aria-label="Volver al Centro"
+          title="Volver al Centro"
+          className="p-3 rounded-full bg-[#151515] hover:bg-[#202020] border border-zinc-800 text-zinc-400 hover:text-[#eab308] transition-all cursor-pointer shadow-md flex items-center justify-center"
         >
           <ArrowLeft className="w-4 h-4" />
-          <span>Volver al Centro</span>
         </button>
 
         <div className="flex items-center gap-2">
@@ -717,6 +734,32 @@ export default function ProfessorProfile({
             />
           )}
 
+          {/* Botón de Bandera Roja para Realizar Reportes (entre Guardar y Compartir) */}
+          {professor && (
+            <button
+              onClick={() => {
+                if (!user) {
+                  if (onRequireAuth) onRequireAuth();
+                  return;
+                }
+                setIsReportModalOpen(true);
+              }}
+              className={`p-3 rounded-full border transition-all cursor-pointer shadow-md flex items-center justify-center ${
+                activeReport
+                  ? 'bg-red-500/20 border-red-500/60 text-red-400 shadow-[0_0_15px_rgba(239,68,68,0.3)] animate-pulse'
+                  : 'bg-[#151515] hover:bg-[#202020] border-zinc-800 text-zinc-400 hover:text-red-400 hover:border-red-500/40'
+              }`}
+              title={
+                activeReport
+                  ? 'Este perfil está bajo votación de moderación comunitaria'
+                  : 'Reportar perfil falso, troll o inexistente'
+              }
+              aria-label="Reportar perfil"
+            >
+              <Flag className={`w-4 h-4 ${activeReport ? 'text-red-400' : 'text-red-500'}`} />
+            </button>
+          )}
+
           <button
             onClick={handleShare}
             className="p-3 rounded-full bg-[#151515] hover:bg-[#202020] border border-zinc-800 text-zinc-400 hover:text-[#eab308] transition-all cursor-pointer shadow-md"
@@ -730,6 +773,26 @@ export default function ProfessorProfile({
         <p className="text-right text-xs text-[#eab308] font-bold tracking-wide animate-pulse">
           ✓ ¡Enlace copiado al portapapeles!
         </p>
+      )}
+
+      {/* BANNER DE VOTACIÓN DE MODERACIÓN ACTIVA (Arriba de la foto de perfil) */}
+      {activeReport && professor && (
+        <CommunityVoteBanner
+          report={activeReport}
+          targetName={professor.nombre_completo || `${professor.nombre} ${professor.apellidos}`}
+          currentUserId={user?.uid || null}
+          onRequireAuth={onRequireAuth}
+          onVoteUpdated={(updatedRep) => {
+            if (updatedRep.status === 'dismissed') {
+              setActiveReport(null);
+            } else {
+              setActiveReport(updatedRep);
+            }
+          }}
+          onProfileExpelled={() => {
+            onBack();
+          }}
+        />
       )}
 
       {/* SECCIÓN DEL AVATAR CON EL RATING RING (Diseño idéntico a imagen 2) */}
@@ -1537,6 +1600,23 @@ export default function ProfessorProfile({
           professorAvatar={professor.avatar_url || null}
           userUid={user.uid}
           onSubscriptionChange={(subscribed) => setIsSubscribedToNotifications(subscribed)}
+        />
+      )}
+
+      {/* Modal de Reporte / Moderación Comunitaria (Left 4 Dead F1/F2) */}
+      {professor && (
+        <ReportProfileModal
+          isOpen={isReportModalOpen}
+          onClose={() => setIsReportModalOpen(false)}
+          targetId={professor.id || slug}
+          targetType="professor"
+          targetName={professor.nombre_completo || `${professor.nombre} ${professor.apellidos}`}
+          instituteId={professor.institute_id || ''}
+          currentUserId={user?.uid || ''}
+          currentUserName={user?.displayName || 'Miembro del campus'}
+          onReportCreated={(rep) => {
+            setActiveReport(rep);
+          }}
         />
       )}
 

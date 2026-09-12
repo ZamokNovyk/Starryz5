@@ -23,7 +23,8 @@ import {
   Trash2,
   Quote,
   AlertCircle,
-  Eye
+  Eye,
+  Flag
 } from 'lucide-react';
 import { 
   getStudentById, 
@@ -52,6 +53,9 @@ import StudentNotificationModal from '@/components/Modals/StudentNotificationMod
 import { promptNotificationOnAction } from '@/src/lib/notificationHelper';
 import StudentTrendsEngine from '@/src/components/StudentTrendsEngine';
 import GenderBadge from '@/components/GenderBadge';
+import { getActiveProfileReport, ProfileReport } from '@/src/lib/profileReports';
+import CommunityVoteBanner from '@/components/CommunityVoteBanner';
+import ReportProfileModal from '@/components/Modals/ReportProfileModal';
 
 interface StudentProfileProps {
   slug: string;
@@ -108,6 +112,10 @@ export default function StudentProfile({
   const [currentAuthorName, setCurrentAuthorName] = useState<string>('Anónimo');
   const [currentUserGender, setCurrentUserGender] = useState<string | null>(null);
   const [userAvatarUrl, setUserAvatarUrl] = useState<string | null>(null);
+
+  // Moderation / Community Report States (Left 4 Dead F1/F2)
+  const [activeReport, setActiveReport] = useState<ProfileReport | null>(null);
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
 
   // Wiki Editing States
   const [isEditingWiki, setIsEditingWiki] = useState(false);
@@ -172,6 +180,14 @@ export default function StudentProfile({
             setLoveMessages(msgs);
           } catch (mErr) {
             console.warn('Error al cargar mensajes de amor:', mErr);
+          }
+
+          // Cargar reporte activo de moderación si existe (Estilo Left 4 Dead F1/F2)
+          try {
+            const rep = await getActiveProfileReport(data.id || slug, 'student');
+            setActiveReport(rep);
+          } catch (rErr) {
+            console.debug('Error consultando reporte activo:', rErr);
           }
 
           // Cargar interacciones y votos del usuario si está logueado
@@ -790,10 +806,11 @@ export default function StudentProfile({
       <div className="flex items-center justify-between">
         <button
           onClick={onBack}
-          className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-zinc-500 hover:text-[#eab308] transition-colors cursor-pointer"
+          aria-label="Volver al Centro"
+          title="Volver al Centro"
+          className="p-3 rounded-full bg-[#151515] hover:bg-[#202020] border border-zinc-800 text-zinc-400 hover:text-[#eab308] transition-all cursor-pointer shadow-md flex items-center justify-center"
         >
           <ArrowLeft className="w-4 h-4" />
-          <span>Volver al Centro</span>
         </button>
 
         <div className="flex items-center gap-2">
@@ -852,6 +869,32 @@ export default function StudentProfile({
             />
           )}
 
+          {/* Botón de Bandera Roja para Realizar Reportes (entre Guardar y Compartir) */}
+          {student && (
+            <button
+              onClick={() => {
+                if (!user) {
+                  if (onRequireAuth) onRequireAuth();
+                  return;
+                }
+                setIsReportModalOpen(true);
+              }}
+              className={`p-3 rounded-full border transition-all cursor-pointer shadow-md flex items-center justify-center ${
+                activeReport
+                  ? 'bg-red-500/20 border-red-500/60 text-red-400 shadow-[0_0_15px_rgba(239,68,68,0.3)] animate-pulse'
+                  : 'bg-[#151515] hover:bg-[#202020] border-zinc-800 text-zinc-400 hover:text-red-400 hover:border-red-500/40'
+              }`}
+              title={
+                activeReport
+                  ? 'Este perfil está bajo votación de moderación comunitaria'
+                  : 'Reportar perfil falso, troll o inexistente'
+              }
+              aria-label="Reportar perfil"
+            >
+              <Flag className={`w-4 h-4 ${activeReport ? 'text-red-400' : 'text-red-500'}`} />
+            </button>
+          )}
+
           <button
             onClick={handleShare}
             className="p-3 rounded-full bg-[#151515] hover:bg-[#202020] border border-zinc-800 text-zinc-400 hover:text-[#eab308] transition-all cursor-pointer shadow-md"
@@ -865,6 +908,26 @@ export default function StudentProfile({
         <p className="text-right text-xs text-[#eab308] font-bold tracking-wide animate-pulse">
           ✓ ¡Enlace copiado al portapapeles!
         </p>
+      )}
+
+      {/* BANNER DE VOTACIÓN DE MODERACIÓN ACTIVA (Arriba de la foto de perfil) */}
+      {activeReport && student && (
+        <CommunityVoteBanner
+          report={activeReport}
+          targetName={studentFullName}
+          currentUserId={user?.uid || null}
+          onRequireAuth={onRequireAuth}
+          onVoteUpdated={(updatedRep) => {
+            if (updatedRep.status === 'dismissed') {
+              setActiveReport(null);
+            } else {
+              setActiveReport(updatedRep);
+            }
+          }}
+          onProfileExpelled={() => {
+            onBack();
+          }}
+        />
       )}
 
       {/* SECCIÓN DEL AVATAR CON EL RATING RING (Diseño idéntico a imagen) */}
@@ -1982,6 +2045,23 @@ export default function StudentProfile({
           studentAvatar={student.avatar_url || null}
           userUid={user.uid}
           onSubscriptionChange={(subscribed) => setIsSubscribedToNotifications(subscribed)}
+        />
+      )}
+
+      {/* Modal de Reporte / Moderación Comunitaria (Left 4 Dead F1/F2) */}
+      {student && (
+        <ReportProfileModal
+          isOpen={isReportModalOpen}
+          onClose={() => setIsReportModalOpen(false)}
+          targetId={student.id || slug}
+          targetType="student"
+          targetName={studentFullName}
+          instituteId={student.institute_id || ''}
+          currentUserId={user?.uid || ''}
+          currentUserName={currentAuthorName}
+          onReportCreated={(rep) => {
+            setActiveReport(rep);
+          }}
         />
       )}
 

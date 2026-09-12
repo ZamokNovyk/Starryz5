@@ -58,6 +58,9 @@ export default function AddMemberModal({
         await loginWithGoogle();
       }
     } catch (err: any) {
+      if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request' || err?.isUserCancellation) {
+        return;
+      }
       console.error('Error al iniciar sesión con Google:', err);
       setError('No se pudo completar el inicio de sesión con Google. Intenta nuevamente.');
     } finally {
