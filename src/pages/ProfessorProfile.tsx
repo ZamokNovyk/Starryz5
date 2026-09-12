@@ -43,7 +43,7 @@ import { supabase } from '@/src/lib/supabase';
 import BookmarkButton from '@/components/BookmarkButton';
 import ProfessorNotificationModal from '@/components/Modals/ProfessorNotificationModal';
 import { promptNotificationOnAction } from '@/src/lib/notificationHelper';
-import { getActiveProfileReport, ProfileReport, extractReportFromBiography, embedReportIntoBiography } from '@/src/lib/profileReports';
+import { getActiveProfileReport, ProfileReport, extractReportFromBiography, embedReportIntoBiography, stripBiographyMetadata } from '@/src/lib/profileReports';
 import CommunityVoteBanner from '@/components/CommunityVoteBanner';
 import ReportProfileModal from '@/components/Modals/ReportProfileModal';
 
@@ -638,7 +638,7 @@ export default function ProfessorProfile({
     setWikiYoutube(professor.youtube_url || '');
     setWikiFacebook(professor.facebook_url || '');
     setWikiTwitter(professor.twitter_url || '');
-    setWikiBiography(professor.biography || '');
+    setWikiBiography(extractReportFromBiography(professor.biography).cleanBio);
     setSocialErrors({});
     setIsEditingWiki(true);
   };
@@ -669,6 +669,11 @@ export default function ProfessorProfile({
         ? `${wikiBirthYear}-${wikiBirthMonth}-${wikiBirthDay}`
         : null;
 
+      const cleanUserBio = stripBiographyMetadata(wikiBiography);
+      const bioToSave = activeReport 
+        ? embedReportIntoBiography(cleanUserBio, activeReport) 
+        : cleanUserBio;
+
       await updateProfessorWiki(professor.id, {
         avatar_url: wikiAvatarUrl,
         height_cm: wikiHeightCm ? parseInt(wikiHeightCm) : null,
@@ -679,7 +684,7 @@ export default function ProfessorProfile({
         youtube_url: wikiYoutube,
         facebook_url: wikiFacebook,
         twitter_url: wikiTwitter,
-        biography: wikiBiography
+        biography: bioToSave
       });
 
       // Actualizar estado reactivo local
@@ -694,7 +699,7 @@ export default function ProfessorProfile({
         youtube_url: wikiYoutube || undefined,
         facebook_url: wikiFacebook || undefined,
         twitter_url: wikiTwitter || undefined,
-        biography: wikiBiography || undefined
+        biography: bioToSave || undefined
       } : null);
 
       setIsEditingWiki(false);
@@ -1128,13 +1133,17 @@ export default function ProfessorProfile({
                 </div>
 
                 {/* Biography content */}
-                {professor.biography && (
-                  <div className="space-y-3">
-                    <p className="text-sm text-zinc-300 leading-relaxed whitespace-pre-wrap">
-                      {professor.biography}
-                    </p>
-                  </div>
-                )}
+                {(() => {
+                  const displayBio = stripBiographyMetadata(professor.biography);
+                  if (!displayBio) return null;
+                  return (
+                    <div className="space-y-3">
+                      <p className="text-sm text-zinc-300 leading-relaxed whitespace-pre-wrap">
+                        {displayBio}
+                      </p>
+                    </div>
+                  );
+                })()}
 
                 {/* Personal Info Grid */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-zinc-800/40">

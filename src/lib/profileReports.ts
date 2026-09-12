@@ -24,6 +24,16 @@ const REPORT_MARKER_START = '<!--__COMMUNITY_REPORT__:';
 const REPORT_MARKER_END = '-->';
 
 /**
+ * Limpia cualquier metadato técnico o comentario HTML de la biografía para que nunca sea visible al usuario
+ */
+export function stripBiographyMetadata(biography: string | null | undefined): string {
+  if (!biography) return '';
+  return biography
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .trim();
+}
+
+/**
  * Extrae la metadata del reporte incrustada en la biografía del perfil
  */
 export function extractReportFromBiography(biography: string | null | undefined): {
@@ -36,23 +46,25 @@ export function extractReportFromBiography(biography: string | null | undefined)
 
   const startIdx = biography.indexOf(REPORT_MARKER_START);
   if (startIdx === -1) {
-    return { cleanBio: biography, report: null };
+    return { cleanBio: stripBiographyMetadata(biography), report: null };
   }
 
   const endIdx = biography.indexOf(REPORT_MARKER_END, startIdx);
   if (endIdx === -1) {
-    return { cleanBio: biography, report: null };
+    return { cleanBio: stripBiographyMetadata(biography), report: null };
   }
 
   const jsonStr = biography.substring(startIdx + REPORT_MARKER_START.length, endIdx);
-  const cleanBio = (biography.substring(0, startIdx) + biography.substring(endIdx + REPORT_MARKER_END.length)).trim();
+  const cleanBio = stripBiographyMetadata(
+    biography.substring(0, startIdx) + biography.substring(endIdx + REPORT_MARKER_END.length)
+  );
 
   try {
     const parsed = JSON.parse(jsonStr) as ProfileReport;
     return { cleanBio, report: parsed };
   } catch (err) {
     console.error('Error parseando reporte de biografía:', err);
-    return { cleanBio: biography, report: null };
+    return { cleanBio: stripBiographyMetadata(biography), report: null };
   }
 }
 

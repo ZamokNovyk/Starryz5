@@ -53,7 +53,7 @@ import StudentNotificationModal from '@/components/Modals/StudentNotificationMod
 import { promptNotificationOnAction } from '@/src/lib/notificationHelper';
 import StudentTrendsEngine from '@/src/components/StudentTrendsEngine';
 import GenderBadge from '@/components/GenderBadge';
-import { getActiveProfileReport, ProfileReport, extractReportFromBiography, embedReportIntoBiography } from '@/src/lib/profileReports';
+import { getActiveProfileReport, ProfileReport, extractReportFromBiography, embedReportIntoBiography, stripBiographyMetadata } from '@/src/lib/profileReports';
 import CommunityVoteBanner from '@/components/CommunityVoteBanner';
 import ReportProfileModal from '@/components/Modals/ReportProfileModal';
 
@@ -779,7 +779,7 @@ export default function StudentProfile({
     setWikiYoutube(student.youtube_url || '');
     setWikiFacebook(student.facebook_url || '');
     setWikiTwitter(student.twitter_url || '');
-    setWikiBiography(student.biography || '');
+    setWikiBiography(extractReportFromBiography(student.biography).cleanBio);
     setSocialErrors({});
     setIsEditingWiki(true);
   };
@@ -809,6 +809,11 @@ export default function StudentProfile({
         ? `${wikiBirthYear}-${wikiBirthMonth}-${wikiBirthDay}`
         : null;
 
+      const cleanUserBio = stripBiographyMetadata(wikiBiography);
+      const bioToSave = activeReport 
+        ? embedReportIntoBiography(cleanUserBio, activeReport) 
+        : cleanUserBio;
+
       await updateStudentWiki(student.id, {
         avatar_url: wikiAvatarUrl,
         height_cm: wikiHeightCm ? parseInt(wikiHeightCm) : undefined,
@@ -819,7 +824,7 @@ export default function StudentProfile({
         youtube_url: wikiYoutube,
         facebook_url: wikiFacebook,
         twitter_url: wikiTwitter,
-        biography: wikiBiography
+        biography: bioToSave
       });
 
       setStudent(prev => prev ? {
@@ -833,7 +838,7 @@ export default function StudentProfile({
         youtube_url: wikiYoutube || undefined,
         facebook_url: wikiFacebook || undefined,
         twitter_url: wikiTwitter || undefined,
-        biography: wikiBiography || undefined
+        biography: bioToSave || undefined
       } : null);
 
       setIsEditingWiki(false);
@@ -1267,13 +1272,17 @@ export default function StudentProfile({
                 </div>
 
                 {/* Biography content */}
-                {student.biography && (
-                  <div className="space-y-3">
-                    <p className="text-sm text-zinc-300 leading-relaxed whitespace-pre-wrap">
-                      {student.biography}
-                    </p>
-                  </div>
-                )}
+                {(() => {
+                  const displayBio = stripBiographyMetadata(student.biography);
+                  if (!displayBio) return null;
+                  return (
+                    <div className="space-y-3">
+                      <p className="text-sm text-zinc-300 leading-relaxed whitespace-pre-wrap">
+                        {displayBio}
+                      </p>
+                    </div>
+                  );
+                })()}
 
                 {/* Personal Info Grid */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-zinc-800/40">
