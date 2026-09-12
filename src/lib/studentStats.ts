@@ -61,30 +61,6 @@ export async function getStudentHistoricalStats(
     viewsCount?: number;
   }
 ): Promise<StudentStatsSummary> {
-  const today = new Date();
-  const dateList: string[] = [];
-
-  // Generar fechas en la zona horaria local del usuario para evitar desfases de un día
-  for (let i = days - 1; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(today.getDate() - i);
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    dateList.push(`${year}-${month}-${day}`);
-  }
-
-  const todayStr = dateList[dateList.length - 1];
-  const startDate = dateList[0];
-
-  // Fecha 1 día antes para calcular variación diaria del primer día
-  const preDate = new Date();
-  preDate.setDate(today.getDate() - days);
-  const preYear = preDate.getFullYear();
-  const preMonth = String(preDate.getMonth() + 1).padStart(2, '0');
-  const preDay = String(preDate.getDate()).padStart(2, '0');
-  const queryStartDate = `${preYear}-${preMonth}-${preDay}`;
-
   let dbRows: StudentDailyStat[] = [];
 
   try {
@@ -92,50 +68,73 @@ export async function getStudentHistoricalStats(
       .from('student_daily_stats')
       .select('*')
       .eq('student_id', studentId)
-      .gte('date', queryStartDate)
       .order('date', { ascending: true });
 
     if (!error && data && data.length > 0) {
-      dbRows = (data as StudentDailyStat[]).map(row => {
-        // Si el registro fue guardado con fecha adelantada por desfase UTC (ej. 2026-08-30 cuando es 2026-08-29 en Perú)
-        if (row.date > todayStr) {
-          return { ...row, date: todayStr };
-        }
-        return row;
-      });
+      dbRows = data as StudentDailyStat[];
     }
   } catch (err) {
     console.debug('Error consultando student_daily_stats:', err);
   }
 
-  const baselineRow = dbRows.find(r => r.date === queryStartDate);
+  const dateList: string[] = [];
+  let baselineRow: StudentDailyStat | undefined;
 
-  // Mapeamos los datos de la serie temporal combinando historial y valores en tiempo real para hoy
+  if (dbRows.length > 0) {
+    // Si existen datos en la base de datos, la fecha máxima mostrada es estrictamente la última registrada en la base de datos
+    const latestDbDateStr = dbRows[dbRows.length - 1].date;
+    const [y, m, dNum] = latestDbDateStr.split('-').map(Number);
+    const endDate = new Date(Date.UTC(y, m - 1, dNum, 12, 0, 0));
+
+    for (let i = days - 1; i >= 0; i--) {
+      const cur = new Date(endDate);
+      cur.setUTCDate(endDate.getUTCDate() - i);
+      const year = cur.getUTCFullYear();
+      const month = String(cur.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(cur.getUTCDate()).padStart(2, '0');
+      dateList.push(`${year}-${month}-${day}`);
+    }
+
+    // Fecha 1 día antes del inicio del rango para calcular baseline diario
+    const firstDate = new Date(endDate);
+    firstDate.setUTCDate(endDate.getUTCDate() - days);
+    const preYear = firstDate.getUTCFullYear();
+    const preMonth = String(firstDate.getUTCMonth() + 1).padStart(2, '0');
+    const preDay = String(firstDate.getUTCDate()).padStart(2, '0');
+    const baselineDateStr = `${preYear}-${preMonth}-${preDay}`;
+    baselineRow = dbRows.find(r => r.date === baselineDateStr);
+  } else {
+    // Si no hay datos históricos aún en la base de datos, usamos la fecha de hoy
+    const today = new Date();
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(today.getDate() - i);
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      dateList.push(`${year}-${month}-${day}`);
+    }
+  }
+
+  // Mapeamos los datos de la serie temporal basándonos estrictamente en los registros de la base de datos
   const stats: StudentDailyStat[] = dateList.map((dateStr) => {
-    const isToday = dateStr === todayStr;
     const existing = dbRows.find(r => r.date === dateStr);
     const dayLabel = formatDayLabel(dateStr);
 
     if (existing) {
-      if (isToday) {
-        return {
-          ...existing,
-          day_label: dayLabel,
-          knows_count: Math.max(existing.knows_count, currentValues.knowsCount ?? 0),
-          fans_count: Math.max(existing.fans_count, currentValues.fansCount ?? 0),
-          crushes_count: Math.max(existing.crushes_count, currentValues.crushesCount ?? 0),
-          score: (currentValues.score && currentValues.score > 0) ? currentValues.score : existing.score,
-          views_count: Math.max(existing.views_count, currentValues.viewsCount ?? 0),
-        };
-      }
       return {
         ...existing,
         day_label: dayLabel,
+        knows_count: Number(existing.knows_count) || 0,
+        fans_count: Number(existing.fans_count) || 0,
+        crushes_count: Number(existing.crushes_count) || 0,
+        score: Number(existing.score) || 0.0,
+        views_count: Number(existing.views_count) || 0,
       };
     }
 
-    // Si es hoy pero aún no corre el snapshot de la medianoche, usamos los valores en vivo
-    if (isToday) {
+    // Si la BD no tiene ningún registro para este estudiante en absoluto, mostramos valores actuales en el último punto
+    if (dbRows.length === 0 && dateStr === dateList[dateList.length - 1]) {
       return {
         student_id: studentId,
         date: dateStr,
@@ -148,7 +147,7 @@ export async function getStudentHistoricalStats(
       };
     }
 
-    // Para cualquier día anterior sin datos en la base de datos
+    // Para cualquier día sin datos en la base de datos
     return {
       student_id: studentId,
       date: dateStr,
