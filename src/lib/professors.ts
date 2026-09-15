@@ -195,7 +195,7 @@ export async function getProfessorsByInstitute(instituteId: string): Promise<Pro
     }
 
     // Mapear con datos reales
-    return profs.map((p: any) => {
+    return activeProfs.map((p: any) => {
       const ints = interactionsMap[p.id] || { knows: 0, fan: 0 };
       
       // Fallback local storage crushes si aplica
@@ -211,6 +211,7 @@ export async function getProfessorsByInstitute(instituteId: string): Promise<Pro
 
       return {
         ...p,
+        views_count: typeof p.views_count === 'number' ? p.views_count : (Number(p.views_count) || 0),
         knows_count: ints.knows,
         fans_count: ints.fan,
         crushes_count: totalCrushes,

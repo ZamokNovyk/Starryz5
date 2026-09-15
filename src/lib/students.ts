@@ -195,7 +195,7 @@ export async function getStudentsByInstitute(instituteId: string): Promise<Stude
     }
 
     // Mapear con datos reales
-    return students.map((p: any) => {
+    return activeStudents.map((p: any) => {
       const ints = interactionsMap[p.id] || { knows: 0, fan: 0 };
       
       let localCrushCount = 0;
@@ -210,6 +210,7 @@ export async function getStudentsByInstitute(instituteId: string): Promise<Stude
 
       return {
         ...p,
+        views_count: typeof p.views_count === 'number' ? p.views_count : (Number(p.views_count) || 0),
         knows_count: ints.knows,
         fans_count: ints.fan,
         crushes_count: totalCrushes,

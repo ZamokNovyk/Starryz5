@@ -63,7 +63,7 @@ interface StudentProfileProps {
   onRequireAuth?: () => void;
 }
 
-type TabType = 'Wiki' | 'Reseñas' | 'Crushes' | 'Ship' | 'Estadística';
+type TabType = 'Wiki' | 'Reseñas' | 'Crushes' | 'Estadística';
 
 export default function StudentProfile({
   slug,
@@ -1063,14 +1063,13 @@ export default function StudentProfile({
         </div>
       </div>
 
-      {/* PESTAÑAS (Wiki, Reseñas, Crushes, Ship, Estadística - idéntico a Profesores) */}
+      {/* PESTAÑAS (Wiki, Reseñas, Crushes, Estadística - idéntico a Profesores) */}
       <div className="bg-[#0d0d0d] border border-zinc-800/80 rounded-xl p-1 overflow-x-auto scrollbar-none">
         <div className="flex items-center gap-1.5 min-w-max">
           {[
             { id: 'Wiki' as TabType, label: 'Wiki', icon: BookOpen, color: '#3b82f6' },
             { id: 'Reseñas' as TabType, label: 'Reseñas', icon: Star, color: '#eab308' },
             { id: 'Crushes' as TabType, label: 'Crushes', icon: Heart, color: '#f43f5e' },
-            { id: 'Ship' as TabType, label: 'Ship', icon: Sparkles, color: '#a855f7' },
             { id: 'Estadística' as TabType, label: 'Estadística', icon: BarChart3, color: '#06b6d4' }
           ].map((tab) => {
             const Icon = tab.icon;
@@ -2067,18 +2066,7 @@ export default function StudentProfile({
         </div>
       )}
 
-      {/* 4. SHIP TAB */}
-      {activeTab === 'Ship' && (
-        <div className="bg-[#0d0d0d] border border-zinc-800/40 rounded-2xl p-8 text-center text-zinc-500 space-y-3">
-          <Sparkles className="w-10 h-10 text-[#eab308] mx-auto animate-bounce" />
-          <h3 className="text-base font-bold text-white uppercase">Emparejamientos del Campus (Ship)</h3>
-          <p className="text-xs max-w-sm mx-auto">
-            Vota por las parejas más votadas y divertidas del centro educativo creadas por la propia comunidad estudiantil.
-          </p>
-        </div>
-      )}
-
-      {/* 5. ESTADÍSTICA TAB: Starryz Trends Engine v2.0 */}
+      {/* 4. ESTADÍSTICA TAB: Starryz Trends Engine v2.0 */}
       {activeTab === 'Estadística' && (
         <StudentTrendsEngine
           studentId={student?.id || slug}

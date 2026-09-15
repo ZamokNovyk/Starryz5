@@ -101,7 +101,7 @@ interface EducationalCenterProfileViewProps {
 
 type TabType = 'Wiki' | 'Profesores' | 'Estudiantes' | 'Confesiones' | 'Galeria';
 type ViewMode = 'list' | 'grid';
-type SortOption = 'alphabetical' | 'score_desc' | 'score_asc' | 'fans_desc' | 'knows_desc' | 'crushes_desc';
+type SortOption = 'alphabetical' | 'score_desc' | 'score_asc' | 'views_desc' | 'views_asc' | 'fans_desc' | 'knows_desc' | 'crushes_desc';
 
 interface MemberItem {
   id: string;
@@ -110,6 +110,7 @@ interface MemberItem {
   fans: number;
   knows: number;
   crushes: number;
+  views: number;
   score: number;
   role: 'Alumno' | 'Profesor';
 }
@@ -647,6 +648,7 @@ export default function EducationalCenterProfileView({
     fans: typeof dp.fans_count === 'number' ? dp.fans_count : 0,
     knows: typeof dp.knows_count === 'number' ? dp.knows_count : 0,
     crushes: typeof dp.crushes_count === 'number' ? dp.crushes_count : 0,
+    views: typeof dp.views_count === 'number' ? dp.views_count : (Number(dp.views_count) || 0),
     score: typeof dp.score === 'number' ? Number(dp.score) : 0.0,
     role: 'Profesor',
   }));
@@ -658,6 +660,7 @@ export default function EducationalCenterProfileView({
     fans: typeof ds.fans_count === 'number' ? ds.fans_count : 0,
     knows: typeof ds.knows_count === 'number' ? ds.knows_count : 0,
     crushes: typeof ds.crushes_count === 'number' ? ds.crushes_count : 0,
+    views: typeof ds.views_count === 'number' ? ds.views_count : (Number(ds.views_count) || 0),
     score: typeof ds.score === 'number' ? Number(ds.score) : 0.0,
     role: 'Alumno',
   }));
@@ -698,6 +701,10 @@ export default function EducationalCenterProfileView({
         return b.score - a.score || b.fans - a.fans || a.name.localeCompare(b.name);
       case 'score_asc':
         return a.score - b.score || a.fans - b.fans || a.name.localeCompare(b.name);
+      case 'views_desc':
+        return b.views - a.views || b.score - a.score || a.name.localeCompare(b.name);
+      case 'views_asc':
+        return a.views - b.views || b.score - a.score || a.name.localeCompare(b.name);
       case 'fans_desc':
         return b.fans - a.fans || b.score - a.score || a.name.localeCompare(b.name);
       case 'knows_desc':
@@ -719,6 +726,8 @@ export default function EducationalCenterProfileView({
     { id: 'alphabetical', label: 'Alfabéticamente (A-Z)' },
     { id: 'score_desc', label: 'Mejor Calificación' },
     { id: 'score_asc', label: 'Peor Calificación' },
+    { id: 'views_desc', label: 'Más vistos' },
+    { id: 'views_asc', label: 'Menos vistos' },
     { id: 'fans_desc', label: 'Más Fans' },
     { id: 'knows_desc', label: 'Más "Yo te conozco"' },
     { id: 'crushes_desc', label: 'Más Crushes' },
@@ -1077,6 +1086,10 @@ export default function EducationalCenterProfileView({
                           <span className="text-xs leading-none">💘</span>
                           <span>{p.crushes}</span>
                         </span>
+                        <span className="flex items-center gap-1.5 text-zinc-400" title={`${p.views} Vistas`}>
+                          <Eye className="w-3.5 h-3.5 text-indigo-400" />
+                          <span>{p.views}</span>
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -1153,6 +1166,10 @@ export default function EducationalCenterProfileView({
                       <span className="flex items-center gap-1" title={`${p.crushes} Crushes`}>
                         <span className="text-[11px] leading-none">💘</span>
                         <span>{p.crushes}</span>
+                      </span>
+                      <span className="flex items-center gap-1 text-zinc-400" title={`${p.views} Vistas`}>
+                        <Eye className="w-3 h-3 text-indigo-400" />
+                        <span>{p.views}</span>
                       </span>
                     </div>
                   </div>
