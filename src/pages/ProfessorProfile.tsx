@@ -66,6 +66,44 @@ export default function ProfessorProfile({
   const [activeTab, setActiveTab] = useState<TabType>('Reseñas');
   const [copied, setCopied] = useState(false);
 
+  // Verificación de Administrador (acceso exclusivo a pestañas restringidas)
+  const [isAdmin, setIsAdmin] = useState<boolean>(() => {
+    return user?.email?.toLowerCase() === 'wikistars12@gmail.com' || (user as any)?.role === 'admin';
+  });
+
+  useEffect(() => {
+    if (!user) {
+      setIsAdmin(false);
+      return;
+    }
+    if (user.email?.toLowerCase() === 'wikistars12@gmail.com' || (user as any)?.role === 'admin') {
+      setIsAdmin(true);
+      return;
+    }
+    supabase
+      .from('users')
+      .select('role')
+      .eq('firebase_uid', user.uid)
+      .single()
+      .then(({ data, error }) => {
+        if (!error && data?.role === 'admin') {
+          setIsAdmin(true);
+        } else {
+          setIsAdmin(false);
+        }
+      })
+      .catch(() => {
+        setIsAdmin(false);
+      });
+  }, [user]);
+
+  // Si no es admin y la pestaña activa era Crushes, redirigir a Reseñas
+  useEffect(() => {
+    if (!isAdmin && activeTab === 'Crushes') {
+      setActiveTab('Reseñas');
+    }
+  }, [isAdmin, activeTab]);
+
   // Notification subscription state
   const [isSubscribedToNotifications, setIsSubscribedToNotifications] = useState(false);
   const [notificationModalOpen, setNotificationModalOpen] = useState(false);
@@ -930,7 +968,7 @@ export default function ProfessorProfile({
           {[
             { id: 'Wiki' as TabType, label: 'Wiki', icon: BookOpen, color: '#3b82f6' },
             { id: 'Reseñas' as TabType, label: 'Reseñas', icon: Star, color: '#eab308' },
-            { id: 'Crushes' as TabType, label: 'Crushes', icon: Heart, color: '#f43f5e' },
+            ...(isAdmin ? [{ id: 'Crushes' as TabType, label: 'Crushes', icon: Heart, color: '#f43f5e' }] : []),
             { id: 'Estadística' as TabType, label: 'Estadística', icon: BarChart3, color: '#06b6d4' }
           ].map((tab) => {
             const Icon = tab.icon;
@@ -1554,8 +1592,8 @@ export default function ProfessorProfile({
         );
       })()}
 
-      {/* 3. CRUSHES TAB */}
-      {activeTab === 'Crushes' && (
+      {/* 3. CRUSHES TAB (Visible únicamente para Administradores) */}
+      {isAdmin && activeTab === 'Crushes' && (
         <div className="bg-[#0d0d0d] border border-zinc-800/80 rounded-2xl p-6 sm:p-8 space-y-6 animate-in fade-in duration-300">
           <div className="text-center max-w-md mx-auto space-y-2">
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-pink-500/10 border border-pink-500/20 text-pink-400 text-[10px] font-black uppercase tracking-widest">
