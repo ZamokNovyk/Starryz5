@@ -51,6 +51,7 @@ import { supabase } from '@/src/lib/supabase';
 import BookmarkButton from '@/components/BookmarkButton';
 import StudentNotificationModal from '@/components/Modals/StudentNotificationModal';
 import { promptNotificationOnAction } from '@/src/lib/notificationHelper';
+import { shareContent } from '@/src/lib/share';
 import StudentTrendsEngine from '@/src/components/StudentTrendsEngine';
 import GenderBadge from '@/components/GenderBadge';
 import { getActiveProfileReport, ProfileReport, extractReportFromBiography, embedReportIntoBiography, stripBiographyMetadata } from '@/src/lib/profileReports';
@@ -595,11 +596,16 @@ export default function StudentProfile({
     }
   };
 
-  const handleShare = () => {
-    if (typeof window !== 'undefined') {
-      navigator.clipboard.writeText(window.location.href);
+  const handleShare = async () => {
+    const name = studentFullName || 'Estudiante';
+    const result = await shareContent({
+      title: `${name} | Wikistars`,
+      text: `Conoce el perfil de ${name} en Wikistars ⭐`,
+      url: typeof window !== 'undefined' ? window.location.href : '',
+    });
+    if (result.copied) {
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setTimeout(() => setCopied(false), 2500);
     }
   };
 

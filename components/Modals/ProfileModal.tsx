@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { X, Star, Crown, CheckCircle2, Share2 } from 'lucide-react';
 import { Student } from '@/lib/mockData';
+import { shareContent } from '@/src/lib/share';
 
 interface ProfileModalProps {
   student: Student | null;
@@ -99,11 +100,17 @@ export default function ProfileModal({ student, onClose }: ProfileModalProps) {
             </button>
 
             <button
-              onClick={() => {
-                navigator.clipboard?.writeText(window.location.href);
-                alert(`¡Enlace del perfil de ${student.name} copiado al portapapeles!`);
+              onClick={async () => {
+                const res = await shareContent({
+                  title: `${student.name} | Wikistars`,
+                  text: `Conoce el perfil de ${student.name} en Wikistars ⭐`,
+                  url: window.location.href,
+                });
+                if (res.copied) {
+                  alert(`¡Enlace del perfil de ${student.name} copiado al portapapeles!`);
+                }
               }}
-              className="p-3 rounded-lg bg-[#0a0a0a] border border-[#ffffff10] text-[#eab308] hover:bg-[#151515] transition-colors"
+              className="p-3 rounded-lg bg-[#0a0a0a] border border-[#ffffff10] text-[#eab308] hover:bg-[#151515] transition-colors cursor-pointer"
               title="Compartir perfil"
             >
               <Share2 className="w-5 h-5" />

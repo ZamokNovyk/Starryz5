@@ -43,6 +43,7 @@ import { supabase } from '@/src/lib/supabase';
 import BookmarkButton from '@/components/BookmarkButton';
 import ProfessorNotificationModal from '@/components/Modals/ProfessorNotificationModal';
 import { promptNotificationOnAction } from '@/src/lib/notificationHelper';
+import { shareContent } from '@/src/lib/share';
 import { getActiveProfileReport, ProfileReport, extractReportFromBiography, embedReportIntoBiography, stripBiographyMetadata } from '@/src/lib/profileReports';
 import CommunityVoteBanner from '@/components/CommunityVoteBanner';
 import ReportProfileModal from '@/components/Modals/ReportProfileModal';
@@ -443,11 +444,16 @@ export default function ProfessorProfile({
     }
   };
 
-  const handleShare = () => {
-    if (typeof window !== 'undefined') {
-      navigator.clipboard.writeText(window.location.href);
+  const handleShare = async () => {
+    const profName = professor?.nombre_completo || `${professor?.nombre || ''} ${professor?.apellidos || ''}`.trim() || 'Profesor';
+    const result = await shareContent({
+      title: `${profName} | Wikistars`,
+      text: `Conoce y califica el perfil de ${profName} en Wikistars 🎓`,
+      url: typeof window !== 'undefined' ? window.location.href : '',
+    });
+    if (result.copied) {
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setTimeout(() => setCopied(false), 2500);
     }
   };
 

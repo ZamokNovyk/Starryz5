@@ -91,6 +91,7 @@ import ConfessionCommentsModal from '@/components/Modals/ConfessionCommentsModal
 import BookmarkButton from '@/components/BookmarkButton';
 import GenderBadge from '@/components/GenderBadge';
 import { useAuth } from '@/src/context/AuthContext';
+import { shareContent } from '@/src/lib/share';
 
 interface EducationalCenterProfileViewProps {
   institution: Institution;
@@ -555,11 +556,26 @@ export default function EducationalCenterProfileView({
     }
   }, [institution, activeTab, confessionCategory, confessionSort]);
 
-  const handleShare = () => {
+  const handleShare = async () => {
+    // Si el dispositivo tiene soporte para Web Share API nativa (móviles Android / iOS)
+    if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+      try {
+        await navigator.share({
+          title: `${institution.name} | Wikistars`,
+          text: `Descubre el perfil oficial de ${institution.name} en Wikistars 🎓`,
+          url: window.location.href,
+        });
+        return;
+      } catch (err: any) {
+        if (err?.name === 'AbortError') return;
+      }
+    }
+
+    // Fallback para PC / navegadores sin menú nativo: abrir modal y copiar enlace
     setIsShareModalOpen(true);
     if (typeof window !== 'undefined') {
       try {
-        navigator.clipboard.writeText(window.location.href);
+        await navigator.clipboard.writeText(window.location.href);
         setCopied(true);
         setTimeout(() => setCopied(false), 2500);
       } catch (e) {
