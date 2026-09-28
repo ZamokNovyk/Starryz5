@@ -182,21 +182,46 @@ function playSynthesizedSound(type: string, speedMultiplier: number = 1.0) {
       sNoise.start(now + 0.3);
 
     } else if (type === 'glass') {
-      // Glass crack & shatter smash sound
-      const duration = 0.85;
+      // 1. Initial High Impact Snap (Transient noise burst)
+      const snapDur = 0.08;
+      const snapBuf = ctx.createBuffer(1, ctx.sampleRate * snapDur, ctx.sampleRate);
+      const snapData = snapBuf.getChannelData(0);
+      for (let i = 0; i < snapData.length; i++) {
+        snapData[i] = (Math.random() * 2 - 1) * Math.exp(-i / (snapData.length * 0.15));
+      }
+      const snapSource = ctx.createBufferSource();
+      snapSource.buffer = snapBuf;
+
+      const snapFilter = ctx.createBiquadFilter();
+      snapFilter.type = 'highpass';
+      snapFilter.frequency.setValueAtTime(2500, now);
+
+      const snapGain = ctx.createGain();
+      snapGain.gain.setValueAtTime(0.8, now);
+      snapGain.gain.exponentialRampToValueAtTime(0.001, now + snapDur);
+
+      snapSource.connect(snapFilter);
+      snapFilter.connect(snapGain);
+      snapGain.connect(ctx.destination);
+      snapSource.start(now);
+
+      // 2. Shattering Main Glass Explosive Noise
+      const duration = 0.9 / speedMultiplier;
       const bufferSize = ctx.sampleRate * duration;
       const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
       const data = buffer.getChannelData(0);
       for (let i = 0; i < bufferSize; i++) {
-        data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.15));
+        data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.2));
       }
       const noise = ctx.createBufferSource();
       noise.buffer = buffer;
 
       const filter = ctx.createBiquadFilter();
-      filter.type = 'highpass';
-      filter.frequency.setValueAtTime(1800, now);
-      filter.frequency.exponentialRampToValueAtTime(5000, now + 0.1);
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(3200, now);
+      filter.frequency.exponentialRampToValueAtTime(6500, now + 0.12);
+      filter.frequency.exponentialRampToValueAtTime(1200, now + duration);
+      filter.Q.setValueAtTime(3, now);
 
       const gain = ctx.createGain();
       gain.gain.setValueAtTime(0.65, now);
@@ -206,6 +231,29 @@ function playSynthesizedSound(type: string, speedMultiplier: number = 1.0) {
       filter.connect(gain);
       gain.connect(ctx.destination);
       noise.start(now);
+
+      // 3. High-Frequency Glass Shard Clink Harmonic Tones
+      for (let c = 0; c < 5; c++) {
+        const osc = ctx.createOscillator();
+        const clinkGain = ctx.createGain();
+
+        const delay = Math.random() * 0.22;
+        const freq = 4200 + Math.random() * 4500;
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now + delay);
+        osc.frequency.exponentialRampToValueAtTime(freq * 0.6, now + delay + 0.15);
+
+        clinkGain.gain.setValueAtTime(0, now);
+        clinkGain.gain.setValueAtTime(0.14, now + delay);
+        clinkGain.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.15);
+
+        osc.connect(clinkGain);
+        clinkGain.connect(ctx.destination);
+
+        osc.start(now + delay);
+        osc.stop(now + delay + 0.16);
+      }
 
     } else if (type === 'curtains') {
       // Heavy fabric velour curtain swoosh
