@@ -31,7 +31,8 @@ import {
   Send,
   ChevronDown,
   ChevronUp,
-  Film
+  Film,
+  Sparkles
 } from 'lucide-react';
 import CommunityGuidelinesModal from './Modals/CommunityGuidelinesModal';
 import { useAuth } from '@/src/context/AuthContext';
@@ -990,7 +991,7 @@ export default function Header({
                            </button>
                          </div>
 
-                         {/* OPCIÓN: TRANSICIONES Y ANIMACIONES ENTRE PÁGINAS */}
+                         {/* OPCIÓN: ESTUDIO DE TRANSICIONES */}
                          <div className="px-1 py-1 border-b border-zinc-800/80 mb-1">
                            <button
                              type="button"
@@ -999,15 +1000,15 @@ export default function Header({
                                setIsSettingsModalOpen(true);
                              }}
                              className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-bold text-zinc-300 hover:text-amber-400 hover:bg-zinc-800/60 transition-all cursor-pointer text-left group"
-                             title="Configurar animación de Avión de Papel 3D (la pantalla actual forma el cuerpo del avión)"
+                             title="Estudio de Transiciones PowerPoint (Avión, Vidrio, Cortinas, Papel Arrugado, Libro, Cubo 3D, Ave)"
                            >
                              <div className="flex items-center gap-2.5">
-                               <Send className="w-4 h-4 text-amber-400 group-hover:scale-110 -rotate-45 transition-transform" />
-                               <span>Avión de Papel 3D</span>
+                               <Sparkles className="w-4 h-4 text-blue-400 group-hover:scale-110 transition-transform" />
+                               <span>Transición de Página</span>
                              </div>
-                             <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-zinc-800 text-amber-300 border border-zinc-700/80 flex items-center gap-1">
-                               <span>✈️</span>
-                               <span>{activeTransition === 'paper_airplane' ? 'Activo' : 'Off'}</span>
+                             <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-zinc-800 text-blue-300 border border-blue-500/30 flex items-center gap-1">
+                               <span>{activeTransitionDef.emoji}</span>
+                               <span className="hidden sm:inline">{activeTransitionDef.name.split(' ')[0]}</span>
                              </span>
                            </button>
                          </div>
@@ -1219,12 +1220,12 @@ export default function Header({
               className="w-full py-3 px-4 rounded-xl border border-zinc-800 hover:border-amber-500/40 text-zinc-100 font-bold text-xs tracking-wider bg-[#141414] hover:bg-zinc-800/80 flex items-center justify-between transition-all cursor-pointer shadow-[0_0_12px_rgba(234,179,8,0.06)]"
             >
               <div className="flex items-center gap-2.5">
-                <Send className="w-4 h-4 text-amber-400 -rotate-45" />
-                <span>Transición Avión de Papel 3D</span>
+                <Sparkles className="w-4 h-4 text-blue-400" />
+                <span>Transición de Página</span>
               </div>
-              <span className="text-[10px] text-amber-300 font-black bg-zinc-800 px-2 py-0.5 rounded-md border border-zinc-700 flex items-center gap-1">
-                <span>✈️</span>
-                <span>{activeTransition === 'paper_airplane' ? 'Activado' : 'Off'}</span>
+              <span className="text-[10px] text-blue-300 font-black bg-zinc-800 px-2 py-0.5 rounded-md border border-blue-500/30 flex items-center gap-1">
+                <span>{activeTransitionDef.emoji}</span>
+                <span>{activeTransitionDef.name}</span>
               </span>
             </button>
 

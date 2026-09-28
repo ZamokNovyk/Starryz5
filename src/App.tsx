@@ -391,7 +391,7 @@ export default function App() {
   ]);
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-zinc-100 flex flex-col font-sans selection:bg-[#eab308] selection:text-black">
+    <div id="page-view-container" className="min-h-screen bg-[#0a0a0a] text-zinc-100 flex flex-col font-sans selection:bg-[#eab308] selection:text-black">
       
       {/* 1. Header (Barra de Navegación con Buscador Integrado) */}
       <Header
