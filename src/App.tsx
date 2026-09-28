@@ -30,6 +30,10 @@ import { getEducationalCenters, EducationalCenter } from '@/src/lib/centers';
 import { supabase } from '@/src/lib/supabase';
 import { usePwaTabs, formatSlug, TabRichMeta } from '@/src/context/PwaTabsContext';
 import PwaTabsSwitcherModal from '@/components/Modals/PwaTabsSwitcherModal';
+import ThemeStudioDrawer from '@/components/ThemeStudio/ThemeStudioDrawer';
+import { usePageTransition } from '@/src/context/PageTransitionContext';
+import { PageTransitionOverlay } from '@/components/Transitions/PageTransitionOverlay';
+import { TransitionSettingsModal } from '@/components/Transitions/TransitionSettingsModal';
 
 function generateAcronym(name: string): string {
   const cleanWords = name
@@ -66,6 +70,7 @@ export default function App() {
   const { user } = useAuth();
   const { toastNotification, closeToast } = useFCMNotifications();
   const { syncCurrentRoute } = usePwaTabs();
+  const { startTransition, activeTransition } = usePageTransition();
   const [searchQuery, setSearchQuery] = useState('');
   const [autoNavigateToProfile, setAutoNavigateToProfile] = useState(false);
 
@@ -117,19 +122,34 @@ export default function App() {
   // Sync route popstate events
   useEffect(() => {
     const handlePopState = () => {
-      setRoute({
-        pathname: window.location.pathname,
-        search: window.location.search,
-      });
+      const nextPath = window.location.pathname;
+      const nextSearch = window.location.search;
+      if (activeTransition === 'none') {
+        setRoute({ pathname: nextPath, search: nextSearch });
+      } else {
+        startTransition(() => {
+          setRoute({ pathname: nextPath, search: nextSearch });
+        });
+      }
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
+  }, [activeTransition, startTransition]);
 
   const navigate = (pathname: string, search: string = '') => {
-    window.history.pushState(null, '', pathname + search);
-    setRoute({ pathname, search });
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (route.pathname === pathname && route.search === search) return;
+
+    if (activeTransition === 'none') {
+      window.history.pushState(null, '', pathname + search);
+      setRoute({ pathname, search });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      startTransition(() => {
+        window.history.pushState(null, '', pathname + search);
+        setRoute({ pathname, search });
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+    }
   };
 
   // Fetch educational centers globally
@@ -642,6 +662,13 @@ export default function App() {
       <PwaTabsSwitcherModal
         onNavigate={(pathname, search = '') => navigate(pathname, search)}
       />
+
+      {/* Theme Studio / Personalizador Visual de Colores */}
+      <ThemeStudioDrawer />
+
+      {/* Page Transitions Overlay & Settings Modal */}
+      <PageTransitionOverlay />
+      <TransitionSettingsModal />
 
       {/* Technical integration badge */}
       <SupabaseStatusBadge />

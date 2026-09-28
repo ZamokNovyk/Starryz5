@@ -30,7 +30,8 @@ import {
   CornerDownRight,
   Send,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Film
 } from 'lucide-react';
 import CommunityGuidelinesModal from './Modals/CommunityGuidelinesModal';
 import { useAuth } from '@/src/context/AuthContext';
@@ -42,6 +43,8 @@ import { supabase } from '@/src/lib/supabase';
 import { createConfessionComment, getDisplayAuthorName, getMyConfessionIds } from '@/src/lib/confessions';
 import { promptNotificationOnAction } from '@/src/lib/notificationHelper';
 import { usePwaTabs } from '@/src/context/PwaTabsContext';
+import { useThemeCustomizer } from '@/src/context/ThemeCustomizerContext';
+import { usePageTransition, TRANSITIONS_LIST } from '@/src/context/PageTransitionContext';
 
 interface NotificationItem {
   id: string;
@@ -81,6 +84,9 @@ export default function Header({
   const settingsRef = useRef<HTMLDivElement>(null);
   const { user, logout } = useAuth();
   const { theme, toggleTheme, setTheme } = useTheme();
+  const { openThemeStudio } = useThemeCustomizer();
+  const { activeTransition, setIsSettingsModalOpen } = usePageTransition();
+  const activeTransitionDef = TRANSITIONS_LIST.find(t => t.id === activeTransition) || TRANSITIONS_LIST[0];
   const { permission, requestPermission } = useFCMNotifications();
 
   // Lógica de PWA (deferredPrompt y comprobación de instalabilidad)
@@ -963,6 +969,49 @@ export default function Header({
                            </div>
                          </div>
 
+                         {/* OPCIÓN: ESTUDIO / PERSONALIZADOR DE COLORES */}
+                         <div className="px-1 py-1 border-b border-zinc-800/80 mb-1">
+                           <button
+                             type="button"
+                             onClick={() => {
+                               setSettingsOpen(false);
+                               openThemeStudio();
+                             }}
+                             className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-bold text-zinc-300 hover:text-amber-400 hover:bg-zinc-800/60 transition-all cursor-pointer text-left group"
+                             title="Personalizar fondos, botones, textos y elementos de la interfaz a tu gusto"
+                           >
+                             <div className="flex items-center gap-2.5">
+                               <Palette className="w-4 h-4 text-amber-400 group-hover:rotate-12 transition-transform" />
+                               <span>Personalizar Colores</span>
+                             </div>
+                             <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-amber-400/20 text-amber-400 border border-amber-400/30 uppercase tracking-wider">
+                               Estudio
+                             </span>
+                           </button>
+                         </div>
+
+                         {/* OPCIÓN: TRANSICIONES Y ANIMACIONES ENTRE PÁGINAS */}
+                         <div className="px-1 py-1 border-b border-zinc-800/80 mb-1">
+                           <button
+                             type="button"
+                             onClick={() => {
+                               setSettingsOpen(false);
+                               setIsSettingsModalOpen(true);
+                             }}
+                             className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-bold text-zinc-300 hover:text-amber-400 hover:bg-zinc-800/60 transition-all cursor-pointer text-left group"
+                             title="Configurar animación de Avión de Papel 3D (la pantalla actual forma el cuerpo del avión)"
+                           >
+                             <div className="flex items-center gap-2.5">
+                               <Send className="w-4 h-4 text-amber-400 group-hover:scale-110 -rotate-45 transition-transform" />
+                               <span>Avión de Papel 3D</span>
+                             </div>
+                             <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-zinc-800 text-amber-300 border border-zinc-700/80 flex items-center gap-1">
+                               <span>✈️</span>
+                               <span>{activeTransition === 'paper_airplane' ? 'Activo' : 'Off'}</span>
+                             </span>
+                           </button>
+                         </div>
+
                          {/* OPCIÓN: NORMAS DE LA COMUNIDAD */}
                          <div className="px-1 py-1 border-b border-zinc-800/80 mb-1">
                            <button
@@ -1141,6 +1190,43 @@ export default function Header({
                 </button>
               </div>
             </div>
+
+            {/* PERSONALIZAR COLORES EN MÓVIL */}
+            <button
+              type="button"
+              onClick={() => {
+                setMobileMenuOpen(false);
+                openThemeStudio();
+              }}
+              className="w-full py-3 px-4 rounded-xl border border-amber-500/30 text-zinc-100 font-bold text-xs tracking-wider bg-[#141414] hover:bg-zinc-800/80 flex items-center justify-between transition-all cursor-pointer shadow-[0_0_12px_rgba(234,179,8,0.08)]"
+            >
+              <div className="flex items-center gap-2.5">
+                <Palette className="w-4 h-4 text-amber-400" />
+                <span>Personalizar Colores</span>
+              </div>
+              <span className="text-[10px] text-amber-400 font-black bg-amber-400/10 px-2 py-0.5 rounded-md border border-amber-400/20 uppercase tracking-wider">
+                Estudio
+              </span>
+            </button>
+
+            {/* TRANSICIONES ENTRE PÁGINAS EN MÓVIL */}
+            <button
+              type="button"
+              onClick={() => {
+                setMobileMenuOpen(false);
+                setIsSettingsModalOpen(true);
+              }}
+              className="w-full py-3 px-4 rounded-xl border border-zinc-800 hover:border-amber-500/40 text-zinc-100 font-bold text-xs tracking-wider bg-[#141414] hover:bg-zinc-800/80 flex items-center justify-between transition-all cursor-pointer shadow-[0_0_12px_rgba(234,179,8,0.06)]"
+            >
+              <div className="flex items-center gap-2.5">
+                <Send className="w-4 h-4 text-amber-400 -rotate-45" />
+                <span>Transición Avión de Papel 3D</span>
+              </div>
+              <span className="text-[10px] text-amber-300 font-black bg-zinc-800 px-2 py-0.5 rounded-md border border-zinc-700 flex items-center gap-1">
+                <span>✈️</span>
+                <span>{activeTransition === 'paper_airplane' ? 'Activado' : 'Off'}</span>
+              </span>
+            </button>
 
             {/* NORMAS DE LA COMUNIDAD EN MÓVIL */}
             <button
