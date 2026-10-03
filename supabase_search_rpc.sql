@@ -78,7 +78,11 @@ BEGIN
     -- Búsqueda en Usuarios Registrados (tabla 'users')
     SELECT 
       u.firebase_uid::text AS id,
-      COALESCE(u.display_name, SPLIT_PART(COALESCE(u.email, 'Usuario'), '@', 1))::text AS name,
+      COALESCE(
+        NULLIF(TRIM(COALESCE(u.nombres, '') || ' ' || COALESCE(u.apellido_paterno, '') || ' ' || COALESCE(u.apellido_materno, '')), ''),
+        u.display_name, 
+        SPLIT_PART(COALESCE(u.email, 'Usuario'), '@', 1)
+      )::text AS name,
       'student'::text AS type,
       CASE 
         WHEN u.claimed_student_id IS NOT NULL THEN 'Estudiante Verificado'::text
@@ -87,16 +91,25 @@ BEGIN
       END AS subtitle,
       COALESCE(u.photo_url, '')::text AS avatar_url,
       GREATEST(
+        similarity(COALESCE(u.nombres, ''), busqueda),
+        similarity(COALESCE(u.apellido_paterno, ''), busqueda),
+        similarity(COALESCE(u.apellido_materno, ''), busqueda),
         similarity(COALESCE(u.display_name, ''), busqueda),
         similarity(COALESCE(u.email, ''), busqueda)
       )::double precision AS similarity_score
     FROM public.users u
     WHERE 
-      u.display_name IS NOT NULL
+      (u.display_name IS NOT NULL OR u.nombres IS NOT NULL OR u.email IS NOT NULL)
       AND (
-        similarity(COALESCE(u.display_name, ''), busqueda) > umbral
-        OR u.display_name ILIKE '%' || busqueda || '%'
-        OR u.email ILIKE '%' || busqueda || '%'
+        similarity(COALESCE(u.nombres, ''), busqueda) > umbral
+        OR similarity(COALESCE(u.apellido_paterno, ''), busqueda) > umbral
+        OR similarity(COALESCE(u.apellido_materno, ''), busqueda) > umbral
+        OR similarity(COALESCE(u.display_name, ''), busqueda) > umbral
+        OR COALESCE(u.nombres, '') ILIKE '%' || busqueda || '%'
+        OR COALESCE(u.apellido_paterno, '') ILIKE '%' || busqueda || '%'
+        OR COALESCE(u.apellido_materno, '') ILIKE '%' || busqueda || '%'
+        OR COALESCE(u.display_name, '') ILIKE '%' || busqueda || '%'
+        OR COALESCE(u.email, '') ILIKE '%' || busqueda || '%'
       )
 
     UNION ALL

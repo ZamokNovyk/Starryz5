@@ -136,8 +136,13 @@ export default function SearchResultsView({
 
           if (dbUsersRes.data) {
             dbUsersRes.data
-              .filter(u => u.display_name || u.email)
+              .filter(u => u.display_name || u.email || u.nombres || u.apellido_paterno)
               .forEach((u) => {
+                const fullStructured = [u.nombres, u.apellido_paterno, u.apellido_materno]
+                  .filter(Boolean)
+                  .join(' ')
+                  .trim();
+                const displayName = fullStructured || u.display_name || u.email?.split('@')[0] || 'Usuario';
                 const isClaimed = !!u.claimed_student_id;
                 const subtitle = isClaimed 
                   ? 'Estudiante Verificado' 
@@ -145,7 +150,7 @@ export default function SearchResultsView({
 
                 studentsData.push({
                   id: `user-${u.firebase_uid || u.id}`,
-                  name: u.display_name || u.email?.split('@')[0] || 'Usuario',
+                  name: displayName,
                   category: 'Estudiante' as SearchCategory,
                   typeKey: 'estudiantes' as FilterType,
                   subtitle,
@@ -189,15 +194,26 @@ export default function SearchResultsView({
     loadAllSearchData();
   }, [initialInstitutions]);
 
-  // Filtrado por término de búsqueda
+  const normalize = (text: string) => 
+    (text || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+
+  // Filtrado por término de búsqueda inteligente
   const termMatches = allData.filter((item) => {
     if (!query || !query.trim()) return true;
-    const cleanQuery = query.toLowerCase().trim();
-    return (
-      item.name.toLowerCase().includes(cleanQuery) ||
-      item.subtitle.toLowerCase().includes(cleanQuery) ||
-      item.category.toLowerCase().includes(cleanQuery)
-    );
+    const cleanQuery = normalize(query);
+    const itemName = normalize(item.name);
+    const itemSub = normalize(item.subtitle);
+    const itemCat = normalize(item.category);
+
+    if (itemName.includes(cleanQuery) || itemSub.includes(cleanQuery) || itemCat.includes(cleanQuery)) {
+      return true;
+    }
+
+    const tokens = cleanQuery.split(/\s+/).filter(Boolean);
+    if (tokens.length > 1) {
+      return tokens.every(token => itemName.includes(token) || itemSub.includes(token));
+    }
+    return false;
   });
 
   // Filtrado por tipo de entidad seleccionado

@@ -22,12 +22,18 @@ export interface SearchSuggestion {
   isFuzzy?: boolean;
 }
 
+function normalizeText(text: string): string {
+  if (!text) return '';
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+}
+
 /**
  * Consulta de autocompletado y búsqueda inteligente con tolerancia a errores tipográficos.
- * Depende al 100% de Supabase:
- * 1. Invoca la función RPC 'buscar_con_tolerancia' en Supabase.
- * 2. Si la RPC aún no estuviese creada en la base de datos, ejecuta consulta directa con .ilike() sobre las tablas de Supabase.
- * 3. NO contiene datos falsos ni arrays hardcodeados. Si no hay coincidencias, devuelve un array vacío [].
+ * Búsqueda directa sobre 'users', 'students', 'professors' y 'educational_centers' en Supabase.
  */
 export async function searchWithAutocomplete(
   rawQuery: string,
@@ -35,6 +41,9 @@ export async function searchWithAutocomplete(
 ): Promise<SearchSuggestion[]> {
   const query = rawQuery.trim();
   if (!query || query.length < 1) return [];
+
+  const normQuery = normalizeText(query);
+  const tokens = normQuery.split(/\s+/).filter(Boolean);
 
   const results: SearchSuggestion[] = [];
   const seenIds = new Set<string>();
@@ -48,7 +57,7 @@ export async function searchWithAutocomplete(
   };
 
   // --------------------------------------------------------------------------
-  // 1. Invocar la función RPC 'buscar_con_tolerancia' en Supabase
+  // 1. Invocar la función RPC 'buscar_con_tolerancia' en Supabase (si existe)
   // --------------------------------------------------------------------------
   try {
     const { data: rpcData, error: rpcError } = await supabase.rpc('buscar_con_tolerancia', {
@@ -86,42 +95,67 @@ export async function searchWithAutocomplete(
   }
 
   // --------------------------------------------------------------------------
-  // 2. Consulta Directa a Supabase (.ilike) en users, students, professors y centers
+  // 2. BÚSQUEDA DIRECTA Y RESILIENTE EN LA TABLA 'users'
   // --------------------------------------------------------------------------
   try {
-    const queryTokens = query.split(/\s+/).filter(Boolean);
-    const userOrFilter = queryTokens.length > 1
-      ? `display_name.ilike.%${query}%,display_name.ilike.%${queryTokens[0]}%,email.ilike.%${query}%`
-      : `display_name.ilike.%${query}%,email.ilike.%${query}%`;
+    let usersList: any[] = [];
 
-    const [userResponse, studentResponse, profResponse, centerResponse] = await Promise.all([
-      supabase
+    // Intento 1: Consulta .or(...) formateada con comillas dobles para PostgREST
+    const buildIlike = (col: string, val: string) => `${col}.ilike."%${val.replace(/"/g, '')}%"`;
+    const userOrPatterns: string[] = [
+      buildIlike('display_name', query),
+      buildIlike('nombres', query),
+      buildIlike('apellido_paterno', query),
+      buildIlike('apellido_materno', query),
+      buildIlike('email', query)
+    ];
+
+    tokens.forEach(t => {
+      if (t.length >= 2) {
+        userOrPatterns.push(buildIlike('display_name', t));
+        userOrPatterns.push(buildIlike('nombres', t));
+        userOrPatterns.push(buildIlike('apellido_paterno', t));
+        userOrPatterns.push(buildIlike('apellido_materno', t));
+        userOrPatterns.push(buildIlike('email', t));
+      }
+    });
+
+    const { data: userData, error: userErr } = await supabase
+      .from('users')
+      .select('id, firebase_uid, display_name, nombres, apellido_paterno, apellido_materno, email, photo_url, role, claimed_student_id')
+      .or(userOrPatterns.join(','))
+      .limit(30);
+
+    if (!userErr && Array.isArray(userData) && userData.length > 0) {
+      usersList = userData;
+    } else {
+      // Intento 2 (Fallback antibugs): si la sintaxis del .or() de PostgREST fallase, consultar los usuarios directamente
+      const { data: fallbackUsers } = await supabase
         .from('users')
-        .select('id, firebase_uid, display_name, email, photo_url, role, claimed_student_id')
-        .or(userOrFilter)
-        .limit(8),
-      supabase
-        .from('students')
-        .select('id, nombre, apellidos, nombre_completo, avatar_url, institute_id')
-        .or(`nombre_completo.ilike.%${query}%,nombre.ilike.%${query}%,apellidos.ilike.%${query}%,id.ilike.%${query}%`)
-        .limit(6),
-      supabase
-        .from('professors')
-        .select('id, nombre, apellidos, nombre_completo, role, institute_id, avatar_url')
-        .or(`nombre_completo.ilike.%${query}%,nombre.ilike.%${query}%,apellidos.ilike.%${query}%,id.ilike.%${query}%`)
-        .limit(6),
-      supabase
-        .from('educational_centers')
-        .select('id, name, type, profile_photo_url')
-        .ilike('name', `%${query}%`)
-        .limit(6)
-    ]);
+        .select('id, firebase_uid, display_name, nombres, apellido_paterno, apellido_materno, email, photo_url, role, claimed_student_id')
+        .limit(100);
 
-    // 1. Usuarios registrados en la red social
-    if (userResponse.data && Array.isArray(userResponse.data)) {
-      userResponse.data.forEach((u: any) => {
-        if (!u.display_name && !u.email) return;
-        const displayName = u.display_name || u.email?.split('@')[0] || 'Usuario';
+      if (fallbackUsers) {
+        usersList = fallbackUsers;
+      }
+    }
+
+    // Filtrar y procesar resultados de 'users' con comparación inteligente de tokens
+    usersList.forEach((u: any) => {
+      const fullStructured = [u.nombres, u.apellido_paterno, u.apellido_materno]
+        .filter(Boolean)
+        .join(' ')
+        .trim();
+
+      const dispName = u.display_name || '';
+      const emailVal = u.email || '';
+      const blob = normalizeText(`${fullStructured} ${dispName} ${emailVal}`);
+
+      const isMatch = blob.includes(normQuery) || 
+        (tokens.length > 0 && tokens.every(t => blob.includes(t)));
+
+      if (isMatch) {
+        const titleName = fullStructured || dispName || emailVal.split('@')[0] || 'Usuario';
         const isClaimed = !!u.claimed_student_id;
         const subtitle = isClaimed 
           ? 'Estudiante Verificado' 
@@ -129,7 +163,7 @@ export async function searchWithAutocomplete(
 
         addResult({
           id: u.firebase_uid || u.id,
-          title: displayName,
+          title: titleName,
           subtitle,
           type: 'student',
           avatarUrl: u.photo_url || undefined,
@@ -137,10 +171,35 @@ export async function searchWithAutocomplete(
           isFuzzy: false,
           similarity: 1.0
         });
-      });
-    }
+      }
+    });
+  } catch (uErr) {
+    console.warn('Aviso en consulta directa de usuarios:', uErr);
+  }
 
-    // 2. Estudiantes del directorio oficial
+  // --------------------------------------------------------------------------
+  // 3. Consulta Directa en 'students', 'professors' y 'educational_centers'
+  // --------------------------------------------------------------------------
+  try {
+    const [studentResponse, profResponse, centerResponse] = await Promise.all([
+      supabase
+        .from('students')
+        .select('id, nombre, apellidos, nombre_completo, avatar_url, institute_id')
+        .or(`nombre_completo.ilike."%${query}%",nombre.ilike."%${query}%",apellidos.ilike."%${query}%",id.ilike."%${query}%"`)
+        .limit(8),
+      supabase
+        .from('professors')
+        .select('id, nombre, apellidos, nombre_completo, role, institute_id, avatar_url')
+        .or(`nombre_completo.ilike."%${query}%",nombre.ilike."%${query}%",apellidos.ilike."%${query}%",id.ilike."%${query}%"`)
+        .limit(8),
+      supabase
+        .from('educational_centers')
+        .select('id, name, type, profile_photo_url')
+        .ilike('name', `%${query}%`)
+        .limit(8)
+    ]);
+
+    // Estudiantes del directorio oficial
     if (studentResponse.data && Array.isArray(studentResponse.data)) {
       studentResponse.data.forEach((s: any) => {
         const fullName = s.nombre_completo || `${s.nombre || ''} ${s.apellidos || ''}`.trim() || s.id;
@@ -157,7 +216,7 @@ export async function searchWithAutocomplete(
       });
     }
 
-    // 3. Profesores
+    // Profesores
     if (profResponse.data && Array.isArray(profResponse.data)) {
       profResponse.data.forEach((p: any) => {
         const isStudent = p.role === 'Alumno';
@@ -176,7 +235,7 @@ export async function searchWithAutocomplete(
       });
     }
 
-    // 4. Centros Educativos
+    // Centros Educativos
     if (centerResponse.data && Array.isArray(centerResponse.data)) {
       centerResponse.data.forEach((c: any) => {
         const typeLabel = c.type ? (c.type.charAt(0).toUpperCase() + c.type.slice(1)) : 'Centro Educativo';
@@ -193,9 +252,8 @@ export async function searchWithAutocomplete(
       });
     }
   } catch (err) {
-    console.warn('Aviso en consulta directa a Supabase:', err);
+    console.warn('Aviso en consulta de directorio:', err);
   }
 
-  // Retorna únicamente los resultados encontrados en Supabase (o [] si no hay)
   return results.slice(0, 8);
 }
