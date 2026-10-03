@@ -37,7 +37,8 @@ import {
   BarChart3,
   TrendingUp,
   Activity,
-  Globe
+  Globe,
+  Camera
 } from 'lucide-react';
 import { 
   getUserInteractions, 
@@ -55,6 +56,7 @@ import {
 import { getAdminDashboardMetrics, AdminDashboardData } from '@/src/lib/admin';
 import ProfessorNotificationModal from '@/components/Modals/ProfessorNotificationModal';
 import StudentNotificationModal from '@/components/Modals/StudentNotificationModal';
+import AvatarUploadModal from '@/components/Modals/AvatarUploadModal';
 
 interface SupabaseUser {
   id: string;
@@ -93,6 +95,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [profileTab, setProfileTab] = useState<'info' | 'collections' | 'interactions' | 'subscriptions' | 'admin'>('info');
+  const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
 
   // Admin Dashboard Metrics State
   const [adminMetrics, setAdminMetrics] = useState<AdminDashboardData | null>(null);
@@ -678,12 +681,15 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
         <div className="md:col-span-1 bg-[#0d0d0d] border border-[#ffffff10] rounded-2xl p-6 flex flex-col items-center text-center space-y-4 relative overflow-hidden">
           <div className="absolute top-0 left-0 right-0 h-20 bg-gradient-to-b from-[#eab3080c] to-transparent"></div>
           
-          <div className="relative pt-4">
+          <div className="relative pt-4 group">
             {dbUser?.photo_url ? (
               <img
                 src={dbUser.photo_url}
                 alt={dbUser.display_name || 'Usuario'}
+                onClick={() => isOwnProfile && setIsAvatarModalOpen(true)}
                 className={`w-24 h-24 rounded-full object-cover ring-3 transition-all ${
+                  isOwnProfile ? 'cursor-pointer hover:opacity-95' : ''
+                } ${
                   dbUser?.role === 'admin'
                     ? 'ring-amber-400 shadow-[0_0_25px_rgba(245,158,11,0.45)]'
                     : 'ring-[#eab308] shadow-[0_0_20px_rgba(234,179,8,0.2)]'
@@ -691,24 +697,42 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                 referrerPolicy="no-referrer"
               />
             ) : (
-              <div className={`w-24 h-24 rounded-full bg-[#151515] border flex items-center justify-center text-3xl font-black ring-3 shadow-lg transition-all ${
-                dbUser?.role === 'admin'
-                  ? 'border-amber-400/80 text-amber-400 ring-amber-400/40 shadow-[0_0_25px_rgba(245,158,11,0.4)]'
-                  : 'border-[#eab308]/40 text-[#eab308] ring-[#eab308]/20'
-              }`}>
+              <div 
+                onClick={() => isOwnProfile && setIsAvatarModalOpen(true)}
+                className={`w-24 h-24 rounded-full bg-[#151515] border flex items-center justify-center text-3xl font-black ring-3 shadow-lg transition-all ${
+                  isOwnProfile ? 'cursor-pointer hover:border-[#eab308]' : ''
+                } ${
+                  dbUser?.role === 'admin'
+                    ? 'border-amber-400/80 text-amber-400 ring-amber-400/40 shadow-[0_0_25px_rgba(245,158,11,0.4)]'
+                    : 'border-[#eab308]/40 text-[#eab308] ring-[#eab308]/20'
+                }`}
+              >
                 {(dbUser?.display_name || 'U').charAt(0).toUpperCase()}
               </div>
+            )}
+
+            {/* Hover overlay para cambiar foto si es el propio perfil */}
+            {isOwnProfile && (
+              <button
+                type="button"
+                onClick={() => setIsAvatarModalOpen(true)}
+                className="absolute inset-0 top-4 w-24 h-24 rounded-full bg-black/65 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white gap-1 cursor-pointer z-10 backdrop-blur-xs"
+                title="Cambiar foto de perfil en Backblaze B2"
+              >
+                <Camera className="w-5 h-5 text-[#eab308]" />
+                <span className="text-[9px] font-black uppercase tracking-wider text-amber-300">Cambiar</span>
+              </button>
             )}
             
             {dbUser?.role === 'admin' ? (
               <div 
                 title="Administrador Verificado"
-                className="absolute bottom-0 right-0 p-1.5 rounded-full bg-gradient-to-tr from-amber-400 via-yellow-300 to-amber-500 text-black shadow-[0_0_16px_rgba(245,158,11,0.7)] ring-3 ring-[#0d0d0d] flex items-center justify-center animate-in zoom-in duration-300"
+                className="absolute bottom-0 right-0 p-1.5 rounded-full bg-gradient-to-tr from-amber-400 via-yellow-300 to-amber-500 text-black shadow-[0_0_16px_rgba(245,158,11,0.7)] ring-3 ring-[#0d0d0d] flex items-center justify-center animate-in zoom-in duration-300 z-20"
               >
                 <CheckCircle2 className="w-4 h-4 text-black stroke-[3]" />
               </div>
             ) : (
-              <span className={`absolute bottom-0 right-0 px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider ${
+              <span className={`absolute bottom-0 right-0 px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider z-20 ${
                 dbUser?.is_anonymous 
                   ? 'bg-[#151515] border border-[#eab308]/30 text-[#eab308]' 
                   : 'bg-[#eab308] text-black'
@@ -717,6 +741,19 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
               </span>
             )}
           </div>
+
+          {/* Botón visible de cambiar foto para mayor facilidad de uso */}
+          {isOwnProfile && (
+            <button
+              type="button"
+              onClick={() => setIsAvatarModalOpen(true)}
+              className="px-3 py-1 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-700/60 hover:border-[#eab308] text-[11px] font-bold text-zinc-300 hover:text-white transition-all flex items-center gap-1.5 cursor-pointer shadow-sm group active:scale-95"
+              title="Subir foto a Backblaze B2 (Máx 5MB, 90-100 KB)"
+            >
+              <Camera className="w-3.5 h-3.5 text-[#eab308] group-hover:scale-110 transition-transform" />
+              <span>Cambiar Foto</span>
+            </button>
+          )}
 
           <div className="space-y-1.5 w-full flex flex-col items-center">
             <div className="flex items-center justify-center gap-2 max-w-full">
@@ -2086,6 +2123,20 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
           userUid={user.uid}
           onSubscriptionChange={() => {
             loadSubscriptions();
+          }}
+        />
+      )}
+
+      {/* Modal para subir foto de perfil a Backblaze B2 con compresión */}
+      {user && isAvatarModalOpen && (
+        <AvatarUploadModal
+          isOpen={isAvatarModalOpen}
+          onClose={() => setIsAvatarModalOpen(false)}
+          userId={user.uid}
+          currentPhotoUrl={dbUser?.photo_url || null}
+          onAvatarUpdated={(newPhotoUrl) => {
+            setDbUser((prev) => (prev ? { ...prev, photo_url: newPhotoUrl } : null));
+            setSuccessMsg('¡Foto de perfil actualizada con éxito en Backblaze B2!');
           }}
         />
       )}
