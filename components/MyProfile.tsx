@@ -73,6 +73,9 @@ interface SupabaseUser {
   firebase_uid: string;
   email: string | null;
   display_name: string | null;
+  nombres?: string | null;
+  apellido_paterno?: string | null;
+  apellido_materno?: string | null;
   username?: string | null;
   gender?: string | null;
   role?: string | null;
@@ -258,13 +261,27 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
           } catch (e) {}
 
           setDbUser(data as SupabaseUser);
-          const name = data.display_name || data.username || '';
-          const parsed = parseFullName(name);
-          setNombresInput(parsed.nombres);
-          setApellidoPaternoInput(parsed.apellidoPaterno);
-          setApellidoMaternoInput(parsed.apellidoMaterno);
-          setDisplayNameInput(name);
-          setInitialDisplayName(name);
+          
+          const nombresVal = (data as any).nombres || '';
+          const patVal = (data as any).apellido_paterno || '';
+          const matVal = (data as any).apellido_materno || '';
+
+          if (nombresVal || patVal) {
+            setNombresInput(nombresVal);
+            setApellidoPaternoInput(patVal);
+            setApellidoMaternoInput(matVal);
+            const combined = `${nombresVal} ${patVal} ${matVal}`.trim();
+            setDisplayNameInput(combined || data.display_name || '');
+            setInitialDisplayName(combined || data.display_name || '');
+          } else {
+            const name = data.display_name || data.username || '';
+            const parsed = parseFullName(name);
+            setNombresInput(parsed.nombres);
+            setApellidoPaternoInput(parsed.apellidoPaterno);
+            setApellidoMaternoInput(parsed.apellidoMaterno);
+            setDisplayNameInput(name);
+            setInitialDisplayName(name);
+          }
 
           let loadedGender: 'male' | 'female' | '' = '';
           if (data.gender === 'male' || data.gender === 'hombre') loadedGender = 'male';
@@ -665,16 +682,30 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
     setErrorMsg(null);
 
     try {
-      // 1. Actualizar 'display_name' en Supabase (columna en tabla 'users')
-      const { error: displayErr } = await supabase
-        .from('users')
-        .update({ 
-          display_name: cleanFullName 
-        })
-        .eq('firebase_uid', user.uid);
+      // 1. Actualizar en Supabase tabla 'users' (nombres, apellido_paterno, apellido_materno y display_name)
+      try {
+        const { error: fullUpdateErr } = await supabase
+          .from('users')
+          .update({ 
+            display_name: cleanFullName,
+            nombres: cleanNombres,
+            apellido_paterno: cleanPaterno,
+            apellido_materno: cleanMaterno || null
+          })
+          .eq('firebase_uid', user.uid);
 
-      if (displayErr) {
-        throw displayErr;
+        if (fullUpdateErr) {
+          // Si las columnas aún no existen en Supabase, fallback a display_name
+          await supabase
+            .from('users')
+            .update({ display_name: cleanFullName })
+            .eq('firebase_uid', user.uid);
+        }
+      } catch (uErr) {
+        await supabase
+          .from('users')
+          .update({ display_name: cleanFullName })
+          .eq('firebase_uid', user.uid);
       }
 
       // Si tiene perfil oficial de estudiante vinculado, sincronizar su nombre oficial
