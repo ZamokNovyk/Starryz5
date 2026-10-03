@@ -38,7 +38,10 @@ import {
   TrendingUp,
   Activity,
   Globe,
-  Camera
+  Camera,
+  Eye,
+  Maximize2,
+  X
 } from 'lucide-react';
 import { 
   getUserInteractions, 
@@ -96,6 +99,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [profileTab, setProfileTab] = useState<'info' | 'collections' | 'interactions' | 'subscriptions' | 'admin'>('info');
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
+  const [isViewPhotoModalOpen, setIsViewPhotoModalOpen] = useState(false);
 
   // Admin Dashboard Metrics State
   const [adminMetrics, setAdminMetrics] = useState<AdminDashboardData | null>(null);
@@ -686,10 +690,8 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
               <img
                 src={dbUser.photo_url}
                 alt={dbUser.display_name || 'Usuario'}
-                onClick={() => isOwnProfile && setIsAvatarModalOpen(true)}
-                className={`w-24 h-24 rounded-full object-cover ring-3 transition-all ${
-                  isOwnProfile ? 'cursor-pointer hover:opacity-95' : ''
-                } ${
+                onClick={() => setIsViewPhotoModalOpen(true)}
+                className={`w-24 h-24 rounded-full object-cover ring-3 transition-all cursor-pointer hover:opacity-95 ${
                   dbUser?.role === 'admin'
                     ? 'ring-amber-400 shadow-[0_0_25px_rgba(245,158,11,0.45)]'
                     : 'ring-[#eab308] shadow-[0_0_20px_rgba(234,179,8,0.2)]'
@@ -711,16 +713,16 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
               </div>
             )}
 
-            {/* Hover overlay para cambiar foto si es el propio perfil */}
-            {isOwnProfile && (
+            {/* Hover overlay para ver la foto en grande si ya existe foto */}
+            {dbUser?.photo_url && (
               <button
                 type="button"
-                onClick={() => setIsAvatarModalOpen(true)}
-                className="absolute inset-0 top-4 w-24 h-24 rounded-full bg-black/65 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white gap-1 cursor-pointer z-10 backdrop-blur-xs"
-                title="Cambiar foto de perfil en Backblaze B2"
+                onClick={() => setIsViewPhotoModalOpen(true)}
+                className="absolute inset-0 top-4 w-24 h-24 rounded-full bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white gap-1 cursor-pointer z-10 backdrop-blur-xs"
+                title="Ver foto en tamaño completo"
               >
-                <Camera className="w-5 h-5 text-[#eab308]" />
-                <span className="text-[9px] font-black uppercase tracking-wider text-amber-300">Cambiar</span>
+                <Eye className="w-5 h-5 text-[#eab308]" />
+                <span className="text-[9px] font-black uppercase tracking-wider text-amber-300">Ver foto</span>
               </button>
             )}
             
@@ -748,7 +750,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
               type="button"
               onClick={() => setIsAvatarModalOpen(true)}
               className="px-3 py-1 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-700/60 hover:border-[#eab308] text-[11px] font-bold text-zinc-300 hover:text-white transition-all flex items-center gap-1.5 cursor-pointer shadow-sm group active:scale-95"
-              title="Subir foto a Backblaze B2 (Máx 5MB, 90-100 KB)"
+              title="Cambiar foto de perfil (Máx 5 MB, optimizada a 90-100 KB)"
             >
               <Camera className="w-3.5 h-3.5 text-[#eab308] group-hover:scale-110 transition-transform" />
               <span>Cambiar Foto</span>
@@ -2127,7 +2129,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
         />
       )}
 
-      {/* Modal para subir foto de perfil a Backblaze B2 con compresión */}
+      {/* Modal para cambiar foto de perfil con recorte y compresión */}
       {user && isAvatarModalOpen && (
         <AvatarUploadModal
           isOpen={isAvatarModalOpen}
@@ -2136,9 +2138,81 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
           currentPhotoUrl={dbUser?.photo_url || null}
           onAvatarUpdated={(newPhotoUrl) => {
             setDbUser((prev) => (prev ? { ...prev, photo_url: newPhotoUrl } : null));
-            setSuccessMsg('¡Foto de perfil actualizada con éxito en Backblaze B2!');
+            setSuccessMsg('¡Foto de perfil actualizada con éxito!');
           }}
         />
+      )}
+
+      {/* Modal para ver la foto de perfil en tamaño completo */}
+      {isViewPhotoModalOpen && dbUser?.photo_url && (
+        <div
+          className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200"
+          onClick={() => setIsViewPhotoModalOpen(false)}
+        >
+          <div
+            className="relative max-w-md w-full bg-[#0d0d0d] border border-zinc-800 rounded-3xl p-5 shadow-2xl flex flex-col items-center space-y-4 animate-in zoom-in-95 duration-200 overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Encabezado del visor */}
+            <div className="w-full flex items-center justify-between pb-3 border-b border-zinc-800/80">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-black text-white uppercase tracking-tight truncate max-w-[200px]">
+                  {dbUser.display_name || 'Foto de Perfil'}
+                </span>
+                {dbUser.role === 'admin' && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase">
+                    Admin
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsViewPhotoModalOpen(false)}
+                className="p-1.5 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 transition cursor-pointer"
+                title="Cerrar visor"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Imagen ampliada */}
+            <div className="relative rounded-2xl overflow-hidden border border-zinc-800 shadow-2xl max-h-[60vh] w-full flex items-center justify-center bg-black/60 p-2">
+              <img
+                src={dbUser.photo_url}
+                alt={dbUser.display_name || 'Foto de perfil'}
+                className="max-h-[55vh] w-auto max-w-full object-contain rounded-xl shadow-lg ring-1 ring-white/10"
+                referrerPolicy="no-referrer"
+              />
+            </div>
+
+            {/* Acciones del visor */}
+            <div className="w-full flex items-center justify-between pt-1">
+              <a
+                href={dbUser.photo_url}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs font-bold text-zinc-400 hover:text-amber-400 transition flex items-center gap-1.5 cursor-pointer py-1.5 px-2 rounded-lg hover:bg-zinc-900"
+              >
+                <Maximize2 className="w-3.5 h-3.5" />
+                <span>Abrir en pestaña</span>
+              </a>
+
+              {isOwnProfile && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsViewPhotoModalOpen(false);
+                    setIsAvatarModalOpen(true);
+                  }}
+                  className="px-4 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700/60 hover:border-[#eab308] text-xs font-bold text-white transition flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-sm"
+                >
+                  <Camera className="w-3.5 h-3.5 text-[#eab308]" />
+                  <span>Cambiar foto</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
     </div>

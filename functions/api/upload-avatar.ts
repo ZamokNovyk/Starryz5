@@ -1,0 +1,159 @@
+/**
+ * functions/api/upload-avatar.ts
+ * Cloudflare Pages Function para subida de avatares a Backblaze B2 en starryz5.com.
+ * Cloudflare Pages detecta automáticamente esta carpeta y la ejecuta como Edge Worker.
+ */
+
+interface Env {
+  B2_KEY_ID?: string;
+  B2_APPLICATION_KEY?: string;
+  B2_BUCKET_ID?: string;
+  B2_BUCKET_NAME?: string;
+}
+
+export const onRequestPost: PagesFunction<Env> = async (context) => {
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  };
+
+  try {
+    const { request, env } = context;
+
+    const B2_KEY_ID = (env.B2_KEY_ID || '0056bac9fb621d40000000001').trim();
+    let B2_APPLICATION_KEY = (env.B2_APPLICATION_KEY || 'K00575GnrUfEa3rzdIEkV0NDBfhDcx0').trim();
+    if (B2_APPLICATION_KEY.includes('dlEk')) {
+      B2_APPLICATION_KEY = B2_APPLICATION_KEY.replace('dlEk', 'dIEk');
+    }
+    const B2_BUCKET_ID = (env.B2_BUCKET_ID || 'a64b1a7cf94f0b26a2110d14').trim();
+    const B2_BUCKET_NAME = (env.B2_BUCKET_NAME || 'starryz5').trim();
+
+    const body: any = await request.json();
+    const { imageBase64, contentType, userId, fileName: customFileName } = body;
+
+    if (!imageBase64) {
+      return new Response(JSON.stringify({ error: 'imageBase64 es obligatorio' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders },
+      });
+    }
+
+    // Decodificar Base64 a Uint8Array
+    const base64Clean = imageBase64.replace(/^data:image\/\w+;base64,/, '');
+    const binaryStr = atob(base64Clean);
+    const bytes = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) {
+      bytes[i] = binaryStr.charCodeAt(i);
+    }
+
+    // Validar peso: límite de 105 KB
+    if (bytes.length > 105 * 1024) {
+      return new Response(
+        JSON.stringify({
+          error: `La imagen excede el límite máximo de 100 KB. Tamaño: ${(bytes.length / 1024).toFixed(1)} KB`,
+        }),
+        {
+          status: 400,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders },
+        }
+      );
+    }
+
+    const mime = contentType || 'image/webp';
+    const ext = mime.includes('webp') ? 'webp' : 'jpg';
+    const cleanUserId = (userId || 'user').replace(/[^a-zA-Z0-9_-]/g, '');
+    const timestamp = Date.now();
+    const fileName = customFileName || `avatars/${cleanUserId}-${timestamp}.${ext}`;
+
+    // 1. Autorizar con Backblaze B2
+    const basicAuth = btoa(`${B2_KEY_ID}:${B2_APPLICATION_KEY}`);
+    const authRes = await fetch('https://api.backblazeb2.com/b2api/v3/b2_authorize_account', {
+      headers: { Authorization: `Basic ${basicAuth}` },
+    });
+
+    if (!authRes.ok) {
+      const errText = await authRes.text();
+      throw new Error(`B2 authorize failed (${authRes.status}): ${errText}`);
+    }
+
+    const authData: any = await authRes.json();
+    const apiUrl = authData.apiInfo?.storageApi?.apiUrl;
+    const downloadUrl = authData.apiInfo?.storageApi?.downloadUrl;
+    const token = authData.authorizationToken;
+
+    if (!apiUrl || !downloadUrl || !token) {
+      throw new Error('Respuesta inválida de autorización de Backblaze B2');
+    }
+
+    // 2. Obtener URL de subida para el bucket
+    const uploadUrlRes = await fetch(`${apiUrl}/b2api/v3/b2_get_upload_url?bucketId=${B2_BUCKET_ID}`, {
+      headers: { Authorization: token },
+    });
+
+    if (!uploadUrlRes.ok) {
+      const errText = await uploadUrlRes.text();
+      throw new Error(`Error al obtener URL de subida de B2 (${uploadUrlRes.status}): ${errText}`);
+    }
+
+    const uploadUrlData: any = await uploadUrlRes.json();
+
+    // 3. Subir archivo a Backblaze B2
+    const uploadRes = await fetch(uploadUrlData.uploadUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': uploadUrlData.authorizationToken,
+        'X-Bz-File-Name': encodeURIComponent(fileName),
+        'Content-Type': mime,
+        'Content-Length': bytes.length.toString(),
+        'X-Bz-Content-Sha1': 'do_not_verify',
+      },
+      body: bytes,
+    });
+
+    if (!uploadRes.ok) {
+      const errText = await uploadRes.text();
+      throw new Error(`Error en subida de archivo a B2 (${uploadRes.status}): ${errText}`);
+    }
+
+    const uploadResult: any = await uploadRes.json();
+    const publicUrl = `${downloadUrl}/file/${B2_BUCKET_NAME}/${fileName}`;
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        publicUrl,
+        fileId: uploadResult.fileId,
+        fileName,
+        sizeBytes: bytes.length,
+        sizeKb: Number((bytes.length / 1024).toFixed(2)),
+      }),
+      {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders },
+      }
+    );
+  } catch (err: any) {
+    console.error('Error en Cloudflare Function /api/upload-avatar:', err);
+    return new Response(
+      JSON.stringify({
+        error: err.message || 'Error interno al procesar subida en Cloudflare',
+      }),
+      {
+        status: 500,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders },
+      }
+    );
+  }
+};
+
+export const onRequestOptions: PagesFunction = async () => {
+  return new Response(null, {
+    status: 204,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    },
+  });
+};

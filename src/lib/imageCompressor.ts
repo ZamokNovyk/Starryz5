@@ -4,9 +4,18 @@
  * 
  * Reglas de negocio:
  * 1. Límite máximo de subida original: 5 MB (5 * 1024 * 1024 bytes).
- * 2. Peso final comprimido: Máximo 100 KB y Mínimo 90 KB (siempre que el detalle de la imagen lo permita).
+ * 2. Peso final comprimido: Máximo 100 KB y Mínimo 90 KB (o lo más cercano posible según el contenido).
  * 3. Formato de salida: WebP de ultra alta fidelidad (compatible con todos los navegadores modernos).
+ * 4. Soporta recorte interactivo (pan, zoom, rotación) definido por el usuario.
  */
+
+export interface CropSettings {
+  x: number;          // Desplazamiento X en píxeles del viewport
+  y: number;          // Desplazamiento Y en píxeles del viewport
+  zoom: number;       // Factor de zoom (1.0 a 3.0)
+  rotation: number;   // Rotación en grados (0, 90, 180, 270)
+  viewportSize: number; // Tamaño del visor (ej: 260px)
+}
 
 export interface CompressionResult {
   blob: Blob;
@@ -42,7 +51,7 @@ export function validateAvatarFile(file: File): { valid: boolean; error?: string
     const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
     return { 
       valid: false, 
-      error: `La foto seleccionada pesa ${sizeMb} MB. El límite máximo de subida permitido es de 5 MB.` 
+      error: `La foto seleccionada pesa ${sizeMb} MB. El límite máximo permitido es de 5 MB.` 
     };
   }
 
@@ -52,7 +61,7 @@ export function validateAvatarFile(file: File): { valid: boolean; error?: string
 /**
  * Carga un File en un elemento Image
  */
-function loadImage(file: File): Promise<HTMLImageElement> {
+export function loadImageFromFile(file: File): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -67,11 +76,12 @@ function loadImage(file: File): Promise<HTMLImageElement> {
 }
 
 /**
- * Renderiza un recorte cuadrado central en un canvas con resolución dada
+ * Renderiza el recorte interactivo (con zoom, pan y rotación) en un canvas
  */
-function renderSquareCropToCanvas(
-  img: HTMLImageElement, 
-  dimension: number
+export function renderCroppedCanvas(
+  img: HTMLImageElement,
+  dimension: number,
+  crop?: CropSettings
 ): HTMLCanvasElement {
   const canvas = document.createElement('canvas');
   canvas.width = dimension;
@@ -80,23 +90,53 @@ function renderSquareCropToCanvas(
 
   if (!ctx) throw new Error('No se pudo obtener el contexto 2D de Canvas');
 
-  // Suavizado de imagen de alta calidad
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
 
-  // Recorte 1:1 centrado
-  const minSide = Math.min(img.width, img.height);
-  const sx = (img.width - minSide) / 2;
-  const sy = (img.height - minSide) / 2;
+  if (!crop) {
+    // Recorte centrado por defecto
+    const minSide = Math.min(img.width, img.height);
+    const sx = (img.width - minSide) / 2;
+    const sy = (img.height - minSide) / 2;
+    ctx.drawImage(img, sx, sy, minSide, minSide, 0, 0, dimension, dimension);
+    return canvas;
+  }
 
-  ctx.drawImage(img, sx, sy, minSide, minSide, 0, 0, dimension, dimension);
+  const { x, y, zoom, rotation, viewportSize } = crop;
+  const scaleRatio = dimension / viewportSize;
+
+  ctx.save();
+  // Trasladar al centro del canvas
+  ctx.translate(dimension / 2, dimension / 2);
+
+  // Aplicar rotación
+  if (rotation !== 0) {
+    ctx.rotate((rotation * Math.PI) / 180);
+  }
+
+  // Aplicar zoom y traslación
+  ctx.scale(zoom, zoom);
+  ctx.translate(x * scaleRatio, y * scaleRatio);
+
+  // Calcular tamaño base para que la imagen cubra el viewport inicialmente
+  const baseScale = Math.max(dimension / img.width, dimension / img.height);
+  const drawWidth = img.width * baseScale;
+  const drawHeight = img.height * baseScale;
+
+  ctx.drawImage(img, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+  ctx.restore();
+
   return canvas;
 }
 
 /**
  * Convierte un canvas a Blob WebP con una calidad específica
  */
-function canvasToBlob(canvas: HTMLCanvasElement, quality: number, format: 'image/webp' | 'image/jpeg' = 'image/webp'): Promise<Blob> {
+function canvasToBlob(
+  canvas: HTMLCanvasElement, 
+  quality: number, 
+  format: 'image/webp' | 'image/jpeg' = 'image/webp'
+): Promise<Blob> {
   return new Promise((resolve, reject) => {
     canvas.toBlob(
       (blob) => {
@@ -124,16 +164,27 @@ function blobToBase64(blob: Blob): Promise<string> {
 /**
  * Algoritmo iterativo inteligente para ajustar el peso entre 90 KB y 100 KB
  */
-export async function compressAvatarToTarget(file: File): Promise<CompressionResult> {
-  const validation = validateAvatarFile(file);
-  if (!validation.valid) {
-    throw new Error(validation.error);
+export async function compressAvatarToTarget(
+  fileOrImg: File | HTMLImageElement,
+  originalSizeParam?: number,
+  crop?: CropSettings
+): Promise<CompressionResult> {
+  let img: HTMLImageElement;
+  let originalSize = 0;
+
+  if (fileOrImg instanceof File) {
+    const validation = validateAvatarFile(fileOrImg);
+    if (!validation.valid) {
+      throw new Error(validation.error);
+    }
+    img = await loadImageFromFile(fileOrImg);
+    originalSize = fileOrImg.size;
+  } else {
+    img = fileOrImg;
+    originalSize = originalSizeParam || 200 * 1024;
   }
 
-  const img = await loadImage(file);
-  const originalSize = file.size;
-
-  // Soporte de formato: Preferir WebP, fallback a JPEG si el navegador no soporta exportación WebP
+  // Soporte de formato: Preferir WebP, fallback a JPEG
   let format: 'image/webp' | 'image/jpeg' = 'image/webp';
   const testCanvas = document.createElement('canvas');
   testCanvas.width = 1;
@@ -142,40 +193,38 @@ export async function compressAvatarToTarget(file: File): Promise<CompressionRes
     format = 'image/jpeg';
   }
 
-  // Dimensiones iniciales y rangos de búsqueda
-  let currentDim = 640;
-  let bestBlob: Blob | null = null;
-  let bestQuality = 0.90;
-  let bestDim = currentDim;
-
-  // Búsqueda en 2 fases:
-  // Fase 1: Calibrar resolución óptima (entre 500 y 1000 px) y calidad (entre 0.65 y 0.98)
+  // Candidatos de calibración para aterrizar en 90 KB - 100 KB
   const candidateConfigs = [
-    { dim: 650, quality: 0.92 },
-    { dim: 650, quality: 0.88 },
-    { dim: 650, quality: 0.82 },
-    { dim: 600, quality: 0.80 },
-    { dim: 750, quality: 0.94 },
-    { dim: 850, quality: 0.95 },
-    { dim: 550, quality: 0.75 },
-    { dim: 500, quality: 0.70 },
-    { dim: 900, quality: 0.96 },
+    { dim: 1000, quality: 0.94 },
+    { dim: 950,  quality: 0.92 },
+    { dim: 900,  quality: 0.90 },
+    { dim: 850,  quality: 0.88 },
+    { dim: 800,  quality: 0.85 },
+    { dim: 750,  quality: 0.82 },
+    { dim: 700,  quality: 0.80 },
+    { dim: 650,  quality: 0.78 },
+    { dim: 1150, quality: 0.96 },
+    { dim: 1250, quality: 0.97 },
+    { dim: 600,  quality: 0.74 },
+    { dim: 550,  quality: 0.70 },
   ];
 
+  let bestBlob: Blob | null = null;
+  let bestDim = 850;
   let closestUnder100: { blob: Blob; size: number; dim: number } | null = null;
 
   for (const cfg of candidateConfigs) {
-    const canvas = renderSquareCropToCanvas(img, cfg.dim);
+    const canvas = renderCroppedCanvas(img, cfg.dim, crop);
     const blob = await canvasToBlob(canvas, cfg.quality, format);
 
-    // Caso ideal: cae exactamente entre 90 KB y 100 KB
+    // Si cae exactamente en el rango óptimo 90 KB - 100 KB
     if (blob.size >= TARGET_MIN_BYTES && blob.size <= TARGET_MAX_BYTES) {
       bestBlob = blob;
       bestDim = cfg.dim;
       break;
     }
 
-    // Registrar el mejor candidato que no supere los 100 KB
+    // Registrar el mejor candidato que no supere 100 KB
     if (blob.size <= TARGET_MAX_BYTES) {
       if (!closestUnder100 || blob.size > closestUnder100.size) {
         closestUnder100 = { blob, size: blob.size, dim: cfg.dim };
@@ -183,36 +232,31 @@ export async function compressAvatarToTarget(file: File): Promise<CompressionRes
     }
   }
 
-  // Si no cayó directamente en el rango 90-100 KB, realizamos ajuste fino
+  // Si no cayó directamente entre 90 y 100 KB, realizamos ajuste fino
   if (!bestBlob) {
     if (closestUnder100 && closestUnder100.size < TARGET_MIN_BYTES) {
-      // El archivo es menor a 90 KB: Aumentamos la resolución y calidad para darle máxima definición
-      // y acercarlo lo más posible a 90-100 KB sin pasarse de 100 KB
-      let fineDim = Math.min(1200, Math.round(closestUnder100.dim * 1.3));
-      let fineQ = 0.96;
-      let fineCanvas = renderSquareCropToCanvas(img, fineDim);
-      let fineBlob = await canvasToBlob(fineCanvas, fineQ, format);
-
-      if (fineBlob.size <= TARGET_MAX_BYTES) {
-        bestBlob = fineBlob;
-        bestDim = fineDim;
-      } else {
-        // Reducir levemente la calidad para no sobrepasar los 100 KB
-        for (let q = 0.94; q >= 0.70; q -= 0.04) {
-          fineBlob = await canvasToBlob(fineCanvas, q, format);
-          if (fineBlob.size <= TARGET_MAX_BYTES) {
-            bestBlob = fineBlob;
-            bestDim = fineDim;
-            break;
+      // El archivo es menor a 90 KB: Subimos la resolución y calidad para máxima fidelidad
+      let targetDim = Math.min(1400, Math.round(closestUnder100.dim * 1.35));
+      let canvas = renderCroppedCanvas(img, targetDim, crop);
+      
+      // Probar calidades altas
+      for (let q = 0.98; q >= 0.75; q -= 0.03) {
+        const b = await canvasToBlob(canvas, q, format);
+        if (b.size <= TARGET_MAX_BYTES) {
+          if (!bestBlob || b.size > bestBlob.size) {
+            bestBlob = b;
+            bestDim = targetDim;
           }
+          if (b.size >= TARGET_MIN_BYTES) break;
         }
       }
     } else {
-      // El archivo era mayor a 100 KB: Búsqueda binaria de calidad hacia abajo
+      // Búsqueda binaria de calidad hacia abajo para no sobrepasar los 100 KB
       let lowQ = 0.50;
-      let highQ = 0.95;
-      let safeCanvas = renderSquareCropToCanvas(img, 560);
-      bestDim = 560;
+      let highQ = 0.92;
+      let safeDim = 600;
+      let safeCanvas = renderCroppedCanvas(img, safeDim, crop);
+      bestDim = safeDim;
 
       for (let i = 0; i < 6; i++) {
         const midQ = (lowQ + highQ) / 2;
@@ -221,18 +265,16 @@ export async function compressAvatarToTarget(file: File): Promise<CompressionRes
           highQ = midQ;
         } else {
           bestBlob = b;
-          if (b.size >= TARGET_MIN_BYTES) {
-            break;
-          }
+          if (b.size >= TARGET_MIN_BYTES) break;
           lowQ = midQ;
         }
       }
     }
   }
 
-  // Fallback de seguridad estricto: Si por algún motivo aún no hay blob o superó 100KB
+  // Fallback si por algún motivo extremo aún no se obtuvo blob válido
   if (!bestBlob || bestBlob.size > TARGET_MAX_BYTES) {
-    const fallbackCanvas = renderSquareCropToCanvas(img, 500);
+    const fallbackCanvas = renderCroppedCanvas(img, 500, crop);
     bestBlob = await canvasToBlob(fallbackCanvas, 0.75, format);
     bestDim = 500;
   }

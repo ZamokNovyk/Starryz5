@@ -3,32 +3,11 @@ import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import fs from 'fs';
 
-// Load .env if present
-try {
-  const envPath = path.resolve(process.cwd(), '.env');
-  if (fs.existsSync(envPath)) {
-    const envContent = fs.readFileSync(envPath, 'utf-8');
-    envContent.split('\n').forEach(line => {
-      const match = line.match(/^\s*([\w.-]+)\s*=\s*(.*)?\s*$/);
-      if (match) {
-        const key = match[1];
-        let value = match[2] || '';
-        if (value.startsWith('"') && value.endsWith('"')) value = value.slice(1, -1);
-        if (value.startsWith("'") && value.endsWith("'")) value = value.slice(1, -1);
-        if (!process.env[key]) {
-          process.env[key] = value.trim();
-        }
-      }
-    });
-  }
-} catch (e) {
-  console.warn('Could not load .env file:', e);
-}
-
-const B2_KEY_ID = process.env.B2_KEY_ID || '0056bac9fb621d40000000001';
-const B2_APPLICATION_KEY = process.env.B2_APPLICATION_KEY || 'K00575GnrUfEa3rzdIEkV0NDBfhDcx0';
-const B2_BUCKET_ID = process.env.B2_BUCKET_ID || 'a64b1a7cf94f0b26a2110d14';
-const B2_BUCKET_NAME = process.env.B2_BUCKET_NAME || 'starryz5';
+// Always enforce the exact verified Backblaze B2 credentials
+const B2_KEY_ID = '0056bac9fb621d40000000001';
+const B2_APPLICATION_KEY = 'K00575GnrUfEa3rzdIEkV0NDBfhDcx0';
+const B2_BUCKET_ID = 'a64b1a7cf94f0b26a2110d14';
+const B2_BUCKET_NAME = 'starryz5';
 
 // Cache B2 auth token in memory
 let cachedAuth: {
@@ -38,8 +17,8 @@ let cachedAuth: {
   expiresAt: number;
 } | null = null;
 
-async function getB2Auth() {
-  if (cachedAuth && Date.now() < cachedAuth.expiresAt) {
+async function getB2Auth(forceRefresh = false) {
+  if (!forceRefresh && cachedAuth && Date.now() < cachedAuth.expiresAt) {
     return cachedAuth;
   }
 
@@ -50,12 +29,14 @@ async function getB2Auth() {
 
   if (!res.ok) {
     const errText = await res.text();
+    cachedAuth = null;
     throw new Error(`B2 authorize failed (${res.status}): ${errText}`);
   }
 
   const data = await res.json();
   const storage = data.apiInfo?.storageApi;
   if (!storage) {
+    cachedAuth = null;
     throw new Error('Invalid storageApi in B2 authorize response');
   }
 
@@ -63,8 +44,8 @@ async function getB2Auth() {
     apiUrl: storage.apiUrl,
     downloadUrl: storage.downloadUrl,
     token: data.authorizationToken,
-    // Cache for 12 hours (B2 tokens are valid for 24h)
-    expiresAt: Date.now() + 12 * 60 * 60 * 1000,
+    // Cache for 6 hours
+    expiresAt: Date.now() + 6 * 60 * 60 * 1000,
   };
 
   return cachedAuth;
@@ -73,6 +54,17 @@ async function getB2Auth() {
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
+
+  // CORS middleware for starryz5.com and any client origin
+  app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    if (req.method === 'OPTIONS') {
+      return res.sendStatus(204);
+    }
+    next();
+  });
 
   // JSON payload parser for base64 compressed images (limit 10MB)
   app.use(express.json({ limit: '10mb' }));
@@ -96,9 +88,9 @@ async function startServer() {
       const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
       const buffer = Buffer.from(base64Data, 'base64');
 
-      // Check size limit: 100 KB max
+      // Check size limit: 105 KB max
       const sizeBytes = buffer.length;
-      if (sizeBytes > 105 * 1024) { // allow a 5% tiny buffer margin, but reject if > 105KB
+      if (sizeBytes > 105 * 1024) {
         return res.status(400).json({ 
           error: `La imagen excede el límite máximo de 100 KB. Tamaño recibido: ${(sizeBytes / 1024).toFixed(1)} KB` 
         });
@@ -110,13 +102,26 @@ async function startServer() {
       const timestamp = Date.now();
       const fileName = customFileName || `avatars/${cleanUserId}-${timestamp}.${ext}`;
 
-      // 1. Authorize with B2
-      const auth = await getB2Auth();
+      // 1. Authorize with B2 (retry once if token expired)
+      let auth;
+      try {
+        auth = await getB2Auth();
+      } catch (authErr) {
+        auth = await getB2Auth(true);
+      }
 
       // 2. Get upload URL for bucket
-      const uploadUrlRes = await fetch(`${auth.apiUrl}/b2api/v3/b2_get_upload_url?bucketId=${B2_BUCKET_ID}`, {
+      let uploadUrlRes = await fetch(`${auth.apiUrl}/b2api/v3/b2_get_upload_url?bucketId=${B2_BUCKET_ID}`, {
         headers: { Authorization: auth.token }
       });
+
+      // If token expired (401), force refresh auth and try once more
+      if (uploadUrlRes.status === 401) {
+        auth = await getB2Auth(true);
+        uploadUrlRes = await fetch(`${auth.apiUrl}/b2api/v3/b2_get_upload_url?bucketId=${B2_BUCKET_ID}`, {
+          headers: { Authorization: auth.token }
+        });
+      }
 
       if (!uploadUrlRes.ok) {
         const errText = await uploadUrlRes.text();
