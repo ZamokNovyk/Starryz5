@@ -75,10 +75,10 @@ async function startServer() {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
-  // POST /api/upload-avatar - Subida de avatar a Backblaze B2
+  // POST /api/upload-avatar - Subida de avatar a Backblaze B2 con eliminación automática de foto anterior
   app.post('/api/upload-avatar', async (req, res) => {
     try {
-      const { imageBase64, contentType, userId, fileName: customFileName } = req.body;
+      const { imageBase64, contentType, userId, previousPhotoUrl, fileName: customFileName } = req.body;
 
       if (!imageBase64) {
         return res.status(400).json({ error: 'imageBase64 es obligatorio' });
@@ -149,6 +149,39 @@ async function startServer() {
       }
 
       const uploadResult = await uploadRes.json();
+
+      // 4. Eliminación automática de fotos anteriores del usuario para ahorrar almacenamiento
+      try {
+        const prefix = `avatars/${cleanUserId}-`;
+        const listRes = await fetch(
+          `${auth.apiUrl}/b2api/v3/b2_list_file_names?bucketId=${B2_BUCKET_ID}&prefix=${encodeURIComponent(prefix)}&maxFileCount=20`,
+          { headers: { Authorization: auth.token } }
+        );
+
+        if (listRes.ok) {
+          const listData = await listRes.json();
+          const oldFiles = (listData.files || []).filter(
+            (f: any) => f.fileName !== fileName && f.fileId !== uploadResult.fileId
+          );
+
+          for (const old of oldFiles) {
+            await fetch(`${auth.apiUrl}/b2api/v3/b2_delete_file_version`, {
+              method: 'POST',
+              headers: { 
+                Authorization: auth.token, 
+                'Content-Type': 'application/json' 
+              },
+              body: JSON.stringify({
+                fileName: old.fileName,
+                fileId: old.fileId,
+              }),
+            });
+            console.log(`[Storage Cleanup] Foto anterior eliminada: ${old.fileName}`);
+          }
+        }
+      } catch (cleanErr) {
+        console.warn('[Storage Cleanup] Aviso no-bloqueante al purgar fotos viejas:', cleanErr);
+      }
 
       // Public URL of the uploaded image
       const publicUrl = `${auth.downloadUrl}/file/${B2_BUCKET_NAME}/${fileName}`;

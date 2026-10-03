@@ -1,7 +1,6 @@
 /**
  * functions/api/upload-avatar.ts
- * Cloudflare Pages Function para subida de avatares a Backblaze B2 en starryz5.com.
- * Cloudflare Pages detecta automáticamente esta carpeta y la ejecuta como Edge Worker.
+ * Cloudflare Pages Function para subida de avatares con eliminación automática de fotos anteriores.
  */
 
 interface Env {
@@ -83,7 +82,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const token = authData.authorizationToken;
 
     if (!apiUrl || !downloadUrl || !token) {
-      throw new Error('Respuesta inválida de autorización de Backblaze B2');
+      throw new Error('Respuesta inválida de autorización');
     }
 
     // 2. Obtener URL de subida para el bucket
@@ -93,12 +92,12 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     if (!uploadUrlRes.ok) {
       const errText = await uploadUrlRes.text();
-      throw new Error(`Error al obtener URL de subida de B2 (${uploadUrlRes.status}): ${errText}`);
+      throw new Error(`Error al obtener URL de subida (${uploadUrlRes.status}): ${errText}`);
     }
 
     const uploadUrlData: any = await uploadUrlRes.json();
 
-    // 3. Subir archivo a Backblaze B2
+    // 3. Subir archivo nuevo
     const uploadRes = await fetch(uploadUrlData.uploadUrl, {
       method: 'POST',
       headers: {
@@ -113,11 +112,43 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     if (!uploadRes.ok) {
       const errText = await uploadRes.text();
-      throw new Error(`Error en subida de archivo a B2 (${uploadRes.status}): ${errText}`);
+      throw new Error(`Error en subida de archivo (${uploadRes.status}): ${errText}`);
     }
 
     const uploadResult: any = await uploadRes.json();
     const publicUrl = `${downloadUrl}/file/${B2_BUCKET_NAME}/${fileName}`;
+
+    // 4. Limpieza automática: Buscar y eliminar fotos anteriores del mismo usuario
+    try {
+      const prefix = `avatars/${cleanUserId}-`;
+      const listRes = await fetch(
+        `${apiUrl}/b2api/v3/b2_list_file_names?bucketId=${B2_BUCKET_ID}&prefix=${encodeURIComponent(prefix)}&maxFileCount=20`,
+        { headers: { Authorization: token } }
+      );
+
+      if (listRes.ok) {
+        const listData: any = await listRes.json();
+        const oldFiles = (listData.files || []).filter(
+          (f: any) => f.fileName !== fileName && f.fileId !== uploadResult.fileId
+        );
+
+        for (const old of oldFiles) {
+          await fetch(`${apiUrl}/b2api/v3/b2_delete_file_version`, {
+            method: 'POST',
+            headers: { 
+              Authorization: token, 
+              'Content-Type': 'application/json' 
+            },
+            body: JSON.stringify({
+              fileName: old.fileName,
+              fileId: old.fileId,
+            }),
+          });
+        }
+      }
+    } catch (cleanErr) {
+      console.warn('Aviso no crítico al limpiar foto anterior:', cleanErr);
+    }
 
     return new Response(
       JSON.stringify({
@@ -137,7 +168,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     console.error('Error en Cloudflare Function /api/upload-avatar:', err);
     return new Response(
       JSON.stringify({
-        error: err.message || 'Error interno al procesar subida en Cloudflare',
+        error: err.message || 'Error interno al procesar subida',
       }),
       {
         status: 500,

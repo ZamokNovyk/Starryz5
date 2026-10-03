@@ -198,7 +198,7 @@ export default function AvatarUploadModal({
 
     try {
       setUploadProgressMsg('Guardando foto de perfil...');
-      const uploadRes = await uploadAvatarToBackblaze(userId, compressionResult);
+      const uploadRes = await uploadAvatarToBackblaze(userId, compressionResult, currentPhotoUrl);
 
       setUploadProgressMsg('Actualizando datos en tu perfil...');
       await syncUserAvatarProfile(userId, uploadRes.publicUrl);

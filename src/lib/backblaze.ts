@@ -24,12 +24,14 @@ const BACKEND_FALLBACK_URL = 'https://ais-dev-bpjeojps6jlbmsudaikv23-35930304326
  */
 export async function uploadAvatarToBackblaze(
   userId: string,
-  compressed: CompressionResult
+  compressed: CompressionResult,
+  previousPhotoUrl?: string | null
 ): Promise<UploadAvatarResponse> {
   const payload = {
     imageBase64: compressed.base64,
     contentType: compressed.format,
     userId,
+    previousPhotoUrl: previousPhotoUrl || null,
   };
 
   const payloadString = JSON.stringify(payload);
