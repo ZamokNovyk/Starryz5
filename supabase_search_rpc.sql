@@ -75,6 +75,55 @@ BEGIN
 
     UNION ALL
 
+    -- Búsqueda en Usuarios Registrados (tabla 'users')
+    SELECT 
+      u.firebase_uid::text AS id,
+      COALESCE(u.display_name, SPLIT_PART(COALESCE(u.email, 'Usuario'), '@', 1))::text AS name,
+      'student'::text AS type,
+      CASE 
+        WHEN u.claimed_student_id IS NOT NULL THEN 'Estudiante Verificado'::text
+        WHEN u.role = 'admin' THEN 'Administrador'::text
+        ELSE 'Usuario de Starryz'::text
+      END AS subtitle,
+      COALESCE(u.photo_url, '')::text AS avatar_url,
+      GREATEST(
+        similarity(COALESCE(u.display_name, ''), busqueda),
+        similarity(COALESCE(u.email, ''), busqueda)
+      )::double precision AS similarity_score
+    FROM public.users u
+    WHERE 
+      u.display_name IS NOT NULL
+      AND (
+        similarity(COALESCE(u.display_name, ''), busqueda) > umbral
+        OR u.display_name ILIKE '%' || busqueda || '%'
+        OR u.email ILIKE '%' || busqueda || '%'
+      )
+
+    UNION ALL
+
+    -- Búsqueda en Directorio Oficial de Estudiantes (tabla 'students')
+    SELECT 
+      s.id::text AS id,
+      COALESCE(s.nombre_completo, TRIM(COALESCE(s.nombre, '') || ' ' || COALESCE(s.apellidos, '')), s.id)::text AS name,
+      'student'::text AS type,
+      COALESCE(s.institute_id, 'Estudiante del Instituto')::text AS subtitle,
+      COALESCE(s.avatar_url, '')::text AS avatar_url,
+      GREATEST(
+        similarity(COALESCE(s.nombre_completo, TRIM(COALESCE(s.nombre, '') || ' ' || COALESCE(s.apellidos, ''))), busqueda),
+        similarity(COALESCE(s.nombre, ''), busqueda),
+        similarity(COALESCE(s.apellidos, ''), busqueda)
+      )::double precision AS similarity_score
+    FROM public.students s
+    WHERE 
+      similarity(COALESCE(s.nombre_completo, TRIM(COALESCE(s.nombre, '') || ' ' || COALESCE(s.apellidos, ''))), busqueda) > umbral
+      OR similarity(COALESCE(s.nombre, ''), busqueda) > umbral
+      OR similarity(COALESCE(s.apellidos, ''), busqueda) > umbral
+      OR COALESCE(s.nombre_completo, '') ILIKE '%' || busqueda || '%'
+      OR COALESCE(s.nombre, '') ILIKE '%' || busqueda || '%'
+      OR COALESCE(s.apellidos, '') ILIKE '%' || busqueda || '%'
+
+    UNION ALL
+
     -- Búsqueda en Centros Educativos (tabla 'educational_centers')
     SELECT 
       c.id::text AS id,

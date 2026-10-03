@@ -80,25 +80,26 @@ export async function searchWithAutocomplete(
           isFuzzy
         });
       });
-
-      if (results.length > 0) {
-        return results.slice(0, 8);
-      }
     }
   } catch (rpcErr) {
     console.warn('Aviso: RPC buscar_con_tolerancia no disponible o con latencia:', rpcErr);
   }
 
   // --------------------------------------------------------------------------
-  // 2. Consulta Directa a Supabase (.ilike) como respaldo si la RPC no devolvió datos
+  // 2. Consulta Directa a Supabase (.ilike) en users, students, professors y centers
   // --------------------------------------------------------------------------
   try {
+    const queryTokens = query.split(/\s+/).filter(Boolean);
+    const userOrFilter = queryTokens.length > 1
+      ? `display_name.ilike.%${query}%,display_name.ilike.%${queryTokens[0]}%,email.ilike.%${query}%`
+      : `display_name.ilike.%${query}%,email.ilike.%${query}%`;
+
     const [userResponse, studentResponse, profResponse, centerResponse] = await Promise.all([
       supabase
         .from('users')
         .select('id, firebase_uid, display_name, email, photo_url, role, claimed_student_id')
-        .or(`display_name.ilike.%${query}%,email.ilike.%${query}%`)
-        .limit(6),
+        .or(userOrFilter)
+        .limit(8),
       supabase
         .from('students')
         .select('id, nombre, apellidos, nombre_completo, avatar_url, institute_id')

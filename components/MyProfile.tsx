@@ -82,6 +82,26 @@ interface SupabaseUser {
   linked_google_at: string | null;
 }
 
+function parseFullName(fullName: string): { nombres: string; apellidoPaterno: string; apellidoMaterno: string } {
+  const parts = (fullName || '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) {
+    return { nombres: '', apellidoPaterno: '', apellidoMaterno: '' };
+  }
+  if (parts.length === 1) {
+    return { nombres: parts[0], apellidoPaterno: '', apellidoMaterno: '' };
+  }
+  if (parts.length === 2) {
+    return { nombres: parts[0], apellidoPaterno: parts[1], apellidoMaterno: '' };
+  }
+  if (parts.length === 3) {
+    return { nombres: parts[0], apellidoPaterno: parts[1], apellidoMaterno: parts[2] };
+  }
+  const apellidoMaterno = parts[parts.length - 1];
+  const apellidoPaterno = parts[parts.length - 2];
+  const nombres = parts.slice(0, parts.length - 2).join(' ');
+  return { nombres, apellidoPaterno, apellidoMaterno };
+}
+
 interface MyProfileProps {
   uid?: string;
   onBackToHome: () => void;
@@ -94,6 +114,11 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [linkingGoogle, setLinkingGoogle] = useState(false);
+  
+  // 3 campos oficiales: Nombres, Apellido Paterno, Apellido Materno
+  const [nombresInput, setNombresInput] = useState('');
+  const [apellidoPaternoInput, setApellidoPaternoInput] = useState('');
+  const [apellidoMaternoInput, setApellidoMaternoInput] = useState('');
   const [displayNameInput, setDisplayNameInput] = useState('');
   const [initialDisplayName, setInitialDisplayName] = useState('');
   const [selectedGender, setSelectedGender] = useState<'male' | 'female' | ''>('');
@@ -165,6 +190,10 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
       if (data) {
         setDbUser(data as SupabaseUser);
         const name = data.display_name || data.username || '';
+        const parsed = parseFullName(name);
+        setNombresInput(parsed.nombres);
+        setApellidoPaternoInput(parsed.apellidoPaterno);
+        setApellidoMaternoInput(parsed.apellidoMaterno);
         setDisplayNameInput(name);
         setInitialDisplayName(name);
         
@@ -181,7 +210,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
         setUsernameAvailability({ status: 'available', message: 'Nombre actual verificado' });
       }
 
-      setSuccessMsg('¡Excelente! Tu cuenta ha sido vinculada con Google de forma segura. Se ha conservado tu nombre de usuario anterior.');
+      setSuccessMsg('¡Excelente! Tu cuenta ha sido vinculada con Google de forma segura. Se ha conservado tu nombre anterior.');
     } catch (err: any) {
       if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request' || err?.isUserCancellation) {
         return;
@@ -230,6 +259,10 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
 
           setDbUser(data as SupabaseUser);
           const name = data.display_name || data.username || '';
+          const parsed = parseFullName(name);
+          setNombresInput(parsed.nombres);
+          setApellidoPaternoInput(parsed.apellidoPaterno);
+          setApellidoMaternoInput(parsed.apellidoMaterno);
           setDisplayNameInput(name);
           setInitialDisplayName(name);
 
@@ -306,6 +339,12 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
 
     loadClaimedStudent();
   }, [user?.uid, uid, dbUser?.display_name]);
+
+  // Sincronizar nombre completo resultante de los 3 campos
+  useEffect(() => {
+    const full = `${nombresInput} ${apellidoPaternoInput} ${apellidoMaternoInput}`.trim();
+    setDisplayNameInput(full);
+  }, [nombresInput, apellidoPaternoInput, apellidoMaternoInput]);
 
   // Validación con debounce (300ms) mediante RPC 'check_username_available'
   useEffect(() => {
@@ -605,56 +644,56 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
     e.preventDefault();
     if (!user || !dbUser || !isOwnProfile) return;
 
-    const cleanUsername = displayNameInput.trim();
+    const cleanNombres = nombresInput.trim();
+    const cleanPaterno = apellidoPaternoInput.trim();
+    const cleanMaterno = apellidoMaternoInput.trim();
 
-    if (!cleanUsername) {
-      setErrorMsg('El nombre de usuario no puede estar vacío.');
+    if (!cleanNombres) {
+      setErrorMsg('Por favor, ingresa tus nombres.');
       return;
     }
 
-    if (cleanUsername.length < 2 || cleanUsername.length > 35) {
-      setErrorMsg('El nombre de usuario debe tener entre 2 y 35 caracteres.');
+    if (!cleanPaterno) {
+      setErrorMsg('Por favor, ingresa tu apellido paterno.');
       return;
     }
 
-    if (usernameAvailability.status === 'taken') {
-      setErrorMsg('Este nombre ya está en uso. Por favor, elige un nombre de usuario diferente.');
-      return;
-    }
+    const cleanFullName = `${cleanNombres} ${cleanPaterno} ${cleanMaterno}`.trim();
 
     setSaving(true);
     setSuccessMsg(null);
     setErrorMsg(null);
 
     try {
-      // 1. Actualizar 'display_name' en Supabase (columna existente en la tabla 'users')
+      // 1. Actualizar 'display_name' en Supabase (columna en tabla 'users')
       const { error: displayErr } = await supabase
         .from('users')
         .update({ 
-          display_name: cleanUsername 
+          display_name: cleanFullName 
         })
         .eq('firebase_uid', user.uid);
 
       if (displayErr) {
-        // Capturar error 23505 (duplicate key / unique constraint)
-        if (
-          displayErr.code === '23505' || 
-          displayErr.message?.includes('duplicate key') || 
-          displayErr.message?.includes('23505') ||
-          displayErr.message?.includes('unique constraint')
-        ) {
-          setUsernameAvailability({
-            status: 'taken',
-            message: 'Este nombre ya está en uso'
-          });
-          setErrorMsg('Este nombre acaba de ser tomado por otro usuario. Por favor elige otro.');
-          setSaving(false);
-          return;
-        }
         throw displayErr;
       }
 
-      // 2. Intentar actualizar 'gender' en Supabase si la columna existe en la tabla
+      // Si tiene perfil oficial de estudiante vinculado, sincronizar su nombre oficial
+      if ((dbUser as any)?.claimed_student_id) {
+        try {
+          await supabase
+            .from('students')
+            .update({
+              nombre: cleanNombres,
+              apellidos: `${cleanPaterno} ${cleanMaterno}`.trim(),
+              nombre_completo: cleanFullName
+            })
+            .eq('id', (dbUser as any).claimed_student_id);
+        } catch (sErr) {
+          console.warn('Aviso sincronizando tabla students:', sErr);
+        }
+      }
+
+      // 2. Actualizar 'gender' en Supabase si la columna existe en la tabla
       try {
         const { error: genderErr } = await supabase
           .from('users')
@@ -668,34 +707,43 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
         console.warn('Aviso guardando gender en Supabase:', gErr);
       }
 
-      // Guardar siempre el género en localStorage de respaldo para el usuario
+      // Guardar siempre en localStorage de respaldo para el usuario
       if (selectedGender) {
         localStorage.setItem(`user_gender_${user.uid}`, selectedGender);
       } else {
         localStorage.removeItem(`user_gender_${user.uid}`);
       }
 
+      try {
+        localStorage.setItem(`user_names_${user.uid}`, JSON.stringify({
+          nombres: cleanNombres,
+          apellidoPaterno: cleanPaterno,
+          apellidoMaterno: cleanMaterno,
+          fullName: cleanFullName
+        }));
+      } catch (e) {}
+
       // 3. Actualizar en Firebase Auth si el usuario de Firebase está disponible
       if (auth.currentUser) {
         try {
           await updateProfile(auth.currentUser, {
-            displayName: cleanUsername
+            displayName: cleanFullName
           });
-        } catch (fbErr) {
-          console.warn('No se pudo actualizar displayName en Firebase Auth:', fbErr);
+        } catch (authErr) {
+          console.warn('Aviso actualizando perfil en Firebase Auth:', authErr);
         }
       }
 
-      // Actualizar estado local
-      setDbUser(prev => prev ? { ...prev, display_name: cleanUsername, username: cleanUsername, gender: selectedGender || null } : null);
-      setInitialDisplayName(cleanUsername);
+      setInitialDisplayName(cleanFullName);
+      setDisplayNameInput(cleanFullName);
       setInitialGender(selectedGender);
-      setUsernameAvailability({
-        status: 'available',
-        message: 'Nombre disponible (guardado)'
+      setDbUser({
+        ...dbUser,
+        display_name: cleanFullName,
+        gender: selectedGender || null,
       });
-      
-      setSuccessMsg('¡Datos de tu perfil guardados con éxito!');
+
+      setSuccessMsg('¡Nombres y apellidos guardados exitosamente en la base de datos!');
       
       // Auto-ocultar el mensaje de éxito después de 4 segundos
       setTimeout(() => {
@@ -703,21 +751,8 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
       }, 4000);
 
     } catch (err: any) {
-      console.error('Error al guardar los cambios:', err);
-      if (
-        err?.code === '23505' || 
-        err?.message?.includes('23505') || 
-        err?.message?.includes('duplicate key') ||
-        err?.message?.includes('unique constraint')
-      ) {
-        setUsernameAvailability({
-          status: 'taken',
-          message: 'Este nombre ya está en uso'
-        });
-        setErrorMsg('Este nombre acaba de ser tomado por otro usuario. Por favor elige otro.');
-      } else {
-        setErrorMsg(err?.message || 'Error al guardar los cambios en la base de datos.');
-      }
+      console.error('Error al guardar datos en Supabase:', err);
+      setErrorMsg(err?.message || 'Hubo un problema al guardar los cambios en la base de datos.');
     } finally {
       setSaving(false);
     }
@@ -1366,89 +1401,83 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                   {/* Grid Formulario */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     
-                    {/* Nombre de Usuario */}
-                    <div className="sm:col-span-2 space-y-2">
+                    {/* 3 CAMPOS DE IDENTIDAD REAL: Nombres, Apellido Paterno, Apellido Materno */}
+                    <div className="sm:col-span-2 space-y-4">
                       <div className="flex items-center justify-between">
                         <label className="block text-[10px] font-extrabold uppercase tracking-widest text-[#eab308] flex items-center gap-1.5">
-                          <User className="w-3.5 h-3.5" /> Nombre de Usuario / Apodo Público
+                          <User className="w-3.5 h-3.5" /> Identidad Oficial (Nombres y Apellidos)
                         </label>
-                        <div className="flex items-center gap-2">
-                          {isOwnProfile && (
-                            <span className="text-[10px] text-zinc-400 font-mono">
-                              {displayNameInput.length}/10 máx.
-                            </span>
-                          )}
-                          {isOwnProfile && usernameAvailability.status === 'checking' && (
-                            <span className="text-[10px] text-zinc-400 font-mono flex items-center gap-1 lowercase">
-                              <Loader2 className="w-3 h-3 animate-spin text-[#eab308]" /> comprobando...
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="relative">
-                        <input
-                          type="text"
-                          value={displayNameInput}
-                          onChange={(e) => setDisplayNameInput(e.target.value.slice(0, 10))}
-                          maxLength={10}
-                          disabled={!isOwnProfile || saving}
-                          placeholder="Ej. vegano1"
-                          className={`w-full rounded-xl px-4 py-3 text-sm text-white outline-none transition-all pr-10 ${
-                            isOwnProfile 
-                              ? usernameAvailability.status === 'taken' || usernameAvailability.status === 'error'
-                                ? 'bg-[#151515] border border-red-500/80 focus:border-red-500 focus:ring-1 focus:ring-red-500'
-                                : usernameAvailability.status === 'available' && displayNameInput.trim() !== ''
-                                  ? 'bg-[#151515] border border-emerald-500/80 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500'
-                                  : 'bg-[#151515] border border-[#ffffff15] focus:border-[#eab308] focus:ring-1 focus:ring-[#eab308]' 
-                              : 'bg-[#121212] border border-[#ffffff0a] text-zinc-300 cursor-not-allowed font-semibold'
-                          }`}
-                        />
-
-                        {isOwnProfile && (
-                          <div className="absolute right-3.5 top-1/2 -translate-y-1/2 flex items-center pointer-events-none">
-                            {usernameAvailability.status === 'checking' && (
-                              <Loader2 className="w-4 h-4 text-[#eab308] animate-spin" />
-                            )}
-                            {usernameAvailability.status === 'available' && displayNameInput.trim() !== '' && (
-                              <CheckCircle2 className="w-4 h-4 text-emerald-400 animate-in zoom-in duration-200" />
-                            )}
-                            {(usernameAvailability.status === 'taken' || usernameAvailability.status === 'error') && (
-                              <AlertCircle className="w-4 h-4 text-red-400 animate-in zoom-in duration-200" />
-                            )}
-                          </div>
-                        )}
                       </div>
 
-                      {/* Mensaje descriptivo de disponibilidad */}
-                      {isOwnProfile ? (
-                        <div className="flex items-center justify-between min-h-[20px] pt-0.5">
-                          {usernameAvailability.status === 'available' && displayNameInput.trim() !== '' ? (
-                            <p className="text-xs text-emerald-400 font-bold flex items-center gap-1.5 animate-in fade-in duration-200">
-                              <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
-                              <span>{usernameAvailability.message || 'Nombre disponible'}</span>
-                            </p>
-                          ) : usernameAvailability.status === 'taken' ? (
-                            <p className="text-xs text-red-400 font-bold flex items-center gap-1.5 animate-in fade-in duration-200">
-                              <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
-                              <span>{usernameAvailability.message || 'Este nombre ya está en uso'}</span>
-                            </p>
-                          ) : usernameAvailability.status === 'error' ? (
-                            <p className="text-xs text-amber-400 font-medium flex items-center gap-1.5 animate-in fade-in duration-200">
-                              <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
-                              <span>{usernameAvailability.message}</span>
-                            </p>
-                          ) : usernameAvailability.status === 'checking' ? (
-                            <p className="text-xs text-zinc-400 flex items-center gap-1.5">
-                              <Loader2 className="w-3 h-3 animate-spin text-[#eab308] flex-shrink-0" />
-                              <span>Comprobando disponibilidad en base de datos...</span>
-                            </p>
-                          ) : (
-                            <p className="text-[10px] text-zinc-500">
-                              Este nombre es el que verán los demás alumnos en las votaciones y rankings del campus.
-                            </p>
-                          )}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                        {/* 1. NOMBRES */}
+                        <div className="space-y-1.5">
+                          <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                            Nombres <span className="text-red-400">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={nombresInput}
+                            onChange={(e) => setNombresInput(e.target.value)}
+                            disabled={!isOwnProfile || saving}
+                            placeholder="Ej. Daniel Gustavo"
+                            className={`w-full rounded-xl px-3.5 py-2.5 text-sm text-white outline-none transition-all ${
+                              isOwnProfile 
+                                ? 'bg-[#151515] border border-[#ffffff15] focus:border-[#eab308] focus:ring-1 focus:ring-[#eab308]' 
+                                : 'bg-[#121212] border border-[#ffffff0a] text-zinc-300 cursor-not-allowed font-semibold'
+                            }`}
+                          />
                         </div>
-                      ) : null}
+
+                        {/* 2. APELLIDO PATERNO */}
+                        <div className="space-y-1.5">
+                          <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                            Apellido Paterno <span className="text-red-400">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={apellidoPaternoInput}
+                            onChange={(e) => setApellidoPaternoInput(e.target.value)}
+                            disabled={!isOwnProfile || saving}
+                            placeholder="Ej. Castillo"
+                            className={`w-full rounded-xl px-3.5 py-2.5 text-sm text-white outline-none transition-all ${
+                              isOwnProfile 
+                                ? 'bg-[#151515] border border-[#ffffff15] focus:border-[#eab308] focus:ring-1 focus:ring-[#eab308]' 
+                                : 'bg-[#121212] border border-[#ffffff0a] text-zinc-300 cursor-not-allowed font-semibold'
+                            }`}
+                          />
+                        </div>
+
+                        {/* 3. APELLIDO MATERNO */}
+                        <div className="space-y-1.5">
+                          <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                            Apellido Materno
+                          </label>
+                          <input
+                            type="text"
+                            value={apellidoMaternoInput}
+                            onChange={(e) => setApellidoMaternoInput(e.target.value)}
+                            disabled={!isOwnProfile || saving}
+                            placeholder="Ej. Ramirez"
+                            className={`w-full rounded-xl px-3.5 py-2.5 text-sm text-white outline-none transition-all ${
+                              isOwnProfile 
+                                ? 'bg-[#151515] border border-[#ffffff15] focus:border-[#eab308] focus:ring-1 focus:ring-[#eab308]' 
+                                : 'bg-[#121212] border border-[#ffffff0a] text-zinc-300 cursor-not-allowed font-semibold'
+                            }`}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Vista previa del Nombre Completo en el Buscador */}
+                      <div className="flex items-center justify-between p-3.5 rounded-xl bg-[#111111] border border-zinc-800/80 text-xs">
+                        <div className="flex items-center gap-2 text-zinc-400 text-[11px]">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>Nombre registrado para búsqueda:</span>
+                        </div>
+                        <span className="text-[#eab308] font-black uppercase tracking-wide truncate max-w-[240px] sm:max-w-none">
+                          {`${nombresInput} ${apellidoPaternoInput} ${apellidoMaternoInput}`.trim() || 'Sin nombre asignado'}
+                        </span>
+                      </div>
                     </div>
 
                     {/* Email (Solo se muestra a uno mismo) */}
@@ -1661,17 +1690,13 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                         type="submit"
                         disabled={
                           saving || 
-                          usernameAvailability.status === 'taken' || 
-                          usernameAvailability.status === 'checking' || 
-                          usernameAvailability.status === 'error' || 
-                          !displayNameInput.trim()
+                          !nombresInput.trim() || 
+                          !apellidoPaternoInput.trim()
                         }
                         className={`px-6 py-3 rounded-xl font-black text-xs uppercase tracking-wider flex items-center gap-2 transition-all ${
                           saving || 
-                          usernameAvailability.status === 'taken' || 
-                          usernameAvailability.status === 'checking' || 
-                          usernameAvailability.status === 'error' || 
-                          !displayNameInput.trim()
+                          !nombresInput.trim() || 
+                          !apellidoPaternoInput.trim()
                             ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed border border-zinc-700/50'
                             : 'bg-[#eab308] hover:bg-[#d9a307] text-black cursor-pointer shadow-[0_4px_20px_rgba(234,179,8,0.25)] active:scale-98'
                         }`}
