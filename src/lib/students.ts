@@ -324,21 +324,30 @@ export async function claimStudentProfile(
     console.warn('Aviso no crítico al actualizar tabla students en Supabase:', err);
   }
 
-  // 2. Intentar actualizar tabla user_profiles en Supabase para reflejar el nombre real y estado verificado
+  // 2. Fusionar interacciones, votos, flechazos y mensajes acumulados por el usuario
   try {
-    await supabase
-      .from('user_profiles')
-      .update({
+    await Promise.all([
+      supabase.from('student_interactions').update({ student_id: student.id }).eq('student_id', user.uid),
+      supabase.from('student_votes').update({ student_id: student.id }).eq('student_id', user.uid),
+      supabase.from('student_crushes').update({ student_id: student.id }).eq('student_id', user.uid),
+      supabase.from('student_love_messages').update({ student_id: student.id }).eq('student_id', user.uid),
+      supabase.from('users').update({ 
+        display_name: officialName, 
+        claimed_student_id: student.id, 
+        is_verified_student: true, 
+        updated_at: now 
+      }).eq('firebase_uid', user.uid),
+      supabase.from('user_profiles').update({
         display_name: officialName,
         claimed_student_id: student.id,
         is_verified_student: true,
         dni: cleanDni,
         role_title: 'Estudiante Verificado',
         updated_at: now,
-      })
-      .eq('id', user.uid);
+      }).eq('id', user.uid)
+    ]);
   } catch (err) {
-    console.warn('Aviso no crítico al actualizar user_profiles en Supabase:', err);
+    console.warn('Aviso no crítico al fusionar estadísticas de usuario en Supabase:', err);
   }
 
   // 3. Persistir en localStorage (espejo en cliente y sincronización instantánea)

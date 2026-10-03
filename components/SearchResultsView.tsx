@@ -126,23 +126,50 @@ export default function SearchResultsView({
           console.warn('No se pudieron obtener profesores para la búsqueda:', e);
         }
 
-        // 3. Estudiantes de Supabase (users) + Mock
+        // 3. Estudiantes y Usuarios de Supabase
         let studentsData: UnifiedSearchResult[] = [];
         try {
-          const { data: dbUsers } = await supabase.from('users').select('*');
-          if (dbUsers) {
-            studentsData = dbUsers
-              .filter(u => u.display_name)
-              .map((u) => ({
-                id: `user-${u.id}`,
-                name: u.display_name,
+          const [dbUsersRes, dbStudentsRes] = await Promise.all([
+            supabase.from('users').select('*'),
+            supabase.from('students').select('*')
+          ]);
+
+          if (dbUsersRes.data) {
+            dbUsersRes.data
+              .filter(u => u.display_name || u.email)
+              .forEach((u) => {
+                const isClaimed = !!u.claimed_student_id;
+                const subtitle = isClaimed 
+                  ? 'Estudiante Verificado' 
+                  : (u.role === 'admin' ? 'Administrador' : 'Usuario de Starryz');
+
+                studentsData.push({
+                  id: `user-${u.firebase_uid || u.id}`,
+                  name: u.display_name || u.email?.split('@')[0] || 'Usuario',
+                  category: 'Estudiante' as SearchCategory,
+                  typeKey: 'estudiantes' as FilterType,
+                  subtitle,
+                  image: u.photo_url || undefined,
+                  slug: u.firebase_uid || u.id,
+                  rawItem: u,
+                });
+              });
+          }
+
+          if (dbStudentsRes.data) {
+            dbStudentsRes.data.forEach((s) => {
+              const fullName = s.nombre_completo || `${s.nombre || ''} ${s.apellidos || ''}`.trim() || s.id;
+              studentsData.push({
+                id: `stud-${s.id}`,
+                name: fullName,
                 category: 'Estudiante' as SearchCategory,
                 typeKey: 'estudiantes' as FilterType,
-                subtitle: u.is_anonymous ? 'Alumno Anónimo' : 'Alumno Verificado',
-                image: u.photo_url || undefined,
-                slug: u.firebase_uid,
-                rawItem: u,
-              }));
+                subtitle: s.institute_id || 'Estudiante del Instituto',
+                image: s.avatar_url || undefined,
+                slug: s.id,
+                rawItem: s,
+              });
+            });
           }
         } catch (e) {
           console.warn('No se pudieron obtener usuarios para la búsqueda:', e);

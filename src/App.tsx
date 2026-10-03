@@ -508,8 +508,17 @@ export default function App() {
             query={currentQuery}
             results={searchResults}
             onSelectInstitution={handleSelectInstitution}
-            onSelectProfessor={(slug) => navigate(`/profesores/${slug}`)}
-            onSelectStudent={(uid) => navigate(`/perfil/${uid}`)}
+            onSelectStudent={(slugOrUid) => {
+              if (slugOrUid.startsWith('user-')) {
+                navigate(`/perfil/${slugOrUid.replace('user-', '')}`);
+              } else if (slugOrUid.startsWith('stud-')) {
+                navigate(`/estudiantes/${slugOrUid.replace('stud-', '')}`);
+              } else if (slugOrUid.length > 25) {
+                navigate(`/perfil/${slugOrUid}`);
+              } else {
+                navigate(`/estudiantes/${slugOrUid}`);
+              }
+            }}
             onBack={() => navigate('/')}
           />
         ) : (

@@ -93,7 +93,17 @@ export async function searchWithAutocomplete(
   // 2. Consulta Directa a Supabase (.ilike) como respaldo si la RPC no devolvió datos
   // --------------------------------------------------------------------------
   try {
-    const [profResponse, centerResponse] = await Promise.all([
+    const [userResponse, studentResponse, profResponse, centerResponse] = await Promise.all([
+      supabase
+        .from('users')
+        .select('id, firebase_uid, display_name, email, photo_url, role, claimed_student_id')
+        .or(`display_name.ilike.%${query}%,email.ilike.%${query}%`)
+        .limit(6),
+      supabase
+        .from('students')
+        .select('id, nombre, apellidos, nombre_completo, avatar_url, institute_id')
+        .or(`nombre_completo.ilike.%${query}%,nombre.ilike.%${query}%,apellidos.ilike.%${query}%,id.ilike.%${query}%`)
+        .limit(6),
       supabase
         .from('professors')
         .select('id, nombre, apellidos, nombre_completo, role, institute_id, avatar_url')
@@ -106,6 +116,47 @@ export async function searchWithAutocomplete(
         .limit(6)
     ]);
 
+    // 1. Usuarios registrados en la red social
+    if (userResponse.data && Array.isArray(userResponse.data)) {
+      userResponse.data.forEach((u: any) => {
+        if (!u.display_name && !u.email) return;
+        const displayName = u.display_name || u.email?.split('@')[0] || 'Usuario';
+        const isClaimed = !!u.claimed_student_id;
+        const subtitle = isClaimed 
+          ? 'Estudiante Verificado' 
+          : (u.role === 'admin' ? 'Administrador' : 'Usuario de Starryz');
+
+        addResult({
+          id: u.firebase_uid || u.id,
+          title: displayName,
+          subtitle,
+          type: 'student',
+          avatarUrl: u.photo_url || undefined,
+          url: `/perfil/${u.firebase_uid || u.id}`,
+          isFuzzy: false,
+          similarity: 1.0
+        });
+      });
+    }
+
+    // 2. Estudiantes del directorio oficial
+    if (studentResponse.data && Array.isArray(studentResponse.data)) {
+      studentResponse.data.forEach((s: any) => {
+        const fullName = s.nombre_completo || `${s.nombre || ''} ${s.apellidos || ''}`.trim() || s.id;
+        addResult({
+          id: s.id,
+          title: fullName,
+          subtitle: s.institute_id || 'Estudiante del Instituto',
+          type: 'student',
+          avatarUrl: s.avatar_url || undefined,
+          url: `/estudiantes/${s.id}`,
+          isFuzzy: false,
+          similarity: 1.0
+        });
+      });
+    }
+
+    // 3. Profesores
     if (profResponse.data && Array.isArray(profResponse.data)) {
       profResponse.data.forEach((p: any) => {
         const isStudent = p.role === 'Alumno';
@@ -124,6 +175,7 @@ export async function searchWithAutocomplete(
       });
     }
 
+    // 4. Centros Educativos
     if (centerResponse.data && Array.isArray(centerResponse.data)) {
       centerResponse.data.forEach((c: any) => {
         const typeLabel = c.type ? (c.type.charAt(0).toUpperCase() + c.type.slice(1)) : 'Centro Educativo';

@@ -951,270 +951,200 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
         {/* LADO DERECHO: Formulario y Consulta Base de Datos */}
         <div className="md:col-span-2 bg-[#0d0d0d] border border-[#ffffff10] rounded-2xl p-6 sm:p-8 space-y-6">
           
-          {/* Métricas Superiores de Reputación si el perfil está reclamado */}
-          {claimedStudent && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-[#070707] border border-zinc-800/80 rounded-2xl p-3 sm:p-4 shadow-lg animate-in fade-in duration-300">
-              {/* Yo te conozco */}
-              <div className="bg-[#0f0f0f] border border-blue-500/20 hover:border-blue-500/40 rounded-xl p-3 text-center space-y-1 transition">
-                <div className="flex items-center justify-center gap-1.5 text-blue-400">
-                  <Users className="w-4 h-4" />
-                  <span className="text-[10px] font-black uppercase tracking-wider">Yo te conozco</span>
-                </div>
-                <div className="text-xl sm:text-2xl font-black text-white">
-                  {claimedStudent.knows_count || 0}
-                </div>
+          {/* Métricas Superiores de Reputación (Universales para todos los perfiles) */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-[#070707] border border-zinc-800/80 rounded-2xl p-3 sm:p-4 shadow-lg animate-in fade-in duration-300">
+            {/* Yo te conozco */}
+            <div className="bg-[#0f0f0f] border border-blue-500/20 hover:border-blue-500/40 rounded-xl p-3 text-center space-y-1 transition">
+              <div className="flex items-center justify-center gap-1.5 text-blue-400">
+                <Users className="w-4 h-4" />
+                <span className="text-[10px] font-black uppercase tracking-wider">Yo te conozco</span>
               </div>
-
-              {/* Fan */}
-              <div className="bg-[#0f0f0f] border border-pink-500/20 hover:border-pink-500/40 rounded-xl p-3 text-center space-y-1 transition">
-                <div className="flex items-center justify-center gap-1.5 text-pink-400">
-                  <Heart className="w-4 h-4 fill-pink-500/30" />
-                  <span className="text-[10px] font-black uppercase tracking-wider">Fans</span>
-                </div>
-                <div className="text-xl sm:text-2xl font-black text-white">
-                  {claimedStudent.fans_count || 0}
-                </div>
-              </div>
-
-              {/* Crushes */}
-              <div className="bg-[#0f0f0f] border border-rose-500/20 hover:border-rose-500/40 rounded-xl p-3 text-center space-y-1 transition">
-                <div className="flex items-center justify-center gap-1.5 text-rose-400">
-                  <span className="text-sm leading-none">💘</span>
-                  <span className="text-[10px] font-black uppercase tracking-wider">Crushes</span>
-                </div>
-                <div className="text-xl sm:text-2xl font-black text-white">
-                  {claimedStudent.crushes_count || 0}
-                </div>
-              </div>
-
-              {/* Calificación */}
-              <div className="bg-[#0f0f0f] border border-amber-500/20 hover:border-amber-500/40 rounded-xl p-3 text-center space-y-1 transition">
-                <div className="flex items-center justify-center gap-1.5 text-[#eab308]">
-                  <Star className="w-4 h-4 fill-[#eab308]" />
-                  <span className="text-[10px] font-black uppercase tracking-wider">Calificación</span>
-                </div>
-                <div className="text-xl sm:text-2xl font-black text-[#eab308] flex items-center justify-center gap-1">
-                  <span>{(claimedStudent.score || 0).toFixed(1)}</span>
-                  <span className="text-xs text-zinc-500 font-normal">({claimedStudent.total_ratings || 0})</span>
-                </div>
+              <div className="text-xl sm:text-2xl font-black text-white">
+                {claimedStudent?.knows_count || 0}
               </div>
             </div>
-          )}
 
-          {/* Navegación Principal de Pestañas */}
-          {claimedStudent ? (
-            <div className="space-y-3">
-              {/* Barra de pestañas principales: Mis Datos, Reseñas, Crushes, Estadísticas */}
-              <div className="flex items-center gap-1.5 bg-[#050505] p-1.5 rounded-xl border border-zinc-800/40 max-w-full overflow-x-auto no-scrollbar">
-                <button
-                  type="button"
-                  onClick={() => setClaimedMainTab('mis_datos')}
-                  title="Mis Datos"
-                  className={`py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
-                    claimedMainTab === 'mis_datos'
-                      ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4'
-                      : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3 sm:px-4'
-                  }`}
-                >
-                  <User className="w-4 h-4 flex-shrink-0" />
-                  <span>Mis Datos</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setClaimedMainTab('reseñas')}
-                  title="Reseñas"
-                  className={`py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
-                    claimedMainTab === 'reseñas'
-                      ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4'
-                      : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3 sm:px-4'
-                  }`}
-                >
-                  <Star className="w-4 h-4 flex-shrink-0 text-current" />
-                  <span>Reseñas</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setClaimedMainTab('crushes')}
-                  title="Crushes"
-                  className={`py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
-                    claimedMainTab === 'crushes'
-                      ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4'
-                      : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3 sm:px-4'
-                  }`}
-                >
-                  <Heart className="w-4 h-4 flex-shrink-0 text-current" />
-                  <span>Crushes</span>
-                  {(claimedStudent.crushes_count || 0) > 0 && (
-                    <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-mono font-black ${
-                      claimedMainTab === 'crushes' ? 'bg-black text-[#eab308]' : 'bg-pink-500/20 text-pink-300'
-                    }`}>
-                      {claimedStudent.crushes_count}
-                    </span>
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setClaimedMainTab('estadisticas')}
-                  title="Estadísticas"
-                  className={`py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
-                    claimedMainTab === 'estadisticas'
-                      ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4'
-                      : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3 sm:px-4'
-                  }`}
-                >
-                  <BarChart3 className="w-4 h-4 flex-shrink-0 text-current" />
-                  <span>Estadísticas</span>
-                </button>
+            {/* Fan */}
+            <div className="bg-[#0f0f0f] border border-pink-500/20 hover:border-pink-500/40 rounded-xl p-3 text-center space-y-1 transition">
+              <div className="flex items-center justify-center gap-1.5 text-pink-400">
+                <Heart className="w-4 h-4 fill-pink-500/30" />
+                <span className="text-[10px] font-black uppercase tracking-wider">Fans</span>
               </div>
-
-              {/* Sub-pestañas dentro de "Mis Datos" */}
-              {claimedMainTab === 'mis_datos' && (
-                <div className="flex items-center gap-1.5 bg-[#090909] p-1 rounded-xl border border-zinc-800/30 max-w-full overflow-x-auto no-scrollbar animate-in fade-in duration-200">
-                  <button
-                    type="button"
-                    onClick={() => setProfileTab('info')}
-                    className={`py-1.5 px-3 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
-                      profileTab === 'info'
-                        ? 'bg-zinc-800 text-white font-extrabold'
-                        : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900'
-                    }`}
-                  >
-                    <span>Información</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setProfileTab('collections')}
-                    className={`py-1.5 px-3 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
-                      profileTab === 'collections'
-                        ? 'bg-zinc-800 text-white font-extrabold'
-                        : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900'
-                    }`}
-                  >
-                    <span>Colecciones</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setProfileTab('interactions')}
-                    className={`py-1.5 px-3 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
-                      profileTab === 'interactions'
-                        ? 'bg-zinc-800 text-white font-extrabold'
-                        : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900'
-                    }`}
-                  >
-                    <span>Mis Interacciones</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setProfileTab('subscriptions')}
-                    className={`py-1.5 px-3 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
-                      profileTab === 'subscriptions'
-                        ? 'bg-zinc-800 text-white font-extrabold'
-                        : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900'
-                    }`}
-                  >
-                    <span>Suscripciones</span>
-                  </button>
-
-                  {dbUser?.role === 'admin' && (
-                    <button
-                      type="button"
-                      onClick={() => setProfileTab('admin')}
-                      className={`py-1.5 px-3 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
-                        profileTab === 'admin'
-                          ? 'bg-amber-500/20 text-amber-300 font-extrabold border border-amber-500/40'
-                          : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900'
-                      }`}
-                    >
-                      <span>Panel Admin</span>
-                    </button>
-                  )}
-                </div>
-              )}
+              <div className="text-xl sm:text-2xl font-black text-white">
+                {claimedStudent?.fans_count || 0}
+              </div>
             </div>
-          ) : (
-            /* Navegación Estándar para perfiles no reclamados */
+
+            {/* Crushes */}
+            <div className="bg-[#0f0f0f] border border-rose-500/20 hover:border-rose-500/40 rounded-xl p-3 text-center space-y-1 transition">
+              <div className="flex items-center justify-center gap-1.5 text-rose-400">
+                <span className="text-sm leading-none">💘</span>
+                <span className="text-[10px] font-black uppercase tracking-wider">Crushes</span>
+              </div>
+              <div className="text-xl sm:text-2xl font-black text-white">
+                {claimedStudent?.crushes_count || 0}
+              </div>
+            </div>
+
+            {/* Calificación */}
+            <div className="bg-[#0f0f0f] border border-amber-500/20 hover:border-amber-500/40 rounded-xl p-3 text-center space-y-1 transition">
+              <div className="flex items-center justify-center gap-1.5 text-[#eab308]">
+                <Star className="w-4 h-4 fill-[#eab308]" />
+                <span className="text-[10px] font-black uppercase tracking-wider">Calificación</span>
+              </div>
+              <div className="text-xl sm:text-2xl font-black text-[#eab308] flex items-center justify-center gap-1">
+                <span>{(claimedStudent?.score || 0).toFixed(1)}</span>
+                <span className="text-xs text-zinc-500 font-normal">({claimedStudent?.total_ratings || 0})</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Navegación Principal de Pestañas (Universal para todos los perfiles) */}
+          <div className="space-y-3">
+            {/* Barra de pestañas principales: Mis Datos, Reseñas, Crushes, Estadísticas */}
             <div className="flex items-center gap-1.5 bg-[#050505] p-1.5 rounded-xl border border-zinc-800/40 max-w-full overflow-x-auto no-scrollbar">
               <button
                 type="button"
-                onClick={() => setProfileTab('info')}
-                title="Información"
+                onClick={() => setClaimedMainTab('mis_datos')}
+                title={isOwnProfile ? 'Mis Datos' : 'Datos'}
                 className={`py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
-                  profileTab === 'info'
+                  claimedMainTab === 'mis_datos'
                     ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4'
                     : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3 sm:px-4'
                 }`}
               >
                 <User className="w-4 h-4 flex-shrink-0" />
-                <span className={profileTab === 'info' ? 'inline' : 'hidden sm:inline'}>Información</span>
+                <span>{isOwnProfile ? 'Mis Datos' : 'Datos'}</span>
               </button>
 
               <button
                 type="button"
-                onClick={() => setProfileTab('collections')}
-                title="Colecciones"
+                onClick={() => setClaimedMainTab('reseñas')}
+                title="Reseñas"
                 className={`py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
-                  profileTab === 'collections'
+                  claimedMainTab === 'reseñas'
                     ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4'
                     : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3 sm:px-4'
                 }`}
               >
-                <Bookmark className="w-4 h-4 flex-shrink-0 text-current" />
-                <span className={profileTab === 'collections' ? 'inline' : 'hidden sm:inline'}>Colecciones</span>
+                <Star className="w-4 h-4 flex-shrink-0 text-current" />
+                <span>Reseñas</span>
               </button>
 
               <button
                 type="button"
-                onClick={() => setProfileTab('interactions')}
-                title="Mis Interacciones"
+                onClick={() => setClaimedMainTab('crushes')}
+                title="Crushes"
                 className={`py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
-                  profileTab === 'interactions'
+                  claimedMainTab === 'crushes'
                     ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4'
                     : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3 sm:px-4'
                 }`}
               >
-                <Heart className={`w-4 h-4 flex-shrink-0 ${profileTab === 'interactions' ? 'fill-black text-black' : 'text-pink-500 fill-pink-500/20'}`} />
-                <span className={profileTab === 'interactions' ? 'inline' : 'hidden sm:inline'}>Mis Interacciones</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setProfileTab('subscriptions')}
-                title="Suscripciones"
-                className={`py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
-                  profileTab === 'subscriptions'
-                    ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4'
-                    : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3 sm:px-4'
-                }`}
-              >
-                <div className="relative flex items-center justify-center">
-                  <BellRing className={`w-4 h-4 flex-shrink-0 ${profileTab === 'subscriptions' ? 'text-black' : 'text-amber-400'}`} />
-                  {profileTab !== 'subscriptions' && (profSubscriptions.length > 0 || studentSubscriptions.length > 0) && (
-                    <span className="sm:hidden absolute -top-1 -right-1 w-2 h-2 rounded-full bg-amber-500" />
-                  )}
-                </div>
-                <span className={profileTab === 'subscriptions' ? 'inline' : 'hidden sm:inline'}>Suscripciones</span>
-                {(profSubscriptions.length > 0 || studentSubscriptions.length > 0) && (
+                <Heart className="w-4 h-4 flex-shrink-0 text-current" />
+                <span>Crushes</span>
+                {((claimedStudent?.crushes_count || 0) > 0) && (
                   <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-mono font-black ${
-                    profileTab === 'subscriptions'
-                      ? 'bg-black text-[#eab308]'
-                      : 'hidden sm:inline-block bg-amber-500/20 text-amber-300'
+                    claimedMainTab === 'crushes' ? 'bg-black text-[#eab308]' : 'bg-pink-500/20 text-pink-300'
                   }`}>
-                    {profSubscriptions.length + studentSubscriptions.length}
+                    {claimedStudent?.crushes_count}
                   </span>
                 )}
               </button>
+
+              <button
+                type="button"
+                onClick={() => setClaimedMainTab('estadisticas')}
+                title="Estadísticas"
+                className={`py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+                  claimedMainTab === 'estadisticas'
+                    ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4'
+                    : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3 sm:px-4'
+                }`}
+              >
+                <BarChart3 className="w-4 h-4 flex-shrink-0 text-current" />
+                <span>Estadísticas</span>
+              </button>
             </div>
-          )}
+
+            {/* Sub-pestañas dentro de "Mis Datos" */}
+            {claimedMainTab === 'mis_datos' && (
+              <div className="flex items-center gap-1.5 bg-[#090909] p-1 rounded-xl border border-zinc-800/30 max-w-full overflow-x-auto no-scrollbar animate-in fade-in duration-200">
+                <button
+                  type="button"
+                  onClick={() => setProfileTab('info')}
+                  className={`py-1.5 px-3 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                    profileTab === 'info'
+                      ? 'bg-zinc-800 text-white font-extrabold'
+                      : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900'
+                  }`}
+                >
+                  <span>Información</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setProfileTab('collections')}
+                  className={`py-1.5 px-3 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                    profileTab === 'collections'
+                      ? 'bg-zinc-800 text-white font-extrabold'
+                      : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900'
+                  }`}
+                >
+                  <span>Colecciones</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setProfileTab('interactions')}
+                  className={`py-1.5 px-3 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                    profileTab === 'interactions'
+                      ? 'bg-zinc-800 text-white font-extrabold'
+                      : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900'
+                  }`}
+                >
+                  <span>Mis Interacciones</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setProfileTab('subscriptions')}
+                  className={`py-1.5 px-3 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                    profileTab === 'subscriptions'
+                      ? 'bg-zinc-800 text-white font-extrabold'
+                      : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900'
+                  }`}
+                >
+                  <div className="relative flex items-center justify-center">
+                    <span>Suscripciones</span>
+                    {(profSubscriptions.length > 0 || studentSubscriptions.length > 0) && (
+                      <span className="ml-1 px-1.5 py-0.2 rounded-full text-[9px] font-mono font-bold bg-amber-500/20 text-amber-300">
+                        {profSubscriptions.length + studentSubscriptions.length}
+                      </span>
+                    )}
+                  </div>
+                </button>
+
+                {dbUser?.role === 'admin' && (
+                  <button
+                    type="button"
+                    onClick={() => setProfileTab('admin')}
+                    className={`py-1.5 px-3 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                      profileTab === 'admin'
+                        ? 'bg-amber-500/20 text-amber-300 font-extrabold border border-amber-500/40'
+                        : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900'
+                    }`}
+                  >
+                    <span>Panel Admin</span>
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
 
           {/* RENDERIZADO CONDICIONAL DE CONTENIDO DE PESTAÑAS */}
-          {claimedStudent && claimedMainTab === 'reseñas' ? (
-            /* TAB: RESEÑAS DEL ESTUDIANTE RECLAMADO */
+          {claimedMainTab === 'reseñas' ? (
+            /* TAB: RESEÑAS DEL USUARIO / ESTUDIANTE */
             <div className="space-y-6 animate-in fade-in duration-300">
               <div className="bg-[#050505] border border-zinc-800/60 rounded-2xl p-6 sm:p-8 space-y-6">
                 <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -1224,25 +1154,25 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                       Resumen de Estrellas y Reputación
                     </h3>
                     <p className="text-xs text-zinc-400">
-                      Calificaciones oficiales recibidas en el Instituto Pedagógico.
+                      Calificaciones de la comunidad en la red social Starryz.
                     </p>
                   </div>
                   <div className="px-3 py-1 rounded-full bg-[#eab308]/15 border border-[#eab308]/30 text-[#eab308] text-xs font-black tracking-wider uppercase">
-                    ★ {(claimedStudent.score || 0).toFixed(1)} / 5.0
+                    ★ {(claimedStudent?.score || 0).toFixed(1)} / 5.0
                   </div>
                 </div>
 
                 <div className="flex flex-col md:flex-row items-center gap-8 pt-2">
                   <div className="bg-[#0f0f0f] border border-zinc-800/40 rounded-2xl p-6 text-center w-full md:w-52 space-y-3 shadow-lg">
                     <span className="block text-5xl font-black text-[#eab308] tracking-tighter">
-                      {(claimedStudent.score || 0).toFixed(1)}
+                      {(claimedStudent?.score || 0).toFixed(1)}
                     </span>
                     <div className="flex items-center justify-center gap-1">
                       {[1, 2, 3, 4, 5].map((star) => (
                         <Star 
                           key={star} 
                           className={`w-5 h-5 ${
-                            star <= Math.round(claimedStudent.score || 0)
+                            star <= Math.round(claimedStudent?.score || 0)
                               ? 'fill-[#eab308] text-[#eab308]' 
                               : 'text-zinc-700'
                           }`} 
@@ -1250,7 +1180,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                       ))}
                     </div>
                     <span className="block text-[10px] uppercase text-zinc-500 font-extrabold tracking-widest">
-                      {claimedStudent.total_ratings || 0} VOTOS TOTALES
+                      {claimedStudent?.total_ratings || 0} VOTOS TOTALES
                     </span>
                   </div>
 
@@ -1283,15 +1213,15 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                 <div className="p-4 rounded-xl bg-zinc-900/60 border border-zinc-800 text-xs text-zinc-400 space-y-1">
                   <p className="font-bold text-white flex items-center gap-1.5">
                     <Sparkles className="w-4 h-4 text-[#eab308]" />
-                    Tu reputación en el Instituto Pedagógico
+                    Reputación en la Comunidad
                   </p>
                   <p>
-                    Cualquier miembro del instituto puede calificar tu perfil con estrellas. Tu promedio influye directamente en tu posición en el ranking de estudiantes.
+                    Cualquier miembro de la comunidad puede calificar tu perfil con estrellas. Tus estrellas aumentan tu reputación en la red social.
                   </p>
                 </div>
               </div>
             </div>
-          ) : claimedStudent && claimedMainTab === 'crushes' ? (
+          ) : claimedMainTab === 'crushes' ? (
             /* TAB: CRUSHES RECIBIDOS */
             <div className="space-y-6 animate-in fade-in duration-300">
               <div className="bg-[#050505] border border-zinc-800/60 rounded-2xl p-6 sm:p-8 space-y-6">
@@ -1302,11 +1232,11 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                       Flechazos y Mensajes de Amor Recibidos
                     </h3>
                     <p className="text-xs text-zinc-400">
-                      Personas del campus que te han marcado como su crush de forma anónima.
+                      Personas que te han marcado como su crush de forma anónima.
                     </p>
                   </div>
                   <div className="px-3 py-1 rounded-full bg-pink-500/15 border border-pink-500/30 text-pink-400 text-xs font-black tracking-wider uppercase flex items-center gap-1.5">
-                    <span>💘 {claimedStudent.crushes_count || 0} Flechazos</span>
+                    <span>💘 {claimedStudent?.crushes_count || 0} Flechazos</span>
                   </div>
                 </div>
 
@@ -1316,10 +1246,10 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                   </div>
                   <div>
                     <div className="text-4xl font-black text-white">
-                      {claimedStudent.crushes_count || 0}
+                      {claimedStudent?.crushes_count || 0}
                     </div>
                     <p className="text-xs text-zinc-400 mt-1 uppercase font-bold tracking-wider">
-                      {claimedStudent.crushes_count === 1 ? 'Persona te tiene como crush' : 'Personas te tienen como crush'}
+                      {(claimedStudent?.crushes_count || 0) === 1 ? 'Persona te tiene como crush' : 'Personas te tienen como crush'}
                     </p>
                   </div>
                 </div>
@@ -1333,7 +1263,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                   {claimedLoveMessages.length === 0 ? (
                     <div className="p-8 rounded-xl bg-[#0f0f0f] border border-zinc-800/40 text-center space-y-2">
                       <p className="text-zinc-400 text-xs">Aún no has recibido mensajes de amor.</p>
-                      <p className="text-zinc-600 text-[11px]">Cuando alguien te dé un flechazo y te deje un mensaje en tu perfil del instituto, aparecerá aquí.</p>
+                      <p className="text-zinc-600 text-[11px]">Cuando alguien te dé un flechazo y te deje un mensaje en tu perfil, aparecerá aquí.</p>
                     </div>
                   ) : (
                     <div className="space-y-3">
@@ -1365,18 +1295,18 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                 </div>
               </div>
             </div>
-          ) : claimedStudent && claimedMainTab === 'estadisticas' ? (
+          ) : claimedMainTab === 'estadisticas' ? (
             /* TAB: ESTADÍSTICAS Y TENDENCIAS */
             <div className="space-y-6 animate-in fade-in duration-300">
               <StudentTrendsEngine
-                studentId={claimedStudent.id}
-                studentName={claimedStudent.nombre_completo || dbUser?.display_name || 'Estudiante'}
+                studentId={claimedStudent?.id || dbUser?.firebase_uid || 'user'}
+                studentName={claimedStudent?.nombre_completo || dbUser?.display_name || 'Usuario'}
                 currentValues={{
-                  knowsCount: claimedStudent.knows_count || 0,
-                  fansCount: claimedStudent.fans_count || 0,
-                  crushesCount: claimedStudent.crushes_count || 0,
-                  score: claimedStudent.score || 0,
-                  viewsCount: claimedStudent.views_count || 0
+                  knowsCount: claimedStudent?.knows_count || 0,
+                  fansCount: claimedStudent?.fans_count || 0,
+                  crushesCount: claimedStudent?.crushes_count || 0,
+                  score: claimedStudent?.score || 0,
+                  viewsCount: claimedStudent?.views_count || 0
                 }}
               />
             </div>
