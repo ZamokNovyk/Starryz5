@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X, ShieldAlert, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+import { X, ShieldAlert, CheckCircle2, AlertCircle, Loader2, ShieldCheck, Lock } from 'lucide-react';
 import { useAuth } from '@/src/context/AuthContext';
 import { createProfessor } from '@/src/lib/professors';
 import { createStudent } from '@/src/lib/students';
@@ -23,15 +23,16 @@ export default function AddMemberModal({
   mode,
   onSuccess,
 }: AddMemberModalProps) {
-  const { user, loginWithGoogle, linkWithGoogle } = useAuth();
+  const { user } = useAuth();
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
+  const [dni, setDni] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [authLoading, setAuthLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  const isGoogleUser = user && !user.isAnonymous;
+  // Determinar si el usuario actual es administrador
+  const isAdmin = (user as any)?.role === 'admin' || user?.email === 'wikistars12@gmail.com';
 
   // Determine if adding student or professor
   const isStudent = mode === 'student' || defaultRole === 'Alumno';
@@ -43,37 +44,18 @@ export default function AddMemberModal({
       setSuccess(false);
       setFirstName('');
       setLastName('');
+      setDni('');
     }
   }, [isOpen, isStudent]);
 
   if (!isOpen) return null;
 
-  const handleGoogleConnect = async () => {
-    try {
-      setAuthLoading(true);
-      setError(null);
-      if (user?.isAnonymous) {
-        await linkWithGoogle();
-      } else {
-        await loginWithGoogle();
-      }
-    } catch (err: any) {
-      if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request' || err?.isUserCancellation) {
-        return;
-      }
-      console.error('Error al iniciar sesión con Google:', err);
-      setError('No se pudo completar el inicio de sesión con Google. Intenta nuevamente.');
-    } finally {
-      setAuthLoading(false);
-    }
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    if (!user || user.isAnonymous) {
-      setError('Solo los usuarios verificados con cuenta de Google pueden añadir perfiles.');
+    if (!user || !isAdmin) {
+      setError('Solo el administrador del sistema puede registrar perfiles en el padrón.');
       return;
     }
 
@@ -82,15 +64,22 @@ export default function AddMemberModal({
       return;
     }
 
+    const cleanDni = dni.trim().replace(/\D/g, '');
+    if (isStudent && cleanDni.length !== 8) {
+      setError('El número de DNI para estudiantes debe contener exactamente 8 dígitos.');
+      return;
+    }
+
     try {
       setSubmitting(true);
       
       if (isStudent) {
-        // Guarda en la tabla 'students' de Supabase
+        // Guarda en la tabla 'students' de Supabase con DNI
         await createStudent({
           nombre: firstName.trim(),
           apellidos: lastName.trim(),
           instituteId,
+          dni: cleanDni,
         }, user.uid);
       } else {
         // Guarda en la tabla 'professors' de Supabase
@@ -107,13 +96,14 @@ export default function AddMemberModal({
         setSuccess(false);
         setFirstName('');
         setLastName('');
+        setDni('');
         onSuccess();
         onClose();
       }, 1500);
 
     } catch (err: any) {
       console.error('Error al registrar miembro:', err);
-      setError(err.message || 'Error al conectar con la base de datos de Supabase.');
+      setError(err.message || 'Error al conectar con la base de datos.');
     } finally {
       setSubmitting(false);
     }
@@ -135,12 +125,17 @@ export default function AddMemberModal({
 
         {/* Encabezado */}
         <div className="space-y-1">
-          <h2 className="text-xl font-black text-[#eab308] uppercase tracking-wide">
-            {isStudent ? 'Añadir Estudiante' : 'Añadir Profesor'}
-          </h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-black text-[#eab308] uppercase tracking-wide">
+              {isStudent ? 'Añadir Estudiante' : 'Añadir Profesor'}
+            </h2>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-300 border border-amber-500/30 uppercase">
+              Admin
+            </span>
+          </div>
           <p className="text-xs text-zinc-400">
             {isStudent 
-              ? 'Añade un nuevo estudiante a esta institución.' 
+              ? 'Registra un nuevo estudiante en el padrón del instituto con su DNI.' 
               : 'Añade un nuevo profesor a esta institución.'}
           </p>
         </div>
@@ -151,82 +146,37 @@ export default function AddMemberModal({
               <CheckCircle2 className="w-6 h-6" />
             </div>
             <p className="text-sm font-bold text-white uppercase tracking-wider">
-              {isStudent ? '¡Estudiante añadido con éxito!' : '¡Profesor añadido con éxito!'}
+              {isStudent ? '¡Estudiante añadido al padrón!' : '¡Profesor añadido con éxito!'}
             </p>
             <p className="text-xs text-zinc-400">
               {isStudent 
-                ? 'Se guardó correctamente en la tabla de estudiantes.' 
-                : 'Se guardó correctamente en la tabla de profesores.'}
+                ? 'El estudiante ya podrá buscar y reclamar su perfil ingresando su DNI.' 
+                : 'Se guardó correctamente en el padrón de profesores.'}
             </p>
           </div>
-        ) : !isGoogleUser ? (
-          /* Pantalla de restricción para usuarios no Google */
-          <div className="text-center space-y-5 py-4">
+        ) : !isAdmin ? (
+          /* Pantalla de restricción para no administradores */
+          <div className="text-center space-y-4 py-6">
             <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-[#eab308] flex items-center justify-center mx-auto shadow-[0_0_30px_rgba(234,179,8,0.15)]">
-              <AlertCircle className="w-7 h-7" />
+              <ShieldAlert className="w-7 h-7" />
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <h3 className="text-base font-black text-white uppercase tracking-wide">
-                Exclusivo para Usuarios con Google
+                Exclusivo para el Administrador
               </h3>
-              <p className="text-xs text-zinc-400 leading-relaxed max-w-xs mx-auto">
-                Para evitar perfiles falsos y mantener una base de datos real, solo los usuarios registrados con <strong>cuenta de Google</strong> pueden añadir perfiles de profesores o estudiantes.
+              <p className="text-xs text-zinc-400 max-w-xs mx-auto">
+                Solo el administrador del sistema tiene permisos para dar de alta nuevos estudiantes y profesores en el padrón oficial.
               </p>
             </div>
 
-            {error && (
-              <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-400 text-xs rounded-xl flex items-center gap-2 text-left">
-                <ShieldAlert className="w-4 h-4 flex-shrink-0" />
-                <span>{error}</span>
-              </div>
-            )}
-
-            <div className="space-y-2.5 pt-2">
-              <button
-                type="button"
-                onClick={handleGoogleConnect}
-                disabled={authLoading}
-                className="w-full py-3.5 rounded-xl bg-[#eab308] hover:bg-[#d9a307] text-black font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2.5 transition-all shadow-[0_4px_20px_rgba(234,179,8,0.25)] cursor-pointer disabled:opacity-50"
-              >
-                {authLoading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin text-black" />
-                    <span>Conectando...</span>
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-4 h-4" viewBox="0 0 24 24">
-                      <path
-                        fill="currentColor"
-                        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                      />
-                      <path
-                        fill="currentColor"
-                        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                      />
-                      <path
-                        fill="currentColor"
-                        d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-                      />
-                      <path
-                        fill="currentColor"
-                        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-                      />
-                    </svg>
-                    <span>{user?.isAnonymous ? 'Vincular Google y Continuar' : 'Iniciar con Google'}</span>
-                  </>
-                )}
-              </button>
-
-              <button
-                type="button"
-                onClick={onClose}
-                className="w-full py-2.5 rounded-xl border border-zinc-800 bg-[#141414] hover:bg-zinc-800 text-zinc-400 hover:text-white font-bold text-xs uppercase tracking-wider transition-all cursor-pointer"
-              >
-                Cancelar
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-6 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-xs uppercase tracking-wider transition"
+            >
+              Entendido
+            </button>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-5">
@@ -248,7 +198,7 @@ export default function AddMemberModal({
                   required
                   value={firstName}
                   onChange={(e) => setFirstName(e.target.value)}
-                  placeholder="Ej: Juan"
+                  placeholder="Ej: Daniel Gustavo"
                   className="w-full bg-[#111111] border border-[#ffffff10] rounded-xl px-4 py-3 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-[#eab308]/40 transition-colors"
                 />
               </div>
@@ -262,21 +212,51 @@ export default function AddMemberModal({
                   required
                   value={lastName}
                   onChange={(e) => setLastName(e.target.value)}
-                  placeholder="Ej: Pérez"
+                  placeholder="Ej: Castillo Ramirez"
                   className="w-full bg-[#111111] border border-[#ffffff10] rounded-xl px-4 py-3 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-[#eab308]/40 transition-colors"
                 />
               </div>
             </div>
 
+            {/* Input DNI para Estudiantes */}
+            {isStudent && (
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-zinc-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <Lock className="w-3.5 h-3.5 text-[#eab308]" />
+                    DNI Oficial (8 dígitos)
+                  </label>
+                  <span className="text-[10px] text-zinc-500 font-mono">Para verificación</span>
+                </div>
+                <input
+                  type="text"
+                  maxLength={8}
+                  required
+                  value={dni}
+                  onChange={(e) => setDni(e.target.value.replace(/\D/g, ''))}
+                  placeholder="Ej: 60036463"
+                  className="w-full bg-[#111111] border border-[#ffffff10] rounded-xl px-4 py-3 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-[#eab308]/40 transition-colors font-mono tracking-widest text-center"
+                />
+                <p className="text-[11px] text-zinc-500">
+                  El estudiante ingresará este número de DNI para reclamar su cuenta y mostrar su nombre real.
+                </p>
+              </div>
+            )}
+
             {/* Botón de Envío */}
             <button
               type="submit"
               disabled={submitting}
-              className="w-full py-3.5 rounded-xl bg-[#eab308] hover:bg-[#d9a307] disabled:bg-zinc-800 disabled:text-zinc-600 text-black font-black text-xs uppercase tracking-widest shadow-lg hover:shadow-[#eab308]/15 transition-all cursor-pointer"
+              className="w-full py-3.5 rounded-xl bg-[#eab308] hover:bg-[#d9a307] disabled:bg-zinc-800 disabled:text-zinc-600 text-black font-black text-xs uppercase tracking-widest shadow-lg hover:shadow-[#eab308]/15 transition-all cursor-pointer flex items-center justify-center gap-2"
             >
-              {submitting
-                ? (isStudent ? 'Añadiendo Estudiante...' : 'Añadiendo Profesor...')
-                : (isStudent ? 'Añadir Estudiante' : 'Añadir Profesor')}
+              {submitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin text-black" />
+                  <span>{isStudent ? 'Guardando en Padrón...' : 'Añadiendo Profesor...'}</span>
+                </>
+              ) : (
+                <span>{isStudent ? 'Guardar en Padrón Oficial' : 'Añadir Profesor'}</span>
+              )}
             </button>
           </form>
         )}

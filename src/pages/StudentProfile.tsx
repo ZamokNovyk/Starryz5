@@ -24,8 +24,10 @@ import {
   Quote,
   AlertCircle,
   Eye,
-  Flag
+  Flag,
+  ShieldCheck
 } from 'lucide-react';
+import ClaimProfileModal from '@/components/Modals/ClaimProfileModal';
 import { 
   getStudentById, 
   Student, 
@@ -94,6 +96,7 @@ export default function StudentProfile({
   // Notification Subscription States
   const [isSubscribedToNotifications, setIsSubscribedToNotifications] = useState(false);
   const [notificationModalOpen, setNotificationModalOpen] = useState(false);
+  const [claimModalOpen, setClaimModalOpen] = useState(false);
 
   // Crush States
   const [crushCount, setCrushCount] = useState(0);
@@ -1021,9 +1024,28 @@ export default function StudentProfile({
           </h1>
           <GenderBadge gender={student.gender} size="lg" />
         </div>
-        <p className="px-3 py-1 rounded-full bg-[#181818] border border-zinc-800 text-zinc-400 text-[10px] uppercase font-bold tracking-widest">
-          ESTUDIANTE
-        </p>
+        <div className="flex items-center gap-2 flex-wrap justify-center">
+          <p className="px-3 py-1 rounded-full bg-[#181818] border border-zinc-800 text-zinc-400 text-[10px] uppercase font-bold tracking-widest">
+            ESTUDIANTE
+          </p>
+
+          {student.is_claimed ? (
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold shadow-sm">
+              <CheckCircle2 className="w-3.5 h-3.5 stroke-[3]" />
+              <span>Perfil Oficial Verificado</span>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setClaimModalOpen(true)}
+              className="px-4 py-1.5 rounded-full bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-black font-extrabold text-[11px] uppercase tracking-wider shadow-[0_0_20px_rgba(234,179,8,0.3)] transition-all flex items-center gap-1.5 cursor-pointer hover:scale-105 active:scale-95"
+              title="Reclamar este perfil con tu número de DNI"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 stroke-[2.5]" />
+              <span>Reclamar con DNI</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* METRIC CARDS (Yo te conozco / Fan - Diseñados en grilla de 2 columnas) */}
@@ -2113,6 +2135,18 @@ export default function StudentProfile({
           currentUserName={currentAuthorName}
           onReportCreated={(rep) => {
             setActiveReport(rep);
+          }}
+        />
+      )}
+
+      {/* Modal para Reclamar Perfil con DNI */}
+      {student && (
+        <ClaimProfileModal
+          isOpen={claimModalOpen}
+          onClose={() => setClaimModalOpen(false)}
+          student={student}
+          onSuccess={(updatedStudent) => {
+            setStudent(updatedStudent);
           }}
         />
       )}

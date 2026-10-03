@@ -203,6 +203,17 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
         }
 
         if (data) {
+          // Si el usuario reclamó un perfil de estudiante, sincronizar su nombre oficial real
+          try {
+            const claimedRaw = localStorage.getItem(`user_claimed_profile_${targetUid}`);
+            if (claimedRaw) {
+              const claimedParsed = JSON.parse(claimedRaw);
+              if (claimedParsed.studentName) {
+                data.display_name = claimedParsed.studentName;
+              }
+            }
+          } catch (e) {}
+
           setDbUser(data as SupabaseUser);
           const name = data.display_name || data.username || '';
           setDisplayNameInput(name);
@@ -777,6 +788,16 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                 <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-400 text-[10px] font-black tracking-wider uppercase shadow-[0_0_14px_rgba(245,158,11,0.25)]">
                   <ShieldCheck className="w-3.5 h-3.5 text-amber-400 stroke-[2.5]" />
                   ADMIN
+                </span>
+              </div>
+            )}
+
+            {/* Badge de Estudiante Oficial Verificado */}
+            {typeof window !== 'undefined' && user?.uid && localStorage.getItem(`user_claimed_profile_${dbUser?.id || user.uid}`) && (
+              <div className="pt-0.5 pb-0.5">
+                <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/40 text-emerald-400 text-[10px] font-black tracking-wider uppercase shadow-[0_0_14px_rgba(16,185,129,0.25)]">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 stroke-[2.5]" />
+                  ESTUDIANTE VERIFICADO
                 </span>
               </div>
             )}

@@ -86,6 +86,7 @@ import {
   getDisplayAuthorName
 } from '@/src/lib/confessions';
 import AddMemberModal from '@/components/Modals/AddMemberModal';
+import ClaimProfileModal from '@/components/Modals/ClaimProfileModal';
 import PublishConfessionModal from '@/components/Modals/PublishConfessionModal';
 import ConfessionCommentsModal from '@/components/Modals/ConfessionCommentsModal';
 import BookmarkButton from '@/components/BookmarkButton';
@@ -114,6 +115,9 @@ interface MemberItem {
   views: number;
   score: number;
   role: 'Alumno' | 'Profesor';
+  is_claimed?: boolean;
+  dni?: string;
+  rawStudent?: DbStudent;
 }
 
 interface WikiArticle {
@@ -194,6 +198,8 @@ export default function EducationalCenterProfileView({
   const [editTwitter, setEditTwitter] = useState('');
 
   const isAdmin = (user as any)?.role === 'admin' || user?.email === 'wikistars12@gmail.com';
+  const [selectedStudentToClaim, setSelectedStudentToClaim] = useState<DbStudent | null>(null);
+  const [claimModalOpen, setClaimModalOpen] = useState(false);
 
   // Photo URL Validation Helper
   const photoUrlError = (() => {
@@ -679,6 +685,9 @@ export default function EducationalCenterProfileView({
     views: typeof ds.views_count === 'number' ? ds.views_count : (Number(ds.views_count) || 0),
     score: typeof ds.score === 'number' ? Number(ds.score) : 0.0,
     role: 'Alumno',
+    is_claimed: ds.is_claimed,
+    dni: ds.dni,
+    rawStudent: ds,
   }));
 
   // Selected list based on active tab
@@ -1084,11 +1093,44 @@ export default function EducationalCenterProfileView({
                       </div>
                     )}
 
-                    {/* Datos del profesor */}
+                    {/* Datos del profesor o estudiante */}
                     <div className="space-y-1 min-w-0">
-                      <h3 className="text-sm sm:text-base font-extrabold text-white group-hover:text-[#eab308] transition-colors leading-snug truncate">
-                        {p.name}
-                      </h3>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="text-sm sm:text-base font-extrabold text-white group-hover:text-[#eab308] transition-colors leading-snug truncate">
+                          {p.name}
+                        </h3>
+                        {activeTab === 'Estudiantes' && (
+                          p.is_claimed ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold">
+                              <CheckCircle2 className="w-3 h-3 stroke-[3]" />
+                              Verificado
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedStudentToClaim(p.rawStudent || ({
+                                  id: p.id,
+                                  nombre_completo: p.name,
+                                  nombre: p.name,
+                                  apellidos: '',
+                                  institute_id: institution.id || institution.slug || '',
+                                  score: p.score,
+                                  dni: p.dni,
+                                  is_claimed: p.is_claimed
+                                } as any));
+                                setClaimModalOpen(true);
+                              }}
+                              className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#eab308] hover:bg-[#d9a307] text-black text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-sm hover:scale-105 active:scale-95"
+                              title="Reclamar este perfil con DNI"
+                            >
+                              <ShieldCheck className="w-3 h-3 stroke-[3]" />
+                              Reclamar
+                            </button>
+                          )
+                        )}
+                      </div>
                       <div className="flex items-center gap-3.5 text-xs text-zinc-500">
                         <span className="flex items-center gap-1.5" title={`${p.fans} Fans`}>
                           <Heart className="w-3.5 h-3.5 text-pink-500 fill-pink-500" />
@@ -1167,9 +1209,40 @@ export default function EducationalCenterProfileView({
 
                   {/* Info Footer */}
                   <div className="p-3 bg-[#0d0d0d] space-y-1.5 border-t border-zinc-800/40">
-                    <h3 className="font-extrabold text-xs sm:text-sm text-white group-hover:text-[#eab308] transition-colors truncate" title={p.name}>
-                      {p.name}
-                    </h3>
+                    <div className="flex items-center justify-between gap-1">
+                      <h3 className="font-extrabold text-xs sm:text-sm text-white group-hover:text-[#eab308] transition-colors truncate" title={p.name}>
+                        {p.name}
+                      </h3>
+                      {activeTab === 'Estudiantes' && (
+                        p.is_claimed ? (
+                          <span className="text-[10px] text-emerald-400 font-bold flex-shrink-0" title="Perfil Verificado">
+                            ✓
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedStudentToClaim(p.rawStudent || ({
+                                id: p.id,
+                                nombre_completo: p.name,
+                                nombre: p.name,
+                                apellidos: '',
+                                institute_id: institution.id || institution.slug || '',
+                                score: p.score,
+                                dni: p.dni,
+                                is_claimed: p.is_claimed
+                              } as any));
+                              setClaimModalOpen(true);
+                            }}
+                            className="text-[9px] font-black uppercase text-black bg-[#eab308] hover:bg-[#d9a307] px-1.5 py-0.5 rounded-md flex-shrink-0 transition"
+                            title="Reclamar con DNI"
+                          >
+                            Reclamar
+                          </button>
+                        )
+                      )}
+                    </div>
                     <div className="flex items-center justify-between text-[11px] text-zinc-500 pt-0.5">
                       <span className="flex items-center gap-1" title={`${p.fans} Fans`}>
                         <Heart className="w-3 h-3 text-pink-500 fill-pink-500" />
@@ -2092,27 +2165,27 @@ export default function EducationalCenterProfileView({
         </div>
       )}
 
-      {/* Botón flotante para Añadir Miembro / Estudiante / Nueva Confesión según tab activa */}
-      {activeTab === 'Estudiantes' ? (
+      {/* Botón flotante para Añadir Miembro / Estudiante (SOLO ADMIN) o Nueva Confesión */}
+      {activeTab === 'Estudiantes' && isAdmin ? (
         <button
           onClick={() => {
             setAddMemberRole('Alumno');
             setAddMemberOpen(true);
           }}
           className="fixed bottom-24 right-6 sm:right-8 z-40 flex items-center gap-2 px-5 py-3.5 bg-[#eab308] text-black font-black text-xs uppercase tracking-widest rounded-2xl shadow-[0_4px_25px_rgba(234,179,8,0.45)] hover:scale-105 active:scale-95 transition-all cursor-pointer border-none"
-          title="Añadir Estudiante"
+          title="Añadir Estudiante (Admin)"
         >
           <Plus className="w-4 h-4 stroke-[3]" />
           <span>Añadir Estudiante</span>
         </button>
-      ) : activeTab === 'Profesores' ? (
+      ) : activeTab === 'Profesores' && isAdmin ? (
         <button
           onClick={() => {
             setAddMemberRole('Profesor');
             setAddMemberOpen(true);
           }}
           className="fixed bottom-24 right-6 sm:right-8 z-40 flex items-center gap-2 px-5 py-3.5 bg-[#eab308] text-black font-black text-xs uppercase tracking-widest rounded-2xl shadow-[0_4px_25px_rgba(234,179,8,0.45)] hover:scale-105 active:scale-95 transition-all cursor-pointer border-none"
-          title="Añadir Profesor"
+          title="Añadir Profesor (Admin)"
         >
           <Plus className="w-4 h-4 stroke-[3]" />
           <span>Añadir Profesor</span>
@@ -2128,7 +2201,7 @@ export default function EducationalCenterProfileView({
         </button>
       ) : null}
 
-      {/* Modal de Añadir Miembro / Estudiante */}
+      {/* Modal de Añadir Miembro / Estudiante (Exclusivo Admin) */}
       <AddMemberModal
         isOpen={addMemberOpen}
         onClose={() => setAddMemberOpen(false)}
@@ -2137,6 +2210,21 @@ export default function EducationalCenterProfileView({
         defaultRole={addMemberRole}
         onSuccess={loadMembers}
       />
+
+      {/* Modal de Reclamar Perfil de Estudiante con DNI */}
+      {selectedStudentToClaim && (
+        <ClaimProfileModal
+          isOpen={claimModalOpen}
+          onClose={() => {
+            setClaimModalOpen(false);
+            setSelectedStudentToClaim(null);
+          }}
+          student={selectedStudentToClaim}
+          onSuccess={() => {
+            loadMembers();
+          }}
+        />
+      )}
 
       {/* Modal de Publicar Confesión */}
       <PublishConfessionModal
