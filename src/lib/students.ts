@@ -116,32 +116,66 @@ export async function createStudent(data: CreateStudentData, firebaseUid: string
     }
   }
 
-  const { data: inserted, error } = await supabase
-    .from('students')
-    .insert([insertPayload])
-    .select()
-    .single();
+  let inserted: any = null;
+  let insertError: any = null;
 
-  if (error) {
-    console.error('Error al insertar estudiante en tabla students de Supabase:', error);
+  try {
+    const { data, error } = await supabase
+      .from('students')
+      .insert([insertPayload])
+      .select('id, nombre, apellidos, nombre_completo, institute_id, created_by')
+      .single();
     
-    // Si la tabla no tiene la columna dni, reintentar sin ella
-    if (error.message?.includes('dni')) {
-      delete insertPayload.dni;
-      const retry = await supabase.from('students').insert([insertPayload]).select().single();
+    if (error) {
+      insertError = error;
+    } else {
+      inserted = data;
+    }
+  } catch (err) {
+    insertError = err;
+  }
+
+  if (insertError) {
+    console.error('Error al insertar estudiante en tabla students de Supabase:', insertError);
+    
+    // Si la tabla no tiene la columna dni, o hay error de caché de esquema de dni, reintentar sin dni
+    const errString = JSON.stringify(insertError);
+    if (
+      insertError.message?.includes('dni') || 
+      insertError.code === 'PGRST204' || 
+      errString.includes('dni') ||
+      errString.includes('PGRST204')
+    ) {
+      const backupPayload = { ...insertPayload };
+      delete backupPayload.dni;
+      
+      const retry = await supabase
+        .from('students')
+        .insert([backupPayload])
+        .select('id, nombre, apellidos, nombre_completo, institute_id, created_by')
+        .single();
+        
       if (!retry.error) {
-        return retry.data as Student;
+        return {
+          ...retry.data,
+          dni: cleanDni
+        } as Student;
+      } else {
+        insertError = retry.error;
       }
     }
 
-    if (error.code === '42P01' || error.message?.includes('relation "students" does not exist') || error.message?.includes('public.students')) {
+    if (insertError.code === '42P01' || insertError.message?.includes('relation "students" does not exist') || insertError.message?.includes('public.students')) {
       throw new Error('La tabla "students" aún no ha sido creada en Supabase. Por favor, crea las tablas de estudiantes en el editor SQL de Supabase.');
     }
     
-    throw new Error(error.message || 'No se pudo guardar el estudiante en la base de datos.');
+    throw new Error(insertError.message || 'No se pudo guardar el estudiante en la base de datos.');
   }
 
-  return inserted as Student;
+  return {
+    ...inserted,
+    dni: cleanDni
+  } as Student;
 }
 
 /**

@@ -66,7 +66,7 @@ interface StudentProfileProps {
   onRequireAuth?: () => void;
 }
 
-type TabType = 'Wiki' | 'Reseñas' | 'Crushes' | 'Estadística';
+type TabType = 'Reseñas' | 'Crushes' | 'Estadística';
 
 export default function StudentProfile({
   slug,
@@ -1095,7 +1095,6 @@ export default function StudentProfile({
       <div className="bg-[#0d0d0d] border border-zinc-800/80 rounded-xl p-1 overflow-x-auto scrollbar-none">
         <div className="flex items-center gap-1.5 min-w-max">
           {[
-            { id: 'Wiki' as TabType, label: 'Wiki', icon: BookOpen, color: '#3b82f6' },
             { id: 'Reseñas' as TabType, label: 'Reseñas', icon: Star, color: '#eab308' },
             { id: 'Crushes' as TabType, label: 'Crushes', icon: Heart, color: '#f43f5e' },
             { id: 'Estadística' as TabType, label: 'Estadística', icon: BarChart3, color: '#06b6d4' }
