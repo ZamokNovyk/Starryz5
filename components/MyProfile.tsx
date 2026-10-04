@@ -1316,20 +1316,6 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                     )}
                   </div>
                 </button>
-
-                {dbUser?.role === 'admin' && (
-                  <button
-                    type="button"
-                    onClick={() => setProfileTab('admin')}
-                    className={`py-1.5 px-3 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
-                      profileTab === 'admin'
-                        ? 'bg-amber-500/20 text-amber-300 font-extrabold border border-amber-500/40'
-                        : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900'
-                    }`}
-                  >
-                    <span>Panel Admin</span>
-                  </button>
-                )}
               </div>
             )}
           </div>
@@ -2694,6 +2680,8 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
         </div>
 
       </div>
+
+
 
       {/* Modal para configurar notificaciones de profesor desde el perfil */}
       {editingProfSub && user && (
