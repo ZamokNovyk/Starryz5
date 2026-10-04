@@ -1,0 +1,209 @@
+import { supabase } from './supabase';
+
+export interface UserActitudItem {
+  id: string;
+  voter_uid: string;
+  target_user_id: string;
+  attitude_type: 'yo_te_conozco' | 'fans';
+  created_at: string;
+}
+
+/**
+ * Actualiza directamente las columnas acumuladas 'knows_count' y 'fans_count' en la tabla 'users'
+ */
+async function syncUserTableCounts(targetUserId: string, knowCount: number, fanCount: number) {
+  if (!targetUserId) return;
+  try {
+    // Intentar actualizar por firebase_uid o por id
+    const { error } = await supabase
+      .from('users')
+      .update({
+        knows_count: knowCount,
+        fans_count: fanCount
+      })
+      .eq('firebase_uid', targetUserId);
+
+    if (error) {
+      await supabase
+        .from('users')
+        .update({
+          knows_count: knowCount,
+          fans_count: fanCount
+        })
+        .eq('id', targetUserId);
+    }
+  } catch (e) {
+    console.warn('Aviso al sincronizar contadores en tabla users:', e);
+  }
+}
+
+/**
+ * Obtiene el conteo de votos de Yo te conozco y Fans.
+ * Intenta leer primero de las columnas 'knows_count' y 'fans_count' en 'users'.
+ * Si no existiesen aún o son nulas, realiza la suma directa en 'users_actitud'.
+ */
+export async function getUserActitudCounts(targetUserId: string): Promise<{ knowCount: number; fanCount: number }> {
+  if (!targetUserId) return { knowCount: 0, fanCount: 0 };
+
+  try {
+    // 1. Intentar consultar columnas cacheadas en 'users'
+    const { data: userData } = await supabase
+      .from('users')
+      .select('knows_count, fans_count')
+      .or(`firebase_uid.eq.${targetUserId},id.eq.${targetUserId}`)
+      .maybeSingle();
+
+    if (userData && typeof userData.knows_count === 'number' && typeof userData.fans_count === 'number') {
+      return {
+        knowCount: userData.knows_count || 0,
+        fanCount: userData.fans_count || 0
+      };
+    }
+
+    // 2. Si las columnas en 'users' aún son nulas, calcular desde 'users_actitud'
+    const { data: actitudData, error } = await supabase
+      .from('users_actitud')
+      .select('attitude_type')
+      .eq('target_user_id', targetUserId);
+
+    if (error || !actitudData) {
+      return { knowCount: 0, fanCount: 0 };
+    }
+
+    const knowCount = actitudData.filter(d => d.attitude_type === 'yo_te_conozco').length;
+    const fanCount = actitudData.filter(d => d.attitude_type === 'fans').length;
+
+    // Sincronizar contadores hacia 'users'
+    syncUserTableCounts(targetUserId, knowCount, fanCount);
+
+    return { knowCount, fanCount };
+  } catch (err) {
+    console.warn('Aviso al obtener conteo de actitud:', err);
+    return { knowCount: 0, fanCount: 0 };
+  }
+}
+
+/**
+ * Obtiene el voto actual del votante sobre el perfil objetivo ('yo_te_conozco' | 'fans' | null)
+ */
+export async function getUserActitudVotes(
+  targetUserId: string,
+  voterUid: string
+): Promise<{ currentVote: 'yo_te_conozco' | 'fans' | null }> {
+  if (!targetUserId || !voterUid || targetUserId === voterUid) {
+    return { currentVote: null };
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('users_actitud')
+      .select('attitude_type')
+      .eq('target_user_id', targetUserId)
+      .eq('voter_uid', voterUid)
+      .maybeSingle();
+
+    if (error || !data) return { currentVote: null };
+
+    return { currentVote: data.attitude_type as 'yo_te_conozco' | 'fans' };
+  } catch (err) {
+    console.warn('Aviso al obtener estado de voto de actitud:', err);
+    return { currentVote: null };
+  }
+}
+
+/**
+ * Alterna o cambia el voto de actitud (Exclusivo: 1 solo voto activo por usuario)
+ * Actualiza tanto 'users_actitud' como los contadores cacheados 'knows_count' y 'fans_count' en 'users'.
+ */
+export async function toggleUserActitudVote(
+  targetUserId: string,
+  voterUid: string,
+  requestedType: 'yo_te_conozco' | 'fans'
+): Promise<{
+  activeVote: 'yo_te_conozco' | 'fans' | null;
+  newCounts: { knowCount: number; fanCount: number };
+  error?: string;
+}> {
+  // BLOQUEO 1: Prevenir autovoto
+  if (targetUserId === voterUid) {
+    const counts = await getUserActitudCounts(targetUserId);
+    return {
+      activeVote: null,
+      newCounts: counts,
+      error: 'No puedes votar por ti mismo.'
+    };
+  }
+
+  try {
+    // Buscar voto existente
+    const { data: existing } = await supabase
+      .from('users_actitud')
+      .select('id, attitude_type')
+      .eq('target_user_id', targetUserId)
+      .eq('voter_uid', voterUid)
+      .maybeSingle();
+
+    let activeVote: 'yo_te_conozco' | 'fans' | null = null;
+
+    if (existing) {
+      if (existing.attitude_type === requestedType) {
+        // Clic en el mismo voto -> QUITAR VOTO (Desvotar)
+        await supabase
+          .from('users_actitud')
+          .delete()
+          .eq('id', existing.id);
+
+        activeVote = null;
+      } else {
+        // Clic en el otro botón -> CAMBIAR VOTO
+        const { error: updateErr } = await supabase
+          .from('users_actitud')
+          .update({ attitude_type: requestedType })
+          .eq('id', existing.id);
+
+        if (updateErr) {
+          await supabase.from('users_actitud').delete().eq('id', existing.id);
+          await supabase.from('users_actitud').insert({
+            target_user_id: targetUserId,
+            voter_uid: voterUid,
+            attitude_type: requestedType
+          });
+        }
+
+        activeVote = requestedType;
+      }
+    } else {
+      // No existe voto previo -> INSERTAR
+      await supabase
+        .from('users_actitud')
+        .insert({
+          target_user_id: targetUserId,
+          voter_uid: voterUid,
+          attitude_type: requestedType
+        });
+
+      activeVote = requestedType;
+    }
+
+    // Recalcular conteo real
+    const { data: allVotes } = await supabase
+      .from('users_actitud')
+      .select('attitude_type')
+      .eq('target_user_id', targetUserId);
+
+    const knowCount = allVotes ? allVotes.filter(v => v.attitude_type === 'yo_te_conozco').length : 0;
+    const fanCount = allVotes ? allVotes.filter(v => v.attitude_type === 'fans').length : 0;
+
+    // Actualizar contadores en la tabla 'users'
+    syncUserTableCounts(targetUserId, knowCount, fanCount);
+
+    return {
+      activeVote,
+      newCounts: { knowCount, fanCount }
+    };
+  } catch (err) {
+    console.warn('Aviso al alternar voto de actitud:', err);
+    const newCounts = await getUserActitudCounts(targetUserId);
+    return { activeVote: null, newCounts };
+  }
+}

@@ -85,54 +85,10 @@ export default function SearchResultsView({
       try {
         setLoading(true);
 
-        // 1. Instituciones registradas y mock
-        const institutionsData: UnifiedSearchResult[] = initialInstitutions.map((inst) => {
-          const typeKey: FilterType = 
-            inst.category === 'Universidad' ? 'universidades' :
-            inst.category === 'Instituto' ? 'institutos' : 'colegios';
-
-          return {
-            id: `inst-${inst.id}`,
-            name: inst.name,
-            category: inst.category,
-            typeKey: typeKey,
-            subtitle: inst.campus || inst.city || 'Centro Educativo',
-            image: inst.image,
-            slug: inst.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-            rawItem: inst,
-          };
-        });
-
-        // 2. Profesores de Supabase
-        let professorsData: UnifiedSearchResult[] = [];
+        // Búsqueda EXCLUSIVA en la tabla 'users' de Supabase
+        let usersData: UnifiedSearchResult[] = [];
         try {
-          const dbProfessors = await getAllProfessors();
-          professorsData = dbProfessors.map((p) => {
-            const isStudentRole = p.role === 'Alumno';
-            const fullName = p.nombre_completo || `${p.nombre || ''} ${p.apellidos || ''}`.trim() || 'Miembro';
-            
-            return {
-              id: `prof-${p.id}`,
-              name: fullName,
-              category: isStudentRole ? 'Estudiante' : 'Profesor',
-              typeKey: isStudentRole ? 'estudiantes' : 'profesores',
-              subtitle: isStudentRole ? 'Estudiante de la comunidad' : 'Docente Académico',
-              image: p.avatar_url || undefined,
-              slug: p.id,
-              rawItem: p,
-            };
-          });
-        } catch (e) {
-          console.warn('No se pudieron obtener profesores para la búsqueda:', e);
-        }
-
-        // 3. Estudiantes y Usuarios de Supabase
-        let studentsData: UnifiedSearchResult[] = [];
-        try {
-          const [dbUsersRes, dbStudentsRes] = await Promise.all([
-            supabase.from('users').select('*'),
-            supabase.from('students').select('*')
-          ]);
+          const dbUsersRes = await supabase.from('users').select('*');
 
           if (dbUsersRes.data) {
             dbUsersRes.data
@@ -148,7 +104,7 @@ export default function SearchResultsView({
                   ? 'Estudiante Verificado' 
                   : (u.role === 'admin' ? 'Administrador' : 'Usuario de Starryz');
 
-                studentsData.push({
+                usersData.push({
                   id: `user-${u.firebase_uid || u.id}`,
                   name: displayName,
                   category: 'Estudiante' as SearchCategory,
@@ -160,29 +116,11 @@ export default function SearchResultsView({
                 });
               });
           }
-
-          if (dbStudentsRes.data) {
-            dbStudentsRes.data.forEach((s) => {
-              const fullName = s.nombre_completo || `${s.nombre || ''} ${s.apellidos || ''}`.trim() || s.id;
-              studentsData.push({
-                id: `stud-${s.id}`,
-                name: fullName,
-                category: 'Estudiante' as SearchCategory,
-                typeKey: 'estudiantes' as FilterType,
-                subtitle: s.institute_id || 'Estudiante del Instituto',
-                image: s.avatar_url || undefined,
-                slug: s.id,
-                rawItem: s,
-              });
-            });
-          }
         } catch (e) {
           console.warn('No se pudieron obtener usuarios para la búsqueda:', e);
         }
 
-        // Consolidar eliminando duplicados por ID (únicamente datos reales de Supabase)
-        const combined = [...institutionsData, ...professorsData, ...studentsData];
-        const unique = Array.from(new Map(combined.map(item => [item.id, item])).values());
+        const unique = Array.from(new Map(usersData.map(item => [item.id, item])).values());
         setAllData(unique);
       } catch (err) {
         console.error('Error al compilar datos de búsqueda:', err);
@@ -198,9 +136,12 @@ export default function SearchResultsView({
     (text || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
 
   // Filtrado por término de búsqueda inteligente
-  const termMatches = allData.filter((item) => {
-    if (!query || !query.trim()) return true;
-    const cleanQuery = normalize(query);
+  const cleanQuery = normalize(query);
+  const queryTokens = cleanQuery.split(/\s+/).filter(Boolean);
+
+  // 1. Coincidencias Exactas o Subcadenas
+  const exactMatches = allData.filter((item) => {
+    if (!cleanQuery) return true;
     const itemName = normalize(item.name);
     const itemSub = normalize(item.subtitle);
     const itemCat = normalize(item.category);
@@ -209,12 +150,73 @@ export default function SearchResultsView({
       return true;
     }
 
-    const tokens = cleanQuery.split(/\s+/).filter(Boolean);
-    if (tokens.length > 1) {
-      return tokens.every(token => itemName.includes(token) || itemSub.includes(token));
+    if (queryTokens.length > 1) {
+      return queryTokens.every(token => itemName.includes(token) || itemSub.includes(token));
     }
     return false;
   });
+
+  // 2. Coincidencias Difusas (Tolerancia a faltas de ortografía si no hay exactas o para sugerir)
+  let fuzzyMatches: UnifiedSearchResult[] = [];
+  let suggestedCorrection = '';
+
+  if (exactMatches.length === 0 && cleanQuery) {
+    const fuzzyCandidates: { item: UnifiedSearchResult; score: number }[] = [];
+
+    allData.forEach((item) => {
+      const itemName = normalize(item.name);
+      const itemSub = normalize(item.subtitle);
+      const wordsInItem = `${itemName} ${itemSub}`.split(/\s+/).filter(Boolean);
+
+      let matchedTokensCount = 0;
+      let totalSim = 0;
+
+      queryTokens.forEach((qToken) => {
+        let bestSim = 0;
+        wordsInItem.forEach((iWord) => {
+          // Token similarity
+          let sim = 0;
+          if (qToken === iWord) sim = 1.0;
+          else if (iWord.includes(qToken) || qToken.includes(iWord)) sim = 0.9;
+          else {
+            const maxLen = Math.max(qToken.length, iWord.length);
+            if (maxLen > 0) {
+              const matrix = Array.from({ length: qToken.length + 1 }, () => new Array(iWord.length + 1).fill(0));
+              for (let i = 0; i <= qToken.length; i++) matrix[i][0] = i;
+              for (let j = 0; j <= iWord.length; j++) matrix[0][j] = j;
+              for (let i = 1; i <= qToken.length; i++) {
+                for (let j = 1; j <= iWord.length; j++) {
+                  const cost = qToken[i - 1] === iWord[j - 1] ? 0 : 1;
+                  matrix[i][j] = Math.min(matrix[i - 1][j] + 1, matrix[i][j - 1] + 1, matrix[i - 1][j - 1] + cost);
+                }
+              }
+              const dist = matrix[qToken.length][iWord.length];
+              sim = Math.max(0, 1 - dist / maxLen);
+            }
+          }
+
+          if (sim > bestSim) bestSim = sim;
+        });
+
+        if (bestSim >= 0.60) {
+          matchedTokensCount++;
+          totalSim += bestSim;
+        }
+      });
+
+      if (matchedTokensCount === queryTokens.length && matchedTokensCount > 0) {
+        fuzzyCandidates.push({ item, score: totalSim / queryTokens.length });
+      }
+    });
+
+    fuzzyCandidates.sort((a, b) => b.score - a.score);
+    fuzzyMatches = fuzzyCandidates.map(c => c.item);
+    if (fuzzyMatches.length > 0) {
+      suggestedCorrection = fuzzyMatches[0].name;
+    }
+  }
+
+  const termMatches = exactMatches.length > 0 ? exactMatches : fuzzyMatches;
 
   // Filtrado por tipo de entidad seleccionado
   const typeFiltered = termMatches.filter((item) => {
@@ -277,11 +279,23 @@ export default function SearchResultsView({
         <span>Volver a la Red</span>
       </button>
 
+      {/* BANNER SUGERENCIA ORTOGRÁFICA "¿Quizás quisiste decir...?" */}
+      {suggestedCorrection && (
+        <div className="p-4 rounded-2xl bg-[#eab308]/10 border border-[#eab308]/30 flex items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="flex items-center gap-3">
+            <Sparkles className="w-5 h-5 text-[#eab308] shrink-0" />
+            <span className="text-xs sm:text-sm text-zinc-200">
+              No se encontraron coincidencias exactas para &quot;<span className="text-zinc-400">{query}</span>&quot;. ¿Quizás quisiste decir <strong className="font-bold text-[#eab308] underline">{suggestedCorrection}</strong>?
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Encabezado y Barra de Controles (Filtro y Tipo de Vista) */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 border-b border-zinc-800/50 pb-6">
         <div>
           <h1 className="text-3xl sm:text-4xl font-black text-white uppercase tracking-tight">
-            Resultados para <span className="text-[#eab308]">"{query}"</span>
+            Resultados para <span className="text-[#eab308]">&quot;{query}&quot;</span>
           </h1>
           <p className="text-xs sm:text-sm text-zinc-400 mt-2 flex items-center gap-2">
             <span>Se encontraron {typeFiltered.length} resultados</span>

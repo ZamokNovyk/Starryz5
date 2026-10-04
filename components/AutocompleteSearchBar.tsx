@@ -26,7 +26,7 @@ interface AutocompleteSearchBarProps {
 
 export default function AutocompleteSearchBar({
   value = '',
-  placeholder = 'Buscar profesores, centros o alumnos...',
+  placeholder = 'Buscar usuarios por nombre...',
   autoFocus = false,
   className = '',
   inputClassName = '',
@@ -263,7 +263,36 @@ export default function AutocompleteSearchBar({
 
           {/* ESTADO 1: LISTA DE RESULTADOS DEVUELTOS POR SUPABASE */}
           {!isLoading && suggestions.length > 0 && (
-            <div className="max-h-[340px] overflow-y-auto divide-y divide-zinc-900/80 p-1.5 custom-scrollbar">
+            <div className="max-h-[360px] overflow-y-auto divide-y divide-zinc-900/80 p-1.5 custom-scrollbar">
+              
+              {/* BANNER DE CORRECCIÓN ORTOGRÁFICA ("¿Quizás quisiste decir?") */}
+              {(() => {
+                const fuzzyItem = suggestions.find(s => s.isFuzzy || s.didYouMean);
+                if (!fuzzyItem) return null;
+                const corrected = fuzzyItem.didYouMean || fuzzyItem.title;
+                return (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setQuery(corrected);
+                      fetchSuggestions(corrected);
+                    }}
+                    className="w-full mb-1.5 px-3.5 py-2.5 rounded-xl bg-[#eab308]/10 hover:bg-[#eab308]/20 border border-[#eab308]/30 text-left flex items-center justify-between gap-2 text-xs sm:text-sm font-medium text-[#eab308] transition-all cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      <Sparkles className="w-4 h-4 text-[#eab308] shrink-0" />
+                      <span>
+                        ¿Quizás quisiste decir <strong className="font-bold text-white underline decoration-[#eab308]">{corrected}</strong>?
+                      </span>
+                    </div>
+                    <span className="text-[10px] uppercase font-black px-2 py-0.5 rounded bg-[#eab308]/20 text-[#eab308] shrink-0">
+                      Corregir
+                    </span>
+                  </button>
+                );
+              })()}
+
               {suggestions.map((item, index) => {
                 const isSelected = index === selectedIndex;
                 return (

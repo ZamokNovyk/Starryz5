@@ -62,6 +62,7 @@ import {
   getStudentLoveMessages,
   StudentLoveMessage
 } from '@/src/lib/students';
+import { getUserActitudCounts, getUserActitudVotes, toggleUserActitudVote } from '@/src/lib/userActitud';
 import StudentTrendsEngine from '@/src/components/StudentTrendsEngine';
 import { getAdminDashboardMetrics, AdminDashboardData } from '@/src/lib/admin';
 import ProfessorNotificationModal from '@/components/Modals/ProfessorNotificationModal';
@@ -172,6 +173,81 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
   const [editingStudentSub, setEditingStudentSub] = useState<UserStudentSubscriptionItem | null>(null);
 
   const isOwnProfile = !uid || (user && user.uid === uid);
+
+  // Votos de 'users_actitud' (Yo te conozco / Fans - Exclusivo 1 voto)
+  const [knowCount, setKnowCount] = useState(0);
+  const [fanCount, setFanCount] = useState(0);
+  const [currentVote, setCurrentVote] = useState<'yo_te_conozco' | 'fans' | null>(null);
+
+  const isSelfProfile = isOwnProfile || (uid && user && uid === user.uid);
+
+  useEffect(() => {
+    const targetUid = uid || user?.uid;
+    if (!targetUid) return;
+
+    async function loadActitud() {
+      try {
+        const counts = await getUserActitudCounts(targetUid);
+        setKnowCount(counts.knowCount);
+        setFanCount(counts.fanCount);
+
+        if (user?.uid && targetUid !== user.uid) {
+          const votes = await getUserActitudVotes(targetUid, user.uid);
+          setCurrentVote(votes.currentVote);
+        } else {
+          setCurrentVote(null);
+        }
+      } catch (err) {
+        console.warn('Error al cargar actitud:', err);
+      }
+    }
+
+    loadActitud();
+  }, [uid, user?.uid]);
+
+  const handleToggleActitud = async (type: 'yo_te_conozco' | 'fans') => {
+    const targetUid = uid || user?.uid;
+    
+    // BLOQUEO DE AUTOVOTO: No se permite votar en tu propio perfil
+    if (!user?.uid || !targetUid || targetUid === user.uid) {
+      return;
+    }
+
+    // Cálculo optimista
+    let nextVote: 'yo_te_conozco' | 'fans' | null = null;
+    if (currentVote === type) {
+      // Quitar voto
+      nextVote = null;
+      if (type === 'yo_te_conozco') setKnowCount(prev => Math.max(0, prev - 1));
+      else setFanCount(prev => Math.max(0, prev - 1));
+    } else if (currentVote) {
+      // Cambiar voto (Ej: de 'fans' a 'yo_te_conozco')
+      nextVote = type;
+      if (type === 'yo_te_conozco') {
+        setKnowCount(prev => prev + 1);
+        setFanCount(prev => Math.max(0, prev - 1));
+      } else {
+        setFanCount(prev => prev + 1);
+        setKnowCount(prev => Math.max(0, prev - 1));
+      }
+    } else {
+      // Nuevo voto
+      nextVote = type;
+      if (type === 'yo_te_conozco') setKnowCount(prev => prev + 1);
+      else setFanCount(prev => prev + 1);
+    }
+
+    setCurrentVote(nextVote);
+
+    try {
+      const res = await toggleUserActitudVote(targetUid, user.uid, type);
+      setCurrentVote(res.activeVote);
+      setKnowCount(res.newCounts.knowCount);
+      setFanCount(res.newCounts.fanCount);
+    } catch (err) {
+      console.error('Error al votar actitud:', err);
+    }
+  };
 
   const handleLinkWithGoogleClick = async () => {
     if (!user) return;
@@ -1017,52 +1093,57 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
         {/* LADO DERECHO: Formulario y Consulta Base de Datos */}
         <div className="md:col-span-2 bg-[#0d0d0d] border border-[#ffffff10] rounded-2xl p-6 sm:p-8 space-y-6">
           
-          {/* Métricas Superiores de Reputación (Universales para todos los perfiles) */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-[#070707] border border-zinc-800/80 rounded-2xl p-3 sm:p-4 shadow-lg animate-in fade-in duration-300">
+          {/* Métricas Superiores de Reputación (Yo te conozco / Fans en la tabla 'users_actitud') */}
+          <div className="grid grid-cols-2 gap-3 max-w-md bg-[#070707] border border-zinc-800/80 rounded-2xl p-3 sm:p-4 shadow-lg animate-in fade-in duration-300">
             {/* Yo te conozco */}
-            <div className="bg-[#0f0f0f] border border-blue-500/20 hover:border-blue-500/40 rounded-xl p-3 text-center space-y-1 transition">
+            <button
+              type="button"
+              disabled={isSelfProfile}
+              onClick={() => handleToggleActitud('yo_te_conozco')}
+              className={`bg-[#0f0f0f] border rounded-xl p-3 text-center space-y-1 transition select-none ${
+                isSelfProfile
+                  ? 'border-blue-500/20 opacity-90 cursor-default'
+                  : currentVote === 'yo_te_conozco'
+                    ? 'border-blue-500 bg-blue-500/15 shadow-[0_0_15px_rgba(59,130,246,0.25)] cursor-pointer active:scale-95'
+                    : 'border-blue-500/20 hover:border-blue-500/40 hover:bg-[#121212] cursor-pointer active:scale-95'
+              }`}
+              title={isSelfProfile ? 'Tus votos acumulados de la comunidad' : 'Clic para indicar que conoces a este usuario'}
+            >
               <div className="flex items-center justify-center gap-1.5 text-blue-400">
                 <Users className="w-4 h-4" />
-                <span className="text-[10px] font-black uppercase tracking-wider">Yo te conozco</span>
+                <span className="text-[10px] font-black uppercase tracking-wider">
+                  {currentVote === 'yo_te_conozco' ? '✓ Yo te conozco' : 'Yo te conozco'}
+                </span>
               </div>
               <div className="text-xl sm:text-2xl font-black text-white">
-                {claimedStudent?.knows_count || 0}
+                {knowCount}
               </div>
-            </div>
+            </button>
 
             {/* Fan */}
-            <div className="bg-[#0f0f0f] border border-pink-500/20 hover:border-pink-500/40 rounded-xl p-3 text-center space-y-1 transition">
+            <button
+              type="button"
+              disabled={isSelfProfile}
+              onClick={() => handleToggleActitud('fans')}
+              className={`bg-[#0f0f0f] border rounded-xl p-3 text-center space-y-1 transition select-none ${
+                isSelfProfile
+                  ? 'border-pink-500/20 opacity-90 cursor-default'
+                  : currentVote === 'fans'
+                    ? 'border-pink-500 bg-pink-500/15 shadow-[0_0_15px_rgba(236,72,153,0.25)] cursor-pointer active:scale-95'
+                    : 'border-pink-500/20 hover:border-pink-500/40 hover:bg-[#121212] cursor-pointer active:scale-95'
+              }`}
+              title={isSelfProfile ? 'Tus fans acumulados en la comunidad' : 'Clic para hacerte fan de este usuario'}
+            >
               <div className="flex items-center justify-center gap-1.5 text-pink-400">
-                <Heart className="w-4 h-4 fill-pink-500/30" />
-                <span className="text-[10px] font-black uppercase tracking-wider">Fans</span>
+                <Heart className={`w-4 h-4 ${currentVote === 'fans' ? 'fill-pink-500 text-pink-500' : 'fill-pink-500/30'}`} />
+                <span className="text-[10px] font-black uppercase tracking-wider">
+                  {currentVote === 'fans' ? '✓ Fans' : 'Fans'}
+                </span>
               </div>
               <div className="text-xl sm:text-2xl font-black text-white">
-                {claimedStudent?.fans_count || 0}
+                {fanCount}
               </div>
-            </div>
-
-            {/* Crushes */}
-            <div className="bg-[#0f0f0f] border border-rose-500/20 hover:border-rose-500/40 rounded-xl p-3 text-center space-y-1 transition">
-              <div className="flex items-center justify-center gap-1.5 text-rose-400">
-                <span className="text-sm leading-none">💘</span>
-                <span className="text-[10px] font-black uppercase tracking-wider">Crushes</span>
-              </div>
-              <div className="text-xl sm:text-2xl font-black text-white">
-                {claimedStudent?.crushes_count || 0}
-              </div>
-            </div>
-
-            {/* Calificación */}
-            <div className="bg-[#0f0f0f] border border-amber-500/20 hover:border-amber-500/40 rounded-xl p-3 text-center space-y-1 transition">
-              <div className="flex items-center justify-center gap-1.5 text-[#eab308]">
-                <Star className="w-4 h-4 fill-[#eab308]" />
-                <span className="text-[10px] font-black uppercase tracking-wider">Calificación</span>
-              </div>
-              <div className="text-xl sm:text-2xl font-black text-[#eab308] flex items-center justify-center gap-1">
-                <span>{(claimedStudent?.score || 0).toFixed(1)}</span>
-                <span className="text-xs text-zinc-500 font-normal">({claimedStudent?.total_ratings || 0})</span>
-              </div>
-            </div>
+            </button>
           </div>
 
           {/* Navegación Principal de Pestañas (Universal para todos los perfiles) */}

@@ -20,6 +20,7 @@ export interface SearchSuggestion {
   url: string;
   similarity?: number;
   isFuzzy?: boolean;
+  didYouMean?: string;
 }
 
 function normalizeText(text: string): string {
@@ -32,228 +33,171 @@ function normalizeText(text: string): string {
 }
 
 /**
- * Consulta de autocompletado y búsqueda inteligente con tolerancia a errores tipográficos.
- * Búsqueda directa sobre 'users', 'students', 'professors' y 'educational_centers' en Supabase.
+ * Calculador de distancia de Levenshtein para medir ediciones (inserciones, borrados, sustituciones)
+ */
+export function levenshteinDistance(a: string, b: string): number {
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+
+  const matrix = Array.from({ length: a.length + 1 }, () =>
+    new Array(b.length + 1).fill(0)
+  );
+
+  for (let i = 0; i <= a.length; i++) matrix[i][0] = i;
+  for (let j = 0; j <= b.length; j++) matrix[0][j] = j;
+
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,
+        matrix[i][j - 1] + 1,
+        matrix[i - 1][j - 1] + cost
+      );
+    }
+  }
+
+  return matrix[a.length][b.length];
+}
+
+/**
+ * Mide la similitud entre dos palabras (0.0 a 1.0)
+ */
+export function tokenSimilarity(a: string, b: string): number {
+  const normA = normalizeText(a);
+  const normB = normalizeText(b);
+  if (!normA || !normB) return 0;
+  if (normA === normB) return 1.0;
+  if (normA.includes(normB) || normB.includes(normA)) return 0.9;
+
+  const maxLen = Math.max(normA.length, normB.length);
+  if (maxLen === 0) return 1.0;
+
+  const dist = levenshteinDistance(normA, normB);
+  return Math.max(0, 1 - dist / maxLen);
+}
+
+/**
+ * Búsqueda inteligente y rápida con tolerancia a faltas de ortografía (Fuzzy Matching + ¿Quizás quisiste decir?)
  */
 export async function searchWithAutocomplete(
   rawQuery: string,
-  threshold: number = 0.25
+  _threshold: number = 0.25
 ): Promise<SearchSuggestion[]> {
   const query = rawQuery.trim();
   if (!query || query.length < 1) return [];
 
   const normQuery = normalizeText(query);
-  const tokens = normQuery.split(/\s+/).filter(Boolean);
+  const queryTokens = normQuery.split(/\s+/).filter(Boolean);
 
-  const results: SearchSuggestion[] = [];
+  const exactResults: SearchSuggestion[] = [];
+  const fuzzyResults: SearchSuggestion[] = [];
   const seenIds = new Set<string>();
 
-  const addResult = (item: SearchSuggestion) => {
-    const key = `${item.type}-${item.id}`;
-    if (!seenIds.has(key)) {
-      seenIds.add(key);
-      results.push(item);
-    }
-  };
-
-  // --------------------------------------------------------------------------
-  // 1. Invocar la función RPC 'buscar_con_tolerancia' en Supabase (si existe)
-  // --------------------------------------------------------------------------
   try {
-    const { data: rpcData, error: rpcError } = await supabase.rpc('buscar_con_tolerancia', {
-      busqueda: query,
-      umbral: threshold
-    });
-
-    if (!rpcError && Array.isArray(rpcData) && rpcData.length > 0) {
-      rpcData.forEach((item: any) => {
-        const isFuzzy = Number(item.similarity_score || 1) < 0.85;
-        const type: 'professor' | 'center' | 'student' = 
-          item.type === 'professor' ? 'professor' : 
-          item.type === 'student' ? 'student' : 'center';
-
-        const url = type === 'professor' 
-          ? `/profesores/${item.id}` 
-          : type === 'student'
-            ? `/perfil/${item.id}`
-            : `/educational_centers/${toSlug(item.name)}`;
-
-        addResult({
-          id: String(item.id),
-          title: item.name || 'Sin nombre',
-          subtitle: item.subtitle || undefined,
-          type,
-          avatarUrl: item.avatar_url || undefined,
-          url,
-          similarity: Number(item.similarity_score || 1),
-          isFuzzy
-        });
-      });
-    }
-  } catch (rpcErr) {
-    console.warn('Aviso: RPC buscar_con_tolerancia no disponible o con latencia:', rpcErr);
-  }
-
-  // --------------------------------------------------------------------------
-  // 2. BÚSQUEDA DIRECTA Y RESILIENTE EN LA TABLA 'users'
-  // --------------------------------------------------------------------------
-  try {
-    let usersList: any[] = [];
-
-    // Intento 1: Consulta .or(...) formateada con comillas dobles para PostgREST
-    const buildIlike = (col: string, val: string) => `${col}.ilike."%${val.replace(/"/g, '')}%"`;
-    const userOrPatterns: string[] = [
-      buildIlike('display_name', query),
-      buildIlike('nombres', query),
-      buildIlike('apellido_paterno', query),
-      buildIlike('apellido_materno', query),
-      buildIlike('email', query)
-    ];
-
-    tokens.forEach(t => {
-      if (t.length >= 2) {
-        userOrPatterns.push(buildIlike('display_name', t));
-        userOrPatterns.push(buildIlike('nombres', t));
-        userOrPatterns.push(buildIlike('apellido_paterno', t));
-        userOrPatterns.push(buildIlike('apellido_materno', t));
-        userOrPatterns.push(buildIlike('email', t));
-      }
-    });
-
-    const { data: userData, error: userErr } = await supabase
+    const { data: usersData, error: usersErr } = await supabase
       .from('users')
-      .select('id, firebase_uid, display_name, nombres, apellido_paterno, apellido_materno, email, photo_url, role, claimed_student_id')
-      .or(userOrPatterns.join(','))
-      .limit(30);
+      .select('*');
 
-    if (!userErr && Array.isArray(userData) && userData.length > 0) {
-      usersList = userData;
-    } else {
-      // Intento 2 (Fallback antibugs): si la sintaxis del .or() de PostgREST fallase, consultar los usuarios directamente
-      const { data: fallbackUsers } = await supabase
-        .from('users')
-        .select('id, firebase_uid, display_name, nombres, apellido_paterno, apellido_materno, email, photo_url, role, claimed_student_id')
-        .limit(100);
+    if (!usersErr && Array.isArray(usersData)) {
+      usersData.forEach((u: any) => {
+        const fullStructured = [u.nombres, u.apellido_paterno, u.apellido_materno]
+          .filter(Boolean)
+          .join(' ')
+          .trim();
 
-      if (fallbackUsers) {
-        usersList = fallbackUsers;
-      }
-    }
-
-    // Filtrar y procesar resultados de 'users' con comparación inteligente de tokens
-    usersList.forEach((u: any) => {
-      const fullStructured = [u.nombres, u.apellido_paterno, u.apellido_materno]
-        .filter(Boolean)
-        .join(' ')
-        .trim();
-
-      const dispName = u.display_name || '';
-      const emailVal = u.email || '';
-      const blob = normalizeText(`${fullStructured} ${dispName} ${emailVal}`);
-
-      const isMatch = blob.includes(normQuery) || 
-        (tokens.length > 0 && tokens.every(t => blob.includes(t)));
-
-      if (isMatch) {
+        const dispName = u.display_name || u.username || '';
+        const emailVal = u.email || '';
         const titleName = fullStructured || dispName || emailVal.split('@')[0] || 'Usuario';
+        
+        const fullBlob = normalizeText(`${fullStructured} ${dispName} ${emailVal}`);
+        const wordsInUser = fullBlob.split(/\s+/).filter(Boolean);
+
+        // 1. Comprobar si es Coincidencia Exacta o Subcadena Directa
+        const isExactSubstring = fullBlob.includes(normQuery) || 
+          (queryTokens.length > 0 && queryTokens.every(t => fullBlob.includes(t)));
+
         const isClaimed = !!u.claimed_student_id;
         const subtitle = isClaimed 
           ? 'Estudiante Verificado' 
           : (u.role === 'admin' ? 'Administrador' : 'Usuario de Starryz');
+        const uid = String(u.firebase_uid || u.id);
 
-        addResult({
-          id: u.firebase_uid || u.id,
-          title: titleName,
-          subtitle,
-          type: 'student',
-          avatarUrl: u.photo_url || undefined,
-          url: `/perfil/${u.firebase_uid || u.id}`,
-          isFuzzy: false,
-          similarity: 1.0
-        });
-      }
-    });
-  } catch (uErr) {
-    console.warn('Aviso en consulta directa de usuarios:', uErr);
+        if (isExactSubstring) {
+          if (!seenIds.has(uid)) {
+            seenIds.add(uid);
+            exactResults.push({
+              id: uid,
+              title: titleName,
+              subtitle,
+              type: 'student',
+              avatarUrl: u.photo_url || undefined,
+              url: `/perfil/${uid}`,
+              isFuzzy: false,
+              similarity: 1.0
+            });
+          }
+          return;
+        }
+
+        // 2. Comprobar Coincidencia Difusa (Tolerancia a Errores de Ortografía)
+        if (queryTokens.length > 0) {
+          let totalScore = 0;
+          let matchedTokensCount = 0;
+          const correctedTokens: string[] = [];
+
+          queryTokens.forEach(qToken => {
+            let bestWord = '';
+            let bestSim = 0;
+
+            wordsInUser.forEach(uWord => {
+              const sim = tokenSimilarity(qToken, uWord);
+              if (sim > bestSim) {
+                bestSim = sim;
+                bestWord = uWord;
+              }
+            });
+
+            // Umbral de tolerancia a error (similitud >= 0.60 para palabras cortas/medianas)
+            if (bestSim >= 0.60) {
+              matchedTokensCount++;
+              totalScore += bestSim;
+              correctedTokens.push(bestWord);
+            }
+          });
+
+          // Si todos o la gran mayoría de los tokens coinciden difusamente
+          if (matchedTokensCount === queryTokens.length && matchedTokensCount > 0) {
+            const avgSim = totalScore / queryTokens.length;
+            if (!seenIds.has(uid)) {
+              seenIds.add(uid);
+
+              // Sugerencia de corrección ortográfica "¿Quizás quisiste decir?"
+              const suggestedTerm = titleName;
+
+              fuzzyResults.push({
+                id: uid,
+                title: titleName,
+                subtitle: `${subtitle} (Coincidencia cercana)`,
+                type: 'student',
+                avatarUrl: u.photo_url || undefined,
+                url: `/perfil/${uid}`,
+                isFuzzy: true,
+                similarity: avgSim,
+                didYouMean: suggestedTerm
+              });
+            }
+          }
+        }
+      });
+    }
+  } catch (e) {
+    console.warn('Error en búsqueda con autocompletado:', e);
   }
 
-  // --------------------------------------------------------------------------
-  // 3. Consulta Directa en 'students', 'professors' y 'educational_centers'
-  // --------------------------------------------------------------------------
-  try {
-    const [studentResponse, profResponse, centerResponse] = await Promise.all([
-      supabase
-        .from('students')
-        .select('id, nombre, apellidos, nombre_completo, avatar_url, institute_id')
-        .or(`nombre_completo.ilike."%${query}%",nombre.ilike."%${query}%",apellidos.ilike."%${query}%",id.ilike."%${query}%"`)
-        .limit(8),
-      supabase
-        .from('professors')
-        .select('id, nombre, apellidos, nombre_completo, role, institute_id, avatar_url')
-        .or(`nombre_completo.ilike."%${query}%",nombre.ilike."%${query}%",apellidos.ilike."%${query}%",id.ilike."%${query}%"`)
-        .limit(8),
-      supabase
-        .from('educational_centers')
-        .select('id, name, type, profile_photo_url')
-        .ilike('name', `%${query}%`)
-        .limit(8)
-    ]);
+  // Ordenar difusos por similitud descendente
+  fuzzyResults.sort((a, b) => (b.similarity || 0) - (a.similarity || 0));
 
-    // Estudiantes del directorio oficial
-    if (studentResponse.data && Array.isArray(studentResponse.data)) {
-      studentResponse.data.forEach((s: any) => {
-        const fullName = s.nombre_completo || `${s.nombre || ''} ${s.apellidos || ''}`.trim() || s.id;
-        addResult({
-          id: s.id,
-          title: fullName,
-          subtitle: s.institute_id || 'Estudiante del Instituto',
-          type: 'student',
-          avatarUrl: s.avatar_url || undefined,
-          url: `/estudiantes/${s.id}`,
-          isFuzzy: false,
-          similarity: 1.0
-        });
-      });
-    }
-
-    // Profesores
-    if (profResponse.data && Array.isArray(profResponse.data)) {
-      profResponse.data.forEach((p: any) => {
-        const isStudent = p.role === 'Alumno';
-        const fullName = p.nombre_completo || `${p.nombre || ''} ${p.apellidos || ''}`.trim() || p.id;
-        
-        addResult({
-          id: p.id,
-          title: fullName,
-          subtitle: isStudent ? 'Estudiante de la comunidad' : (p.institute_id || 'Docente Académico'),
-          type: isStudent ? 'student' : 'professor',
-          avatarUrl: p.avatar_url || undefined,
-          url: `/profesores/${p.id}`,
-          isFuzzy: false,
-          similarity: 1.0
-        });
-      });
-    }
-
-    // Centros Educativos
-    if (centerResponse.data && Array.isArray(centerResponse.data)) {
-      centerResponse.data.forEach((c: any) => {
-        const typeLabel = c.type ? (c.type.charAt(0).toUpperCase() + c.type.slice(1)) : 'Centro Educativo';
-        addResult({
-          id: c.id,
-          title: c.name,
-          subtitle: typeLabel,
-          type: 'center',
-          avatarUrl: c.profile_photo_url || undefined,
-          url: `/educational_centers/${toSlug(c.name)}`,
-          isFuzzy: false,
-          similarity: 1.0
-        });
-      });
-    }
-  } catch (err) {
-    console.warn('Aviso en consulta de directorio:', err);
-  }
-
-  return results.slice(0, 8);
+  const finalCombined = [...exactResults, ...fuzzyResults];
+  return finalCombined.slice(0, 8);
 }

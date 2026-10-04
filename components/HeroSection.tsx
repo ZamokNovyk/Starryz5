@@ -66,7 +66,7 @@ export default function HeroSection({
       <div className="relative z-20 w-full max-w-2xl mx-auto mb-6">
         <AutocompleteSearchBar
           value={searchQuery}
-          placeholder="Busca profesores, alumnos o instituciones..."
+          placeholder="Buscar usuarios por nombre..."
           onSearch={handleSearch}
           onSelectSuggestion={handleSelectSuggestion}
           inputClassName="px-6 py-4 sm:py-5 text-base sm:text-lg border border-zinc-800 focus-within:border-[#eab308]"

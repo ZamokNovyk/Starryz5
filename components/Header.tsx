@@ -646,7 +646,7 @@ export default function Header({
           <div className="hidden sm:flex flex-1 max-w-lg mx-2 lg:mx-6">
             <AutocompleteSearchBar
               value={searchQuery}
-              placeholder="Buscar profesores, centros o alumnos..."
+              placeholder="Buscar usuarios por nombre..."
               onSearch={handleSearchSubmit}
               onSelectSuggestion={handleSuggestionSelect}
             />
