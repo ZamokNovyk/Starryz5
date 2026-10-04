@@ -63,6 +63,7 @@ import {
   StudentLoveMessage
 } from '@/src/lib/students';
 import { getUserActitudCounts, getUserActitudVotes, toggleUserActitudVote } from '@/src/lib/userActitud';
+import { getUserCrushesCount, hasUserCrushed, toggleUserCrush } from '@/src/lib/userCrushes';
 import StudentTrendsEngine from '@/src/components/StudentTrendsEngine';
 import { getAdminDashboardMetrics, AdminDashboardData } from '@/src/lib/admin';
 import ProfessorNotificationModal from '@/components/Modals/ProfessorNotificationModal';
@@ -204,6 +205,50 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
 
     loadActitud();
   }, [uid, user?.uid]);
+
+  // Votos de 'users_crushes'
+  const [crushesCount, setCrushesCount] = useState(0);
+  const [hasCrushedUser, setHasCrushedUser] = useState(false);
+
+  useEffect(() => {
+    const targetUid = uid || user?.uid;
+    if (!targetUid) return;
+
+    async function loadCrushes() {
+      try {
+        const count = await getUserCrushesCount(targetUid);
+        setCrushesCount(count);
+
+        if (user?.uid && targetUid !== user.uid) {
+          const isCrushed = await hasUserCrushed(targetUid, user.uid);
+          setHasCrushedUser(isCrushed);
+        } else {
+          setHasCrushedUser(false);
+        }
+      } catch (err) {
+        console.warn('Error al cargar crushes:', err);
+      }
+    }
+
+    loadCrushes();
+  }, [uid, user?.uid]);
+
+  const handleToggleCrush = async () => {
+    const targetUid = uid || user?.uid;
+    if (!user?.uid || !targetUid || targetUid === user.uid) return;
+
+    const nextState = !hasCrushedUser;
+    setHasCrushedUser(nextState);
+    setCrushesCount(prev => nextState ? prev + 1 : Math.max(0, prev - 1));
+
+    try {
+      const res = await toggleUserCrush(targetUid, user.uid);
+      setHasCrushedUser(res.hasCrushed);
+      setCrushesCount(res.newCount);
+    } catch (err) {
+      console.error('Error al votar crush:', err);
+    }
+  };
 
   const handleToggleActitud = async (type: 'yo_te_conozco' | 'fans') => {
     const targetUid = uid || user?.uid;
@@ -1376,29 +1421,49 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                   <div className="space-y-1">
                     <h3 className="text-xl font-black text-white uppercase tracking-tight flex items-center gap-2">
                       <Heart className="w-5 h-5 text-pink-500 fill-pink-500" />
-                      Flechazos y Mensajes de Amor Recibidos
+                      Flechazos y Mensajes de Amor
                     </h3>
                     <p className="text-xs text-zinc-400">
-                      Personas que te han marcado como su crush de forma anónima.
+                      {isSelfProfile 
+                        ? 'Personas que te han marcado como su crush de forma anónima.' 
+                        : 'Expresa tu admiración marcando a este usuario como tu crush.'}
                     </p>
                   </div>
                   <div className="px-3 py-1 rounded-full bg-pink-500/15 border border-pink-500/30 text-pink-400 text-xs font-black tracking-wider uppercase flex items-center gap-1.5">
-                    <span>💘 {claimedStudent?.crushes_count || 0} Flechazos</span>
+                    <span>💘 {crushesCount} Flechazos</span>
                   </div>
                 </div>
 
                 <div className="p-6 rounded-2xl bg-gradient-to-b from-pink-950/20 to-[#0e0e0e] border border-pink-500/20 text-center space-y-3 shadow-md">
                   <div className="w-16 h-16 mx-auto rounded-full bg-pink-500/10 border border-pink-500/30 flex items-center justify-center text-pink-400 shadow-[0_0_20px_rgba(236,72,153,0.2)]">
-                    <Heart className="w-8 h-8 fill-pink-500 animate-pulse" />
+                    <Heart className={`w-8 h-8 ${hasCrushedUser ? 'fill-pink-500 text-pink-500 scale-110' : 'fill-pink-500/30 text-pink-400'} animate-pulse`} />
                   </div>
                   <div>
                     <div className="text-4xl font-black text-white">
-                      {claimedStudent?.crushes_count || 0}
+                      {crushesCount}
                     </div>
                     <p className="text-xs text-zinc-400 mt-1 uppercase font-bold tracking-wider">
-                      {(claimedStudent?.crushes_count || 0) === 1 ? 'Persona te tiene como crush' : 'Personas te tienen como crush'}
+                      {crushesCount === 1 ? 'Persona le tiene como crush' : 'Personas le tienen como crush'}
                     </p>
                   </div>
+
+                  {/* Botón interactivo para marcar/desmarcar Crush cuando es perfil de otro usuario */}
+                  {!isSelfProfile && (
+                    <div className="pt-2">
+                      <button
+                        type="button"
+                        onClick={handleToggleCrush}
+                        className={`px-6 py-2.5 rounded-full font-black text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 mx-auto cursor-pointer shadow-md active:scale-95 ${
+                          hasCrushedUser
+                            ? 'bg-pink-500 text-white shadow-[0_0_15px_rgba(236,72,153,0.4)] hover:bg-pink-600'
+                            : 'bg-zinc-900 hover:bg-zinc-800 text-pink-400 border border-pink-500/40 hover:border-pink-500'
+                        }`}
+                      >
+                        <Heart className={`w-4 h-4 ${hasCrushedUser ? 'fill-white' : 'fill-pink-500/30'}`} />
+                        <span>{hasCrushedUser ? '✓ Es tu Crush (Quitar Flechazo)' : '💘 Marcar como mi Crush'}</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-4 pt-2">
