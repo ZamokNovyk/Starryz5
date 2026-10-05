@@ -183,8 +183,8 @@ async function startServer() {
         console.warn('[Storage Cleanup] Aviso no-bloqueante al purgar fotos viejas:', cleanErr);
       }
 
-      // Public URL de la imagen subida (usa el dominio CDN de Cloudflare si está configurado, o la URL de Backblaze)
-      const cdnDomain = process.env.PUBLIC_CDN_URL || process.env.VITE_CLOUDFLARE_CDN_URL;
+      // Public URL de la imagen subida (usa el dominio CDN de Cloudflare media.starryz5.com)
+      const cdnDomain = process.env.PUBLIC_CDN_URL || process.env.VITE_CLOUDFLARE_CDN_URL || 'https://media.starryz5.com';
       const baseUrl = cdnDomain ? cdnDomain.replace(/\/$/, '') : auth.downloadUrl;
       const publicUrl = `${baseUrl}/file/${B2_BUCKET_NAME}/${fileName}`;
 

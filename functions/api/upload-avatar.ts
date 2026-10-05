@@ -8,6 +8,8 @@ interface Env {
   B2_APPLICATION_KEY?: string;
   B2_BUCKET_ID?: string;
   B2_BUCKET_NAME?: string;
+  PUBLIC_CDN_URL?: string;
+  VITE_CLOUDFLARE_CDN_URL?: string;
 }
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
@@ -116,7 +118,11 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     }
 
     const uploadResult: any = await uploadRes.json();
-    const publicUrl = `${downloadUrl}/file/${B2_BUCKET_NAME}/${fileName}`;
+    
+    // Usar el dominio CDN de Cloudflare si está configurado (media.starryz5.com), o fallback
+    const cdnDomain = (env as any).PUBLIC_CDN_URL || (env as any).VITE_CLOUDFLARE_CDN_URL || 'https://media.starryz5.com';
+    const baseUrl = cdnDomain ? cdnDomain.trim().replace(/\/$/, '') : downloadUrl;
+    const publicUrl = `${baseUrl}/file/${B2_BUCKET_NAME}/${fileName}`;
 
     // 4. Limpieza automática: Buscar y eliminar fotos anteriores del mismo usuario
     try {
