@@ -120,7 +120,10 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const uploadResult: any = await uploadRes.json();
     
     // Usar el dominio CDN de Cloudflare si está configurado (media.starryz5.com), o fallback
-    const cdnDomain = (env as any).PUBLIC_CDN_URL || (env as any).VITE_CLOUDFLARE_CDN_URL || 'https://media.starryz5.com';
+    let cdnDomain = (env as any).PUBLIC_CDN_URL || (env as any).VITE_CLOUDFLARE_CDN_URL || 'https://media.starryz5.com';
+    if (cdnDomain.includes('cdn.starryz5.com')) {
+      cdnDomain = 'https://media.starryz5.com';
+    }
     const baseUrl = cdnDomain ? cdnDomain.trim().replace(/\/$/, '') : downloadUrl;
     const publicUrl = `${baseUrl}/file/${B2_BUCKET_NAME}/${fileName}`;
 

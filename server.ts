@@ -184,7 +184,10 @@ async function startServer() {
       }
 
       // Public URL de la imagen subida (usa el dominio CDN de Cloudflare media.starryz5.com)
-      const cdnDomain = process.env.PUBLIC_CDN_URL || process.env.VITE_CLOUDFLARE_CDN_URL || 'https://media.starryz5.com';
+      let cdnDomain = process.env.PUBLIC_CDN_URL || process.env.VITE_CLOUDFLARE_CDN_URL || 'https://media.starryz5.com';
+      if (cdnDomain.includes('cdn.starryz5.com')) {
+        cdnDomain = 'https://media.starryz5.com';
+      }
       const baseUrl = cdnDomain ? cdnDomain.replace(/\/$/, '') : auth.downloadUrl;
       const publicUrl = `${baseUrl}/file/${B2_BUCKET_NAME}/${fileName}`;
 

@@ -96,16 +96,29 @@ export async function uploadAvatarToBackblaze(
 }
 
 /**
+ * Limpia y corrige la URL del avatar para asegurar que use el subdominio DNS activo 'media.starryz5.com'
+ */
+export function formatAvatarUrl(url: string | null | undefined): string {
+  if (!url) return '';
+  if (url.includes('cdn.starryz5.com')) {
+    return url.replace('cdn.starryz5.com', 'media.starryz5.com');
+  }
+  return url;
+}
+
+/**
  * Actualiza la URL del avatar en Supabase y en Firebase Auth de forma sincronizada
  */
 export async function syncUserAvatarProfile(
   firebaseUid: string,
   publicUrl: string
 ): Promise<{ success: boolean; photoUrl: string }> {
+  const cleanUrl = formatAvatarUrl(publicUrl);
+
   // 1. Actualizar en Supabase (tabla 'users')
   const { error: sbError } = await supabase
     .from('users')
-    .update({ photo_url: publicUrl })
+    .update({ photo_url: cleanUrl })
     .eq('firebase_uid', firebaseUid);
 
   if (sbError) {
@@ -116,7 +129,7 @@ export async function syncUserAvatarProfile(
   // 2. Actualizar en Firebase Auth si el usuario actual coincide
   if (auth.currentUser && auth.currentUser.uid === firebaseUid) {
     try {
-      await updateProfile(auth.currentUser, { photoURL: publicUrl });
+      await updateProfile(auth.currentUser, { photoURL: cleanUrl });
     } catch (fbErr) {
       console.warn('Aviso: No se pudo actualizar photoURL en Firebase Auth:', fbErr);
     }
@@ -124,6 +137,6 @@ export async function syncUserAvatarProfile(
 
   return {
     success: true,
-    photoUrl: publicUrl,
+    photoUrl: cleanUrl,
   };
 }
