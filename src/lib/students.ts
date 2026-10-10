@@ -1,4 +1,6 @@
 import { supabase } from './supabase';
+import { getUserActitudCounts, hasUserVotedActitud, toggleUserActitud } from './userActitud';
+import { getUserCrushesCount, hasUserCrushed, toggleUserCrush } from './userCrushes';
 
 export interface Student {
   id: string; // generated slug e.g. "carlos.mendoza.ramirez"
@@ -83,6 +85,53 @@ export function isStudentClaimed(studentIdOrSlug: string): { claimed: boolean; u
     } catch (e) {}
   }
   return { claimed: false };
+}
+
+/**
+ * Consulta asíncrona robusta si un perfil de estudiante ya ha sido reclamado,
+ * verificando en la tabla 'users' (claimed_student_id), en la tabla 'students' (is_claimed),
+ * y en el caché local.
+ */
+export async function checkStudentClaimStatus(studentIdOrSlug: string): Promise<{ claimed: boolean; uid?: string; at?: string; name?: string }> {
+  const cleanId = (studentIdOrSlug || '').toLowerCase().trim();
+  // 1. Verificar en tabla users (referencia principal de cuenta vinculada)
+  try {
+    const { data: userClaim } = await supabase
+      .from('users')
+      .select('id, display_name, email, updated_at')
+      .eq('claimed_student_id', cleanId)
+      .maybeSingle();
+
+    if (userClaim) {
+      return {
+        claimed: true,
+        uid: userClaim.id,
+        at: userClaim.updated_at,
+        name: userClaim.display_name,
+      };
+    }
+  } catch (e) {}
+
+  // 2. Verificar en tabla students
+  try {
+    const { data: stClaim } = await supabase
+      .from('students')
+      .select('is_claimed, claimed_by_uid, claimed_at, claimed_by_name')
+      .eq('id', cleanId)
+      .maybeSingle();
+
+    if (stClaim && stClaim.is_claimed) {
+      return {
+        claimed: true,
+        uid: stClaim.claimed_by_uid,
+        at: stClaim.claimed_at,
+        name: stClaim.claimed_by_name,
+      };
+    }
+  } catch (e) {}
+
+  // 3. Fallback en caché de navegador
+  return isStudentClaimed(cleanId);
 }
 
 /**
@@ -230,13 +279,54 @@ export async function getStudentById(slug: string): Promise<Student | null> {
       const claim = isStudentClaimed(data.id);
       const expectedDni = data.dni || getExpectedStudentDni(data.id);
 
+      // 1. Consultar si algún usuario en la tabla 'users' reclamó este perfil de estudiante
+      let isClaimed = Boolean(data.is_claimed || claim.claimed);
+      let claimedByUid = data.claimed_by_uid || claim.uid;
+      let claimedByName = data.claimed_by_name || claim.name;
+
+      if (!isClaimed || !claimedByUid) {
+        try {
+          const { data: claimUser } = await supabase
+            .from('users')
+            .select('id, display_name, email, knows_count, fans_count, crushes_count')
+            .eq('claimed_student_id', data.id)
+            .maybeSingle();
+
+          if (claimUser) {
+            isClaimed = true;
+            claimedByUid = claimUser.id;
+            claimedByName = claimUser.display_name;
+          }
+        } catch (e) {}
+      }
+
+      // 2. Si está reclamado, consultar conteos oficiales directamente desde las tablas de usuario (users_actitud, users_crushes)
+      let dynamicKnows = data.knows_count || 0;
+      let dynamicFans = data.fans_count || 0;
+      let dynamicCrushes = data.crushes_count || 0;
+
+      if (isClaimed && claimedByUid) {
+        try {
+          const [actCounts, crushesCount] = await Promise.all([
+            getUserActitudCounts(claimedByUid),
+            getUserCrushesCount(claimedByUid),
+          ]);
+          dynamicKnows = actCounts.knowCount;
+          dynamicFans = actCounts.fanCount;
+          dynamicCrushes = crushesCount;
+        } catch (e) {}
+      }
+
       return {
         ...data,
         dni: expectedDni || data.dni,
-        is_claimed: data.is_claimed || claim.claimed,
-        claimed_by_uid: data.claimed_by_uid || claim.uid,
+        is_claimed: isClaimed,
+        claimed_by_uid: claimedByUid,
         claimed_at: data.claimed_at || claim.at,
-        claimed_by_name: data.claimed_by_name || claim.name,
+        claimed_by_name: claimedByName,
+        knows_count: dynamicKnows,
+        fans_count: dynamicFans,
+        crushes_count: dynamicCrushes,
       } as Student;
     }
 
@@ -294,7 +384,25 @@ export async function claimStudentProfile(
     throw new Error('No se encontró el registro oficial de este estudiante.');
   }
 
-  // Comprobar si ya fue reclamado por otra persona
+  // 1. Verificación definitiva en tabla 'users' para evitar doble reclamo entre usuarios
+  try {
+    const { data: existingClaimUser } = await supabase
+      .from('users')
+      .select('id, email, display_name')
+      .eq('claimed_student_id', student.id)
+      .maybeSingle();
+
+    if (existingClaimUser) {
+      const isSameUser = existingClaimUser.id === user.uid || (user.email && existingClaimUser.email === user.email);
+      if (!isSameUser) {
+        throw new Error('Este perfil de estudiante ya ha sido reclamado y verificado por otro usuario.');
+      }
+    }
+  } catch (err: any) {
+    if (err.message?.includes('reclamado')) throw err;
+  }
+
+  // 2. Comprobar si ya fue reclamado en students o memoria
   const claimInfo = isStudentClaimed(student.id);
   const alreadyClaimed = student.is_claimed || claimInfo.claimed;
   const currentClaimant = student.claimed_by_uid || claimInfo.uid;
@@ -314,7 +422,7 @@ export async function claimStudentProfile(
 
   // 1. Actualizar tabla students en Supabase
   try {
-    await supabase
+    const { error: stUpdateErr } = await supabase
       .from('students')
       .update({
         dni: cleanDni,
@@ -324,16 +432,100 @@ export async function claimStudentProfile(
         claimed_by_name: user.displayName || user.email || 'Usuario',
       })
       .eq('id', student.id);
+
+    if (stUpdateErr) {
+      console.warn('Aviso al actualizar is_claimed en students (posiblemente columna pendiente en SQL):', stUpdateErr.message);
+      // Fallback si la columna is_claimed no existe aún en la tabla students de Supabase
+      await supabase
+        .from('students')
+        .update({ dni: cleanDni })
+        .eq('id', student.id);
+    }
   } catch (err) {
     console.warn('Aviso al actualizar tabla students en Supabase:', err);
   }
 
-  // 2. Fusionar interacciones, votos, flechazos y mensajes acumulados por el usuario
+  // 2. MIGRACIÓN: Transferir student_interactions -> users_actitud
   try {
+    const { data: stInteractions } = await supabase
+      .from('student_interactions')
+      .select('user_uid, interaction_type')
+      .eq('student_id', student.id);
+
+    if (stInteractions && stInteractions.length > 0) {
+      for (const item of stInteractions) {
+        if (!item.user_uid || item.user_uid === user.uid) continue;
+        const attitudeType: 'yo_te_conozco' | 'fans' = item.interaction_type === 'knows' ? 'yo_te_conozco' : 'fans';
+
+        // Evitar duplicados si el votante ya votó en users_actitud
+        const { data: existingAct } = await supabase
+          .from('users_actitud')
+          .select('id')
+          .eq('target_user_id', user.uid)
+          .eq('voter_uid', item.user_uid)
+          .maybeSingle();
+
+        if (!existingAct) {
+          await supabase.from('users_actitud').insert({
+            target_user_id: user.uid,
+            voter_uid: item.user_uid,
+            attitude_type: attitudeType,
+          });
+        }
+      }
+
+      // Limpiar filas migradas de student_interactions para evitar duplicidad
+      await supabase.from('student_interactions').delete().eq('student_id', student.id);
+    }
+  } catch (migErr) {
+    console.warn('Aviso al migrar student_interactions a users_actitud:', migErr);
+  }
+
+  // 3. MIGRACIÓN: Transferir student_crushes -> users_crushes
+  try {
+    const { data: stCrushes } = await supabase
+      .from('student_crushes')
+      .select('user_uid')
+      .eq('student_id', student.id);
+
+    if (stCrushes && stCrushes.length > 0) {
+      for (const item of stCrushes) {
+        if (!item.user_uid || item.user_uid === user.uid) continue;
+
+        const { data: existingCrush } = await supabase
+          .from('users_crushes')
+          .select('id')
+          .eq('target_user_id', user.uid)
+          .eq('voter_uid', item.user_uid)
+          .maybeSingle();
+
+        if (!existingCrush) {
+          await supabase.from('users_crushes').insert({
+            target_user_id: user.uid,
+            voter_uid: item.user_uid,
+          });
+        }
+      }
+
+      // Limpiar filas migradas de student_crushes
+      await supabase.from('student_crushes').delete().eq('student_id', student.id);
+    }
+  } catch (migErr) {
+    console.warn('Aviso al migrar student_crushes a users_crushes:', migErr);
+  }
+
+  // 4. Calcular conteos unificados en users_actitud y users_crushes y sincronizar tabla users
+  try {
+    const { knowCount, fanCount } = await getUserActitudCounts(user.uid);
+    const crushesCount = await getUserCrushesCount(user.uid);
+
     let updateUserQuery = supabase.from('users').update({ 
       display_name: officialName, 
       claimed_student_id: student.id, 
       is_verified_student: true, 
+      knows_count: knowCount,
+      fans_count: fanCount,
+      crushes_count: crushesCount,
       updated_at: now 
     });
     if (user.email) {
@@ -343,9 +535,7 @@ export async function claimStudentProfile(
     }
 
     await Promise.allSettled([
-      supabase.from('student_interactions').update({ student_id: student.id }).eq('student_id', user.uid),
       supabase.from('student_votes').update({ student_id: student.id }).eq('student_id', user.uid),
-      supabase.from('student_crushes').update({ student_id: student.id }).eq('student_id', user.uid),
       supabase.from('student_love_messages').update({ student_id: student.id }).eq('student_id', user.uid),
       updateUserQuery,
       supabase.from('user_profiles').update({
@@ -472,6 +662,25 @@ export async function getStudentsByInstitute(instituteId: string): Promise<Stude
       console.warn('Aviso al cargar crushes de estudiantes:', e);
     }
 
+    // Mapear en batch a usuarios de 'users' que hayan reclamado perfiles de estudiantes
+    const claimedUsersMap: Record<string, any> = {};
+    try {
+      const { data: claimedUsers } = await supabase
+        .from('users')
+        .select('id, claimed_student_id, display_name, knows_count, fans_count, crushes_count')
+        .not('claimed_student_id', 'is', null);
+
+      if (claimedUsers) {
+        claimedUsers.forEach((u: any) => {
+          if (u.claimed_student_id) {
+            claimedUsersMap[u.claimed_student_id] = u;
+          }
+        });
+      }
+    } catch (e) {
+      console.warn('Aviso al consultar usuarios vinculados en Supabase:', e);
+    }
+
     // Asegurar que Daniel Gustavo Castillo Ramirez esté en el listado si no viene de la BD
     const hasDaniel = activeStudents.some((s: any) => s.id?.includes('daniel.gustavo'));
     if (!hasDaniel) {
@@ -502,6 +711,11 @@ export async function getStudentsByInstitute(instituteId: string): Promise<Stude
       const ints = interactionsMap[p.id] || { knows: 0, fan: 0 };
       const expectedDni = p.dni || getExpectedStudentDni(p.id);
       const claim = isStudentClaimed(p.id);
+      const userClaim = claimedUsersMap[p.id];
+
+      const isClaimed = Boolean(p.is_claimed || claim.claimed || userClaim);
+      const claimedByUid = p.claimed_by_uid || claim.uid || userClaim?.id;
+      const claimedByName = p.claimed_by_name || claim.name || userClaim?.display_name;
       
       let localCrushCount = 0;
       if (typeof window !== 'undefined') {
@@ -513,17 +727,30 @@ export async function getStudentsByInstitute(instituteId: string): Promise<Stude
 
       const totalCrushes = Math.max(crushesMap[p.id] || 0, localCrushCount);
 
+      // Si el perfil está reclamado, sus datos de interacciones y crushes se leen de las tablas de usuarios (users_actitud / users_crushes o users)
+      const finalKnows = isClaimed && userClaim && typeof userClaim.knows_count === 'number'
+        ? userClaim.knows_count
+        : (ints.knows || p.knows_count || 0);
+
+      const finalFans = isClaimed && userClaim && typeof userClaim.fans_count === 'number'
+        ? userClaim.fans_count
+        : (ints.fan || p.fans_count || 0);
+
+      const finalCrushes = isClaimed && userClaim && typeof userClaim.crushes_count === 'number'
+        ? userClaim.crushes_count
+        : (totalCrushes || p.crushes_count || 0);
+
       return {
         ...p,
         dni: expectedDni || p.dni,
-        is_claimed: p.is_claimed || claim.claimed,
-        claimed_by_uid: p.claimed_by_uid || claim.uid,
+        is_claimed: isClaimed,
+        claimed_by_uid: claimedByUid,
         claimed_at: p.claimed_at || claim.at,
-        claimed_by_name: p.claimed_by_name || claim.name,
+        claimed_by_name: claimedByName,
         views_count: typeof p.views_count === 'number' ? p.views_count : (Number(p.views_count) || 0),
-        knows_count: ints.knows || p.knows_count || 0,
-        fans_count: ints.fan || p.fans_count || 0,
-        crushes_count: totalCrushes || p.crushes_count || 0,
+        knows_count: finalKnows,
+        fans_count: finalFans,
+        crushes_count: finalCrushes,
         score: typeof p.score === 'number' ? Number(p.score) : 0.0,
         total_ratings: typeof p.total_ratings === 'number' ? p.total_ratings : 0,
       } as Student;
@@ -542,6 +769,16 @@ export async function getUserStudentInteraction(
   userUid: string
 ): Promise<{ interaction_type: 'knows' | 'fan' | null } | null> {
   try {
+    // 1. Si el estudiante está reclamado, consultar directamente users_actitud
+    const student = await getStudentById(studentId);
+    if (student?.is_claimed && student.claimed_by_uid) {
+      const status = await hasUserVotedActitud(student.claimed_by_uid, userUid);
+      if (status.fans) return { interaction_type: 'fan' };
+      if (status.knows) return { interaction_type: 'knows' };
+      return null;
+    }
+
+    // 2. Si no está reclamado, consultar student_interactions
     const { data, error } = await supabase
       .from('student_interactions')
       .select('interaction_type')
@@ -567,6 +804,14 @@ export async function getUserStudentInteraction(
  */
 export async function getStudentInteractionCounts(studentId: string): Promise<{ knows: number; fan: number }> {
   try {
+    // 1. Si el estudiante está reclamado, consultar directamente users_actitud
+    const student = await getStudentById(studentId);
+    if (student?.is_claimed && student.claimed_by_uid) {
+      const counts = await getUserActitudCounts(student.claimed_by_uid);
+      return { knows: counts.knowCount, fan: counts.fanCount };
+    }
+
+    // 2. Si no está reclamado, consultar student_interactions
     const { data, error } = await supabase
       .from('student_interactions')
       .select('interaction_type')
@@ -672,7 +917,50 @@ export async function toggleStudentInteraction(
   actorName?: string
 ): Promise<{ success: boolean; action: 'inserted' | 'deleted' | 'updated'; current_type: 'knows' | 'fan' | null } | null> {
   try {
-    // Verificar si ya existe interacción
+    // 1. Si el estudiante está reclamado, dirigir el voto a users_actitud
+    const student = await getStudentById(studentId);
+    if (student?.is_claimed && student.claimed_by_uid) {
+      if (student.claimed_by_uid === userUid) {
+        throw new Error('No puedes votar por tu propio perfil.');
+      }
+      const attitudeType = type === 'knows' ? 'yo_te_conozco' : 'fans';
+      const result = await toggleUserActitudVote(student.claimed_by_uid, userUid, attitudeType);
+
+      if (result.error) {
+        throw new Error(result.error);
+      }
+
+      // Notificaciones en segundo plano
+      try {
+        if (type === 'knows' && result.activeVote === 'yo_te_conozco') {
+          notifyStudentSubscribers({
+            studentId,
+            studentName,
+            eventType: 'known_added',
+            actorUid: userUid,
+            actorName: actorName || 'Un estudiante',
+            totalCount: result.newCounts.knowCount
+          }).catch(() => {});
+        } else if (type === 'fan') {
+          notifyStudentSubscribers({
+            studentId,
+            studentName,
+            eventType: result.activeVote === 'fans' ? 'fan_added' : 'fan_removed',
+            actorUid: userUid,
+            actorName: actorName || 'Un estudiante',
+            totalCount: result.newCounts.fanCount
+          }).catch(() => {});
+        }
+      } catch (notifErr) {
+        console.warn('Error disparando notificación:', notifErr);
+      }
+
+      const resAction = !result.activeVote ? 'deleted' : 'inserted';
+      const currType = result.activeVote === 'yo_te_conozco' ? 'knows' : result.activeVote === 'fans' ? 'fan' : null;
+      return { success: true, action: resAction, current_type: currType };
+    }
+
+    // 2. Si no está reclamado, guardar en la tabla student_interactions
     const { data: existing, error: fetchErr } = await supabase
       .from('student_interactions')
       .select('id, interaction_type')
@@ -861,6 +1149,17 @@ export async function submitStudentVote(
  */
 export async function getStudentCrushStatus(studentId: string, userUid: string): Promise<{ count: number; hasCrushed: boolean }> {
   try {
+    // 1. Si el estudiante está reclamado, consultar directamente users_crushes
+    const student = await getStudentById(studentId);
+    if (student?.is_claimed && student.claimed_by_uid) {
+      const [hasCrushed, count] = await Promise.all([
+        hasUserCrushed(student.claimed_by_uid, userUid),
+        getUserCrushesCount(student.claimed_by_uid)
+      ]);
+      return { count, hasCrushed };
+    }
+
+    // 2. Si no está reclamado, consultar student_crushes
     const { data, error } = await supabase
       .from('student_crushes')
       .select('id, user_uid')
@@ -889,6 +1188,36 @@ export async function toggleStudentCrush(
   actorName?: string
 ): Promise<{ success: boolean; hasCrushed: boolean; count: number; error?: string }> {
   try {
+    // 1. Si el estudiante está reclamado, dirigir a users_crushes
+    const student = await getStudentById(studentId);
+    if (student?.is_claimed && student.claimed_by_uid) {
+      if (student.claimed_by_uid === userUid) {
+        const curCount = await getUserCrushesCount(student.claimed_by_uid);
+        return { success: false, hasCrushed: false, count: curCount, error: 'No puedes marcarte a ti mismo como crush.' };
+      }
+
+      const res = await toggleUserCrush(student.claimed_by_uid, userUid);
+      
+      try {
+        notifyStudentSubscribers({
+          studentId,
+          studentName,
+          eventType: res.hasCrushed ? 'crush_added' : 'crush_removed',
+          actorUid: userUid,
+          actorName: actorName || 'Alguien anónimo',
+          totalCount: res.newCount
+        }).catch(() => {});
+      } catch (e) {}
+
+      return {
+        success: !res.error,
+        hasCrushed: res.hasCrushed,
+        count: res.newCount,
+        error: res.error
+      };
+    }
+
+    // 2. Si no está reclamado, usar la tabla student_crushes
     const { data: existing, error: checkErr } = await supabase
       .from('student_crushes')
       .select('id')

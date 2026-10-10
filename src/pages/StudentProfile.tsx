@@ -1034,10 +1034,17 @@ export default function StudentProfile({
           </p>
 
           {student.is_claimed ? (
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold shadow-sm">
-              <CheckCircle2 className="w-3.5 h-3.5 stroke-[3]" />
-              <span>Perfil Oficial Verificado</span>
-            </div>
+            student.claimed_by_uid && user?.uid && student.claimed_by_uid === user.uid ? (
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#eab308]/15 border border-[#eab308]/40 text-[#eab308] text-xs font-bold shadow-sm">
+                <CheckCircle2 className="w-3.5 h-3.5 stroke-[3]" />
+                <span>Tu Perfil Oficial Verificado</span>
+              </div>
+            ) : (
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold shadow-sm">
+                <CheckCircle2 className="w-3.5 h-3.5 stroke-[3]" />
+                <span>Perfil Oficial Verificado</span>
+              </div>
+            )
           ) : (
             <button
               type="button"

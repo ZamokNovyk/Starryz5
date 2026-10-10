@@ -38,10 +38,10 @@ export default function ClaimProfileModal({
   React.useEffect(() => {
     if (isOpen) {
       setDni('');
-      setError(null);
+      setError(student.is_claimed ? 'Este perfil ya se encuentra reclamado y verificado.' : null);
       setSuccess(null);
     }
-  }, [isOpen]);
+  }, [isOpen, student.is_claimed]);
 
   if (!isOpen) return null;
 
