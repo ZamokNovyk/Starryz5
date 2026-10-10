@@ -3,9 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/src/lib/supabase';
 import { useAuth } from '@/src/context/AuthContext';
-import { auth } from '@/src/lib/firebase';
-import { checkUsernameAvailable } from '@/src/lib/auth';
-import { updateProfile } from 'firebase/auth';
+import { checkUsernameAvailable, updateAuthUserProfile } from '@/src/lib/auth';
 import { motion } from 'motion/react';
 import { 
   User, 
@@ -875,16 +873,10 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
         }));
       } catch (e) {}
 
-      // 3. Actualizar en Firebase Auth si el usuario de Firebase está disponible
-      if (auth.currentUser) {
-        try {
-          await updateProfile(auth.currentUser, {
-            displayName: cleanFullName
-          });
-        } catch (authErr) {
-          console.warn('Aviso actualizando perfil en Firebase Auth:', authErr);
-        }
-      }
+      // 3. Actualizar en sesión local
+      updateAuthUserProfile({
+        displayName: cleanFullName
+      });
 
       setInitialDisplayName(cleanFullName);
       setDisplayNameInput(cleanFullName);

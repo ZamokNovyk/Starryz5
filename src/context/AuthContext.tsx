@@ -1,7 +1,13 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
-import { auth } from '@/src/lib/firebase';
-import { AuthUser, loginWithGoogle, loginAnonymously, logout, syncUserWithSupabase, linkAnonymousWithGoogle } from '@/src/lib/auth';
+import { 
+  AuthUser, 
+  loginWithGoogle, 
+  loginAnonymously, 
+  logout, 
+  linkAnonymousWithGoogle,
+  onAuthStateChanged,
+  getStoredUser
+} from '@/src/lib/auth';
 
 interface AuthContextType {
   user: AuthUser | null;
@@ -16,37 +22,14 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Inicializa inmediatamente con el usuario almacenado para evitar parpadeos
+  const [user, setUser] = useState<AuthUser | null>(() => getStoredUser());
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
-      try {
-        setLoading(true);
-        if (firebaseUser) {
-          const authUser: AuthUser = {
-            uid: firebaseUser.uid,
-            displayName: firebaseUser.displayName || (firebaseUser.isAnonymous ? 'Usuario Anónimo' : null),
-            email: firebaseUser.email,
-            photoURL: firebaseUser.photoURL,
-            isAnonymous: firebaseUser.isAnonymous,
-          };
-          setUser(authUser);
-          
-          // Sincroniza automáticamente con Supabase al detectar inicio de sesión
-          try {
-            await syncUserWithSupabase(authUser);
-          } catch (syncError: any) {
-            console.warn('Aviso de sincronización automática:', syncError?.message || syncError);
-          }
-        } else {
-          setUser(null);
-        }
-      } catch (err) {
-        console.error('Error al manejar el cambio de autenticación de Firebase:', err);
-      } finally {
-        setLoading(false);
-      }
+    const unsubscribe = onAuthStateChanged((authUser: AuthUser | null) => {
+      setUser(authUser);
+      setLoading(false);
     });
 
     return () => unsubscribe();
@@ -55,7 +38,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const handleLoginWithGoogle = async () => {
     setLoading(true);
     try {
-      return await loginWithGoogle();
+      const loggedUser = await loginWithGoogle();
+      setUser(loggedUser);
+      return loggedUser;
     } finally {
       setLoading(false);
     }
@@ -64,7 +49,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const handleLoginAnonymously = async () => {
     setLoading(true);
     try {
-      return await loginAnonymously();
+      const anonUser = await loginAnonymously();
+      setUser(anonUser);
+      return anonUser;
     } finally {
       setLoading(false);
     }

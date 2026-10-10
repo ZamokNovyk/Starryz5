@@ -5,8 +5,7 @@
  */
 
 import { supabase } from './supabase';
-import { auth } from './firebase';
-import { updateProfile } from 'firebase/auth';
+import { updateAuthUserProfile, getStoredUser } from './auth';
 import { CompressionResult } from './imageCompressor';
 
 export interface UploadAvatarResponse {
@@ -126,13 +125,10 @@ export async function syncUserAvatarProfile(
     throw new Error(`Error en Supabase: ${sbError.message}`);
   }
 
-  // 2. Actualizar en Firebase Auth si el usuario actual coincide
-  if (auth.currentUser && auth.currentUser.uid === firebaseUid) {
-    try {
-      await updateProfile(auth.currentUser, { photoURL: cleanUrl });
-    } catch (fbErr) {
-      console.warn('Aviso: No se pudo actualizar photoURL en Firebase Auth:', fbErr);
-    }
+  // 2. Actualizar en sesión local si el usuario actual coincide
+  const currentUser = getStoredUser();
+  if (currentUser && currentUser.uid === firebaseUid) {
+    updateAuthUserProfile({ photoURL: cleanUrl });
   }
 
   return {
