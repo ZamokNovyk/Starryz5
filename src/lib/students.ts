@@ -693,12 +693,7 @@ export async function claimStudentProfile(
       fans_count: fanCount,
       crushes_count: crushesCount,
       updated_at: now 
-    });
-    if (user.email) {
-      updateUserQuery = updateUserQuery.eq('email', user.email);
-    } else {
-      updateUserQuery = updateUserQuery.eq('id', user.uid);
-    }
+    }).eq('id', user.uid);
 
     await Promise.allSettled([
       updateUserQuery,
