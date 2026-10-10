@@ -360,6 +360,47 @@ export async function updateAuthUserProfile(updates: { displayName?: string; pho
     }
 
     await query;
+
+    // Sincronizar en tabla students si el usuario tiene un perfil de estudiante reclamado
+    try {
+      let targetStudentId: string | null = null;
+      if (typeof window !== 'undefined') {
+        const local = localStorage.getItem(`user_claimed_profile_${current.uid}`);
+        if (local) {
+          try { targetStudentId = JSON.parse(local)?.studentId; } catch {}
+        }
+      }
+      if (!targetStudentId) {
+        const { data: uRow } = await supabase
+          .from('users')
+          .select('claimed_student_id')
+          .or(`id.eq.${current.uid}${current.email ? `,email.eq.${current.email}` : ''}`)
+          .maybeSingle();
+        targetStudentId = uRow?.claimed_student_id;
+      }
+      if (!targetStudentId) {
+        const { data: stRow } = await supabase
+          .from('students')
+          .select('id')
+          .eq('claimed_by_uid', current.uid)
+          .maybeSingle();
+        targetStudentId = stRow?.id;
+      }
+
+      if (targetStudentId && updated.displayName) {
+        const parts = updated.displayName.trim().split(' ');
+        await supabase
+          .from('students')
+          .update({
+            nombre_completo: updated.displayName.trim(),
+            nombre: parts[0] || updated.displayName.trim(),
+            foto_url: updated.photoURL || undefined,
+          })
+          .eq('id', targetStudentId);
+      }
+    } catch (e) {
+      console.warn('Aviso sincronizando student desde updateAuthUserProfile:', e);
+    }
   } catch (err) {
     console.warn('Aviso al actualizar perfil en Supabase:', err);
   }

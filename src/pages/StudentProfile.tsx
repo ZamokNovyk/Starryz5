@@ -121,6 +121,7 @@ export default function StudentProfile({
   // Moderation / Community Report States
   const [activeReport, setActiveReport] = useState<ProfileReport | null>(null);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [selfActionNotice, setSelfActionNotice] = useState<string | null>(null);
 
   // Wiki Editing States
   const [isEditingWiki, setIsEditingWiki] = useState(false);
@@ -576,9 +577,33 @@ export default function StudentProfile({
     }
   };
 
+  // Detección de propiedad del perfil oficial
+  const studentIdForCheck = student?.id || slug;
+  const currentClaimInfo = isStudentClaimed(studentIdForCheck);
+  const effectiveClaimedUid = student?.claimed_by_uid || (currentClaimInfo.claimed ? currentClaimInfo.uid : undefined);
+  
+  const isOwnProfile = Boolean(
+    user?.uid && (
+      (effectiveClaimedUid && effectiveClaimedUid === user.uid) ||
+      (user as any)?.claimed_student_id === studentIdForCheck ||
+      (typeof window !== 'undefined' && (() => {
+        try {
+          const l = localStorage.getItem(`user_claimed_profile_${user.uid}`);
+          return l && JSON.parse(l)?.studentId === studentIdForCheck;
+        } catch { return false; }
+      })())
+    )
+  );
+
   const handleToggleCrush = async () => {
     if (!user) {
       if (onRequireAuth) onRequireAuth();
+      return;
+    }
+
+    if (isOwnProfile) {
+      setSelfActionNotice('No puedes darte un flechazo (Crush) a ti mismo.');
+      setTimeout(() => setSelfActionNotice(null), 4500);
       return;
     }
 
@@ -614,6 +639,11 @@ export default function StudentProfile({
     e.preventDefault();
     if (!user) {
       if (onRequireAuth) onRequireAuth();
+      return;
+    }
+
+    if (isOwnProfile) {
+      setLoveMessageError('No puedes enviarte mensajes de amor o confesiones a ti mismo.');
       return;
     }
 
@@ -728,6 +758,12 @@ export default function StudentProfile({
       return;
     }
 
+    if (isOwnProfile) {
+      setSelfActionNotice('No puedes votar ni ser fan de tu propio perfil oficial verificado.');
+      setTimeout(() => setSelfActionNotice(null), 4500);
+      return;
+    }
+
     if (!student) return;
     const studentId = student.id || slug;
 
@@ -799,6 +835,12 @@ export default function StudentProfile({
       if (onRequireAuth) {
         onRequireAuth();
       }
+      return;
+    }
+
+    if (isOwnProfile) {
+      setSelfActionNotice('No puedes calificar tu propio perfil oficial verificado.');
+      setTimeout(() => setSelfActionNotice(null), 4500);
       return;
     }
 
@@ -1114,7 +1156,7 @@ export default function StudentProfile({
           </p>
 
           {student.is_claimed ? (
-            student.claimed_by_uid && user?.uid && student.claimed_by_uid === user.uid ? (
+            isOwnProfile ? (
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#eab308]/15 border border-[#eab308]/40 text-[#eab308] text-xs font-bold shadow-sm">
                 <CheckCircle2 className="w-3.5 h-3.5 stroke-[3]" />
                 <span>Tu Perfil Oficial Verificado</span>
@@ -1137,17 +1179,35 @@ export default function StudentProfile({
             </button>
           )}
         </div>
+
+        {/* Banner de aviso de autovoto o autointeracción */}
+        {selfActionNotice && (
+          <div className="w-full max-w-md mx-auto p-3.5 bg-amber-500/15 border border-amber-500/40 rounded-2xl text-amber-300 text-xs font-bold text-center flex items-center justify-center gap-2.5 shadow-lg animate-in fade-in slide-in-from-top duration-300">
+            <AlertCircle className="w-4 h-4 shrink-0 text-amber-400" />
+            <span>{selfActionNotice}</span>
+          </div>
+        )}
       </div>
 
       {/* METRIC CARDS (Yo te conozco / Fan - Diseñados en grilla de 2 columnas) */}
       <div className="grid grid-cols-2 gap-4">
         {/* Yo te conozco */}
         <div 
-          onClick={() => handleInteractionToggle('knows')}
-          className={`bg-[#0d0d0d] border rounded-2xl p-6 text-center transition-all cursor-pointer select-none active:scale-[0.98] duration-200 ${
-            hasVotedKnow 
-              ? 'border-blue-500 bg-blue-500/10 shadow-[0_0_15px_rgba(59,130,246,0.2)]' 
-              : 'border-zinc-800/80 hover:border-blue-500/40 hover:bg-[#121212]'
+          onClick={() => {
+            if (isOwnProfile) {
+              setSelfActionNotice('No puedes votar por tu propio perfil oficial.');
+              setTimeout(() => setSelfActionNotice(null), 4500);
+              return;
+            }
+            handleInteractionToggle('knows');
+          }}
+          title={isOwnProfile ? "No puedes interactuar en tu propio perfil oficial verificado" : undefined}
+          className={`bg-[#0d0d0d] border rounded-2xl p-6 text-center transition-all select-none duration-200 ${
+            isOwnProfile
+              ? 'opacity-70 border-zinc-800 cursor-not-allowed'
+              : hasVotedKnow 
+                ? 'border-blue-500 bg-blue-500/10 shadow-[0_0_15px_rgba(59,130,246,0.2)] cursor-pointer active:scale-[0.98]' 
+                : 'border-zinc-800/80 hover:border-blue-500/40 hover:bg-[#121212] cursor-pointer active:scale-[0.98]'
           }`}
         >
           <div className="flex justify-center mb-1">
@@ -1163,11 +1223,21 @@ export default function StudentProfile({
 
         {/* Fan */}
         <div 
-          onClick={() => handleInteractionToggle('fan')}
-          className={`bg-[#0d0d0d] border rounded-2xl p-6 text-center transition-all cursor-pointer select-none active:scale-[0.98] duration-200 ${
-            hasVotedFan 
-              ? 'border-red-500 bg-red-500/10 shadow-[0_0_15px_rgba(239,68,68,0.2)]' 
-              : 'border-zinc-800/80 hover:border-red-500/40 hover:bg-[#121212]'
+          onClick={() => {
+            if (isOwnProfile) {
+              setSelfActionNotice('No puedes ser fan de tu propio perfil oficial.');
+              setTimeout(() => setSelfActionNotice(null), 4500);
+              return;
+            }
+            handleInteractionToggle('fan');
+          }}
+          title={isOwnProfile ? "No puedes interactuar en tu propio perfil oficial verificado" : undefined}
+          className={`bg-[#0d0d0d] border rounded-2xl p-6 text-center transition-all select-none duration-200 ${
+            isOwnProfile
+              ? 'opacity-70 border-zinc-800 cursor-not-allowed'
+              : hasVotedFan 
+                ? 'border-red-500 bg-red-500/10 shadow-[0_0_15px_rgba(239,68,68,0.2)] cursor-pointer active:scale-[0.98]' 
+                : 'border-zinc-800/80 hover:border-red-500/40 hover:bg-[#121212] cursor-pointer active:scale-[0.98]'
           }`}
         >
           <div className="flex justify-center mb-1">
@@ -1237,11 +1307,13 @@ export default function StudentProfile({
                   Resumen de Estrellas
                 </h2>
                 <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all ${
-                  opportunitiesLeft === 0
-                    ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
-                    : 'bg-[#eab308]/10 text-[#eab308] border-[#eab308]/20'
+                  isOwnProfile
+                    ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                    : opportunitiesLeft === 0
+                      ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                      : 'bg-[#eab308]/10 text-[#eab308] border-[#eab308]/20'
                 }`}>
-                  OPORTUNIDADES: {opportunitiesLeft}/6
+                  {isOwnProfile ? 'TU PERFIL VERIFICADO' : `OPORTUNIDADES: ${opportunitiesLeft}/6`}
                 </div>
               </div>
 
@@ -1299,41 +1371,55 @@ export default function StudentProfile({
 
               {/* Formulario rápido para dejar reseña */}
               <div className="pt-4 border-t border-zinc-800/40 space-y-3">
-                <p className="text-xs font-bold uppercase text-zinc-400 tracking-wider text-center">
-                  ¿Conoces a {student.nombre}? ¡Deja tu calificación de estrellas!
-                </p>
-
-                {opportunitiesLeft === 0 ? (
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-center gap-2 opacity-30 select-none">
-                      {[1, 2, 3, 4, 5].map((star) => (
-                        <div
-                          key={star}
-                          className="p-2 bg-[#121212] border border-zinc-800 rounded-lg text-zinc-700"
-                        >
-                          <Star className="w-6 h-6" />
-                        </div>
-                      ))}
-                    </div>
-                    <div className="bg-rose-500/10 border border-rose-500/20 rounded-xl p-3 text-center">
-                      <p className="text-rose-400 text-xs font-black uppercase tracking-wider">
-                        ¡VUELVE MAÑANA PARA MÁS VOTOS!
-                      </p>
-                    </div>
+                {isOwnProfile ? (
+                  <div className="py-4 px-5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-center space-y-2 max-w-md mx-auto">
+                    <p className="text-xs font-black text-amber-400 uppercase tracking-wide flex items-center justify-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4 text-amber-400" />
+                      <span>Tu Perfil Oficial Verificado</span>
+                    </p>
+                    <p className="text-xs text-zinc-400 leading-relaxed">
+                      Como titular de esta cuenta, no puedes calificar tu propio perfil de estudiante. Invita a tus compañeros de clase para recibir calificaciones y subir en el ranking.
+                    </p>
                   </div>
                 ) : (
-                  <div className="flex items-center justify-center gap-2">
-                    {[1, 2, 3, 4, 5].map((star) => (
-                      <button
-                        key={star}
-                        disabled={votingInProgress}
-                        onClick={() => handleStarVote(star)}
-                        className="p-2 bg-[#121212] hover:bg-[#eab308]/10 border border-zinc-800 rounded-lg text-zinc-500 hover:text-[#eab308] transition-all cursor-pointer disabled:opacity-50"
-                      >
-                        <Star className="w-6 h-6 hover:scale-110 active:scale-95 transition-transform" />
-                      </button>
-                    ))}
-                  </div>
+                  <>
+                    <p className="text-xs font-bold uppercase text-zinc-400 tracking-wider text-center">
+                      ¿Conoces a {student.nombre}? ¡Deja tu calificación de estrellas!
+                    </p>
+
+                    {opportunitiesLeft === 0 ? (
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-center gap-2 opacity-30 select-none">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <div
+                              key={star}
+                              className="p-2 bg-[#121212] border border-zinc-800 rounded-lg text-zinc-700"
+                            >
+                              <Star className="w-6 h-6" />
+                            </div>
+                          ))}
+                        </div>
+                        <div className="bg-rose-500/10 border border-rose-500/20 rounded-xl p-3 text-center">
+                          <p className="text-rose-400 text-xs font-black uppercase tracking-wider">
+                            ¡VUELVE MAÑANA PARA MÁS VOTOS!
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center gap-2">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <button
+                            key={star}
+                            disabled={votingInProgress}
+                            onClick={() => handleStarVote(star)}
+                            className="p-2 bg-[#121212] hover:bg-[#eab308]/10 border border-zinc-800 rounded-lg text-zinc-500 hover:text-[#eab308] transition-all cursor-pointer disabled:opacity-50"
+                          >
+                            <Star className="w-6 h-6 hover:scale-110 active:scale-95 transition-transform" />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
 

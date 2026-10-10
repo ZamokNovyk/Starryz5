@@ -283,21 +283,40 @@ export async function getStudentById(slug: string): Promise<Student | null> {
       let isClaimed = Boolean(data.is_claimed || claim.claimed);
       let claimedByUid = data.claimed_by_uid || claim.uid;
       let claimedByName = data.claimed_by_name || claim.name;
+      let claimUserData: any = null;
 
-      if (!isClaimed || !claimedByUid) {
+      if (claimedByUid) {
+        try {
+          const { data: cu } = await supabase
+            .from('users')
+            .select('id, display_name, photo_url, avatar_url, email, knows_count, fans_count, crushes_count')
+            .eq('id', claimedByUid)
+            .maybeSingle();
+          if (cu) claimUserData = cu;
+        } catch (e) {}
+      }
+
+      if (!claimUserData) {
         try {
           const { data: claimUser } = await supabase
             .from('users')
-            .select('id, display_name, email, knows_count, fans_count, crushes_count')
+            .select('id, display_name, photo_url, avatar_url, email, knows_count, fans_count, crushes_count')
             .eq('claimed_student_id', data.id)
             .maybeSingle();
 
           if (claimUser) {
             isClaimed = true;
             claimedByUid = claimUser.id;
-            claimedByName = claimUser.display_name;
+            claimUserData = claimUser;
           }
         } catch (e) {}
+      }
+
+      if (claimUserData) {
+        isClaimed = true;
+        if (claimUserData.display_name) {
+          claimedByName = claimUserData.display_name;
+        }
       }
 
       // 2. Si está reclamado, consultar conteos oficiales directamente desde las tablas de usuario (users_actitud, users_crushes)
@@ -317,8 +336,38 @@ export async function getStudentById(slug: string): Promise<Student | null> {
         } catch (e) {}
       }
 
+      const resolvedNombreCompleto = (isClaimed && (claimUserData?.display_name || claimedByName))
+        ? (claimUserData?.display_name || claimedByName)
+        : data.nombre_completo;
+
+      const resolvedNombre = (isClaimed && (claimUserData?.display_name || claimedByName))
+        ? (claimUserData?.display_name || claimedByName).split(' ')[0]
+        : data.nombre;
+
+      const resolvedAvatar = (isClaimed && claimUserData && (claimUserData.avatar_url || claimUserData.photo_url))
+        ? (claimUserData.avatar_url || claimUserData.photo_url)
+        : (data.avatar_url || data.foto_url);
+
+      // Sincronizar en segundo plano si el nombre difiere en students
+      if (claimUserData?.display_name && data.nombre_completo !== claimUserData.display_name && data.id) {
+        supabase
+          .from('students')
+          .update({
+            nombre_completo: claimUserData.display_name,
+            nombre: claimUserData.display_name.split(' ')[0],
+            foto_url: resolvedAvatar,
+          })
+          .eq('id', data.id)
+          .then(() => {})
+          .catch(() => {});
+      }
+
       return {
         ...data,
+        nombre_completo: resolvedNombreCompleto,
+        nombre: resolvedNombre,
+        avatar_url: resolvedAvatar,
+        foto_url: resolvedAvatar,
         dni: expectedDni || data.dni,
         is_claimed: isClaimed,
         claimed_by_uid: claimedByUid,
@@ -761,16 +810,19 @@ export async function getStudentsByInstitute(instituteId: string): Promise<Stude
 
     // Mapear en batch a usuarios de 'users' que hayan reclamado perfiles de estudiantes
     const claimedUsersMap: Record<string, any> = {};
+    const claimedUsersByUid: Record<string, any> = {};
     try {
       const { data: claimedUsers } = await supabase
         .from('users')
-        .select('id, claimed_student_id, display_name, knows_count, fans_count, crushes_count')
-        .not('claimed_student_id', 'is', null);
+        .select('id, claimed_student_id, display_name, avatar_url, photo_url, knows_count, fans_count, crushes_count');
 
       if (claimedUsers) {
         claimedUsers.forEach((u: any) => {
           if (u.claimed_student_id) {
             claimedUsersMap[u.claimed_student_id] = u;
+          }
+          if (u.id) {
+            claimedUsersByUid[u.id] = u;
           }
         });
       }
@@ -808,11 +860,25 @@ export async function getStudentsByInstitute(instituteId: string): Promise<Stude
       const ints = interactionsMap[p.id] || { knows: 0, fan: 0 };
       const expectedDni = p.dni || getExpectedStudentDni(p.id);
       const claim = isStudentClaimed(p.id);
-      const userClaim = claimedUsersMap[p.id];
+      const userClaim = claimedUsersMap[p.id] || 
+        (p.claimed_by_uid ? claimedUsersByUid[p.claimed_by_uid] : undefined) || 
+        (claim.uid ? claimedUsersByUid[claim.uid] : undefined);
 
       const isClaimed = Boolean(p.is_claimed || claim.claimed || userClaim);
       const claimedByUid = p.claimed_by_uid || claim.uid || userClaim?.id;
-      const claimedByName = p.claimed_by_name || claim.name || userClaim?.display_name;
+      const claimedByName = userClaim?.display_name || p.claimed_by_name || claim.name;
+
+      const finalNombreCompleto = (isClaimed && (userClaim?.display_name || claimedByName))
+        ? (userClaim?.display_name || claimedByName)
+        : p.nombre_completo;
+
+      const finalNombre = (isClaimed && (userClaim?.display_name || claimedByName))
+        ? (userClaim?.display_name || claimedByName).split(' ')[0]
+        : p.nombre;
+
+      const finalAvatar = (isClaimed && userClaim && (userClaim.avatar_url || userClaim.photo_url))
+        ? (userClaim.avatar_url || userClaim.photo_url)
+        : (p.avatar_url || p.foto_url);
       
       let localCrushCount = 0;
       if (typeof window !== 'undefined') {
@@ -839,6 +905,10 @@ export async function getStudentsByInstitute(instituteId: string): Promise<Stude
 
       return {
         ...p,
+        nombre_completo: finalNombreCompleto,
+        nombre: finalNombre,
+        avatar_url: finalAvatar,
+        foto_url: finalAvatar,
         dni: expectedDni || p.dni,
         is_claimed: isClaimed,
         claimed_by_uid: claimedByUid,
@@ -1016,10 +1086,14 @@ export async function toggleStudentInteraction(
   try {
     // 1. Si el estudiante está reclamado, dirigir el voto a users_actitud
     const student = await getStudentById(studentId);
+    const claim = isStudentClaimed(studentId);
+    const targetUid = student?.claimed_by_uid || (claim.claimed ? claim.uid : undefined);
+
+    if (targetUid && targetUid === userUid) {
+      throw new Error('No puedes votar ni ser fan de tu propio perfil oficial.');
+    }
+
     if (student?.is_claimed && student.claimed_by_uid) {
-      if (student.claimed_by_uid === userUid) {
-        throw new Error('No puedes votar por tu propio perfil.');
-      }
       const attitudeType = type === 'knows' ? 'yo_te_conozco' : 'fans';
       const result = await toggleUserActitudVote(student.claimed_by_uid, userUid, attitudeType);
 
@@ -1240,6 +1314,17 @@ export async function submitStudentVote(
 ): Promise<{ success: boolean; new_score: number; total_ratings: number; error?: string }> {
   try {
     const student = await getStudentById(studentId);
+    const claim = isStudentClaimed(studentId);
+    const targetUid = student?.claimed_by_uid || (claim.claimed ? claim.uid : undefined);
+
+    if (targetUid && targetUid === userUid) {
+      return {
+        success: false,
+        new_score: student?.score || 0,
+        total_ratings: student?.total_ratings || 0,
+        error: 'No puedes calificar tu propio perfil oficial verificado.'
+      };
+    }
 
     // 1. Si el estudiante está reclamado, guardar en users_votes
     if (student?.is_claimed && student.claimed_by_uid) {
@@ -1397,11 +1482,15 @@ export async function toggleStudentCrush(
   try {
     // 1. Si el estudiante está reclamado, dirigir a users_crushes
     const student = await getStudentById(studentId);
+    const claim = isStudentClaimed(studentId);
+    const targetUid = student?.claimed_by_uid || (claim.claimed ? claim.uid : undefined);
+
+    if (targetUid && targetUid === userUid) {
+      const curCount = student ? (student.crushes_count || 0) : 0;
+      return { success: false, hasCrushed: false, count: curCount, error: 'No puedes marcarte a ti mismo como crush.' };
+    }
+
     if (student?.is_claimed && student.claimed_by_uid) {
-      if (student.claimed_by_uid === userUid) {
-        const curCount = await getUserCrushesCount(student.claimed_by_uid);
-        return { success: false, hasCrushed: false, count: curCount, error: 'No puedes marcarte a ti mismo como crush.' };
-      }
 
       const res = await toggleUserCrush(student.claimed_by_uid, userUid);
       
@@ -1866,6 +1955,13 @@ export async function createStudentLoveMessage(
     }
 
     const student = await getStudentById(studentId);
+    const claim = isStudentClaimed(studentId);
+    const targetUid = student?.claimed_by_uid || (claim.claimed ? claim.uid : undefined);
+
+    if (targetUid && targetUid === userUid) {
+      return { success: false, error: 'No puedes enviarte mensajes de amor o confesiones a ti mismo.' };
+    }
+
     let createdMsg: StudentLoveMessage | null = null;
 
     // 1. Si el estudiante está reclamado, guardar en users_love_messages

@@ -865,7 +865,25 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
       }
 
       // Si tiene perfil oficial de estudiante vinculado, sincronizar su nombre oficial
-      if ((dbUser as any)?.claimed_student_id) {
+      let targetStudentId = (dbUser as any)?.claimed_student_id;
+      if (!targetStudentId) {
+        try {
+          const local = localStorage.getItem(`user_claimed_profile_${user.uid}`);
+          if (local) targetStudentId = JSON.parse(local).studentId;
+        } catch (e) {}
+      }
+      if (!targetStudentId) {
+        try {
+          const { data: stRow } = await supabase
+            .from('students')
+            .select('id')
+            .eq('claimed_by_uid', user.uid)
+            .maybeSingle();
+          if (stRow?.id) targetStudentId = stRow.id;
+        } catch (e) {}
+      }
+
+      if (targetStudentId) {
         try {
           await supabase
             .from('students')
@@ -874,7 +892,16 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
               apellidos: `${cleanPaterno} ${cleanMaterno}`.trim(),
               nombre_completo: cleanFullName
             })
-            .eq('id', (dbUser as any).claimed_student_id);
+            .eq('id', targetStudentId);
+
+          try {
+            const local = localStorage.getItem(`user_claimed_profile_${user.uid}`);
+            if (local) {
+              const parsed = JSON.parse(local);
+              parsed.claimedByName = cleanFullName;
+              localStorage.setItem(`user_claimed_profile_${user.uid}`, JSON.stringify(parsed));
+            }
+          } catch (e) {}
         } catch (sErr) {
           console.warn('Aviso sincronizando tabla students:', sErr);
         }
