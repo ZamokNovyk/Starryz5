@@ -494,6 +494,22 @@ export async function claimStudentProfile(
     console.warn('Aviso al actualizar tabla students en Supabase:', err);
   }
 
+  // 1.5. PURGAR AUTORREACCIONES Y VOTOS PROPIOS
+  try {
+    await Promise.allSettled([
+      supabase.from('student_interactions').delete().eq('student_id', student.id).eq('user_uid', user.uid),
+      supabase.from('student_crushes').delete().eq('student_id', student.id).eq('user_uid', user.uid),
+      supabase.from('student_votes').delete().eq('student_id', student.id).eq('user_uid', user.uid),
+      supabase.from('student_love_messages').delete().eq('student_id', student.id).eq('user_uid', user.uid),
+      supabase.from('users_actitud').delete().eq('target_user_id', user.uid).eq('voter_uid', user.uid),
+      supabase.from('users_crushes').delete().eq('target_user_id', user.uid).eq('voter_uid', user.uid),
+      supabase.from('users_votes').delete().eq('target_user_id', user.uid).eq('user_uid', user.uid),
+      supabase.from('users_love_messages').delete().eq('target_user_id', user.uid).eq('user_uid', user.uid),
+    ]);
+  } catch (cleanSelfErr) {
+    console.warn('Aviso al purgar autorreacciones:', cleanSelfErr);
+  }
+
   // 2. MIGRACIÓN: Transferir student_interactions -> users_actitud
   try {
     const { data: stInteractions } = await supabase
