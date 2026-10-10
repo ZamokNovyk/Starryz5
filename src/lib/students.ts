@@ -1,6 +1,4 @@
 import { supabase } from './supabase';
-import { getUserActitudCounts, hasUserVotedActitud, toggleUserActitud } from './userActitud';
-import { getUserCrushesCount, hasUserCrushed, toggleUserCrush } from './userCrushes';
 
 export interface Student {
   id: string; // generated slug e.g. "carlos.mendoza.ramirez"
@@ -85,53 +83,6 @@ export function isStudentClaimed(studentIdOrSlug: string): { claimed: boolean; u
     } catch (e) {}
   }
   return { claimed: false };
-}
-
-/**
- * Consulta asíncrona robusta si un perfil de estudiante ya ha sido reclamado,
- * verificando en la tabla 'users' (claimed_student_id), en la tabla 'students' (is_claimed),
- * y en el caché local.
- */
-export async function checkStudentClaimStatus(studentIdOrSlug: string): Promise<{ claimed: boolean; uid?: string; at?: string; name?: string }> {
-  const cleanId = (studentIdOrSlug || '').toLowerCase().trim();
-  // 1. Verificar en tabla users (referencia principal de cuenta vinculada)
-  try {
-    const { data: userClaim } = await supabase
-      .from('users')
-      .select('id, display_name, email, updated_at')
-      .eq('claimed_student_id', cleanId)
-      .maybeSingle();
-
-    if (userClaim) {
-      return {
-        claimed: true,
-        uid: userClaim.id,
-        at: userClaim.updated_at,
-        name: userClaim.display_name,
-      };
-    }
-  } catch (e) {}
-
-  // 2. Verificar en tabla students
-  try {
-    const { data: stClaim } = await supabase
-      .from('students')
-      .select('is_claimed, claimed_by_uid, claimed_at, claimed_by_name')
-      .eq('id', cleanId)
-      .maybeSingle();
-
-    if (stClaim && stClaim.is_claimed) {
-      return {
-        claimed: true,
-        uid: stClaim.claimed_by_uid,
-        at: stClaim.claimed_at,
-        name: stClaim.claimed_by_name,
-      };
-    }
-  } catch (e) {}
-
-  // 3. Fallback en caché de navegador
-  return isStudentClaimed(cleanId);
 }
 
 /**
@@ -279,103 +230,13 @@ export async function getStudentById(slug: string): Promise<Student | null> {
       const claim = isStudentClaimed(data.id);
       const expectedDni = data.dni || getExpectedStudentDni(data.id);
 
-      // 1. Consultar si algún usuario en la tabla 'users' reclamó este perfil de estudiante
-      let isClaimed = Boolean(data.is_claimed || claim.claimed);
-      let claimedByUid = data.claimed_by_uid || claim.uid;
-      let claimedByName = data.claimed_by_name || claim.name;
-      let claimUserData: any = null;
-
-      if (claimedByUid) {
-        try {
-          const { data: cu } = await supabase
-            .from('users')
-            .select('id, display_name, photo_url, avatar_url, email, knows_count, fans_count, crushes_count')
-            .eq('id', claimedByUid)
-            .maybeSingle();
-          if (cu) claimUserData = cu;
-        } catch (e) {}
-      }
-
-      if (!claimUserData) {
-        try {
-          const { data: claimUser } = await supabase
-            .from('users')
-            .select('id, display_name, photo_url, avatar_url, email, knows_count, fans_count, crushes_count')
-            .eq('claimed_student_id', data.id)
-            .maybeSingle();
-
-          if (claimUser) {
-            isClaimed = true;
-            claimedByUid = claimUser.id;
-            claimUserData = claimUser;
-          }
-        } catch (e) {}
-      }
-
-      if (claimUserData) {
-        isClaimed = true;
-        if (claimUserData.display_name) {
-          claimedByName = claimUserData.display_name;
-        }
-      }
-
-      // 2. Si está reclamado, consultar conteos oficiales directamente desde las tablas de usuario (users_actitud, users_crushes)
-      let dynamicKnows = data.knows_count || 0;
-      let dynamicFans = data.fans_count || 0;
-      let dynamicCrushes = data.crushes_count || 0;
-
-      if (isClaimed && claimedByUid) {
-        try {
-          const [actCounts, crushesCount] = await Promise.all([
-            getUserActitudCounts(claimedByUid),
-            getUserCrushesCount(claimedByUid),
-          ]);
-          dynamicKnows = actCounts.knowCount;
-          dynamicFans = actCounts.fanCount;
-          dynamicCrushes = crushesCount;
-        } catch (e) {}
-      }
-
-      const resolvedNombreCompleto = (isClaimed && (claimUserData?.display_name || claimedByName))
-        ? (claimUserData?.display_name || claimedByName)
-        : data.nombre_completo;
-
-      const resolvedNombre = (isClaimed && (claimUserData?.display_name || claimedByName))
-        ? (claimUserData?.display_name || claimedByName).split(' ')[0]
-        : data.nombre;
-
-      const resolvedAvatar = (isClaimed && claimUserData && (claimUserData.avatar_url || claimUserData.photo_url))
-        ? (claimUserData.avatar_url || claimUserData.photo_url)
-        : (data.avatar_url || data.foto_url);
-
-      // Sincronizar en segundo plano si el nombre difiere en students
-      if (claimUserData?.display_name && data.nombre_completo !== claimUserData.display_name && data.id) {
-        supabase
-          .from('students')
-          .update({
-            nombre_completo: claimUserData.display_name,
-            nombre: claimUserData.display_name.split(' ')[0],
-            foto_url: resolvedAvatar,
-          })
-          .eq('id', data.id)
-          .then(() => {})
-          .catch(() => {});
-      }
-
       return {
         ...data,
-        nombre_completo: resolvedNombreCompleto,
-        nombre: resolvedNombre,
-        avatar_url: resolvedAvatar,
-        foto_url: resolvedAvatar,
         dni: expectedDni || data.dni,
-        is_claimed: isClaimed,
-        claimed_by_uid: claimedByUid,
+        is_claimed: data.is_claimed || claim.claimed,
+        claimed_by_uid: data.claimed_by_uid || claim.uid,
         claimed_at: data.claimed_at || claim.at,
-        claimed_by_name: claimedByName,
-        knows_count: dynamicKnows,
-        fans_count: dynamicFans,
-        crushes_count: dynamicCrushes,
+        claimed_by_name: data.claimed_by_name || claim.name,
       } as Student;
     }
 
@@ -418,10 +279,6 @@ export async function claimStudentProfile(
   inputDni: string,
   user: { uid: string; email?: string | null; displayName?: string | null }
 ): Promise<{ success: boolean; student: Student; message: string }> {
-  if (!user || !user.email) {
-    throw new Error('Solo los usuarios con una cuenta vinculada a Google pueden reclamar un perfil oficial.');
-  }
-
   const cleanDni = inputDni.trim().replace(/\D/g, '');
   if (!cleanDni || cleanDni.length < 8) {
     throw new Error('El DNI debe tener 8 dígitos numéricos válidos.');
@@ -433,25 +290,7 @@ export async function claimStudentProfile(
     throw new Error('No se encontró el registro oficial de este estudiante.');
   }
 
-  // 1. Verificación definitiva en tabla 'users' para evitar doble reclamo entre usuarios
-  try {
-    const { data: existingClaimUser } = await supabase
-      .from('users')
-      .select('id, email, display_name')
-      .eq('claimed_student_id', student.id)
-      .maybeSingle();
-
-    if (existingClaimUser) {
-      const isSameUser = existingClaimUser.id === user.uid || (user.email && existingClaimUser.email === user.email);
-      if (!isSameUser) {
-        throw new Error('Este perfil de estudiante ya ha sido reclamado y verificado por otro usuario.');
-      }
-    }
-  } catch (err: any) {
-    if (err.message?.includes('reclamado')) throw err;
-  }
-
-  // 2. Comprobar si ya fue reclamado en students o memoria
+  // Comprobar si ya fue reclamado por otra persona
   const claimInfo = isStudentClaimed(student.id);
   const alreadyClaimed = student.is_claimed || claimInfo.claimed;
   const currentClaimant = student.claimed_by_uid || claimInfo.uid;
@@ -469,9 +308,9 @@ export async function claimStudentProfile(
   const officialName = student.nombre_completo || `${student.nombre} ${student.apellidos}`.trim();
   const now = new Date().toISOString();
 
-  // 1. Actualizar tabla students en Supabase
+  // 1. Intentar actualizar tabla students en Supabase
   try {
-    const { error: stUpdateErr } = await supabase
+    await supabase
       .from('students')
       .update({
         dni: cleanDni,
@@ -481,227 +320,27 @@ export async function claimStudentProfile(
         claimed_by_name: user.displayName || user.email || 'Usuario',
       })
       .eq('id', student.id);
-
-    if (stUpdateErr) {
-      console.warn('Aviso al actualizar is_claimed en students (posiblemente columna pendiente en SQL):', stUpdateErr.message);
-      // Fallback si la columna is_claimed no existe aún en la tabla students de Supabase
-      await supabase
-        .from('students')
-        .update({ dni: cleanDni })
-        .eq('id', student.id);
-    }
   } catch (err) {
-    console.warn('Aviso al actualizar tabla students en Supabase:', err);
+    console.warn('Aviso no crítico al actualizar tabla students en Supabase:', err);
   }
 
-  // 1.5. PURGAR AUTORREACCIONES Y VOTOS PROPIOS
+  // 2. Fusionar interacciones, votos, flechazos y mensajes acumulados por el usuario
   try {
-    await Promise.allSettled([
-      supabase.from('student_interactions').delete().eq('student_id', student.id).eq('user_uid', user.uid),
-      supabase.from('student_crushes').delete().eq('student_id', student.id).eq('user_uid', user.uid),
-      supabase.from('student_votes').delete().eq('student_id', student.id).eq('user_uid', user.uid),
-      supabase.from('student_love_messages').delete().eq('student_id', student.id).eq('user_uid', user.uid),
-      supabase.from('users_actitud').delete().eq('target_user_id', user.uid).eq('voter_uid', user.uid),
-      supabase.from('users_crushes').delete().eq('target_user_id', user.uid).eq('voter_uid', user.uid),
-      supabase.from('users_votes').delete().eq('target_user_id', user.uid).eq('user_uid', user.uid),
-      supabase.from('users_love_messages').delete().eq('target_user_id', user.uid).eq('user_uid', user.uid),
-    ]);
-  } catch (cleanSelfErr) {
-    console.warn('Aviso al purgar autorreacciones:', cleanSelfErr);
-  }
-
-  // 2. MIGRACIÓN: Transferir student_interactions -> users_actitud
-  try {
-    const { data: stInteractions } = await supabase
-      .from('student_interactions')
-      .select('user_uid, interaction_type')
-      .eq('student_id', student.id);
-
-    if (stInteractions && stInteractions.length > 0) {
-      for (const item of stInteractions) {
-        if (!item.user_uid || item.user_uid === user.uid) continue;
-        const attitudeType: 'yo_te_conozco' | 'fans' = item.interaction_type === 'knows' ? 'yo_te_conozco' : 'fans';
-
-        // Evitar duplicados si el votante ya votó en users_actitud
-        const { data: existingAct } = await supabase
-          .from('users_actitud')
-          .select('id')
-          .eq('target_user_id', user.uid)
-          .eq('voter_uid', item.user_uid)
-          .maybeSingle();
-
-        if (!existingAct) {
-          await supabase.from('users_actitud').insert({
-            target_user_id: user.uid,
-            voter_uid: item.user_uid,
-            attitude_type: attitudeType,
-          });
-        }
-      }
-
-      // Limpiar filas migradas de student_interactions para evitar duplicidad
-      await supabase.from('student_interactions').delete().eq('student_id', student.id);
-    }
-  } catch (migErr) {
-    console.warn('Aviso al migrar student_interactions a users_actitud:', migErr);
-  }
-
-  // 3. MIGRACIÓN: Transferir student_crushes -> users_crushes
-  try {
-    const { data: stCrushes } = await supabase
-      .from('student_crushes')
-      .select('user_uid')
-      .eq('student_id', student.id);
-
-    if (stCrushes && stCrushes.length > 0) {
-      for (const item of stCrushes) {
-        if (!item.user_uid || item.user_uid === user.uid) continue;
-
-        const { data: existingCrush } = await supabase
-          .from('users_crushes')
-          .select('id')
-          .eq('target_user_id', user.uid)
-          .eq('voter_uid', item.user_uid)
-          .maybeSingle();
-
-        if (!existingCrush) {
-          await supabase.from('users_crushes').insert({
-            target_user_id: user.uid,
-            voter_uid: item.user_uid,
-          });
-        }
-      }
-
-      // Limpiar filas migradas de student_crushes
-      await supabase.from('student_crushes').delete().eq('student_id', student.id);
-    }
-  } catch (migErr) {
-    console.warn('Aviso al migrar student_crushes a users_crushes:', migErr);
-  }
-
-  // 4. MIGRACIÓN: Transferir student_votes -> users_votes
-  try {
-    const { data: stVotes } = await supabase
-      .from('student_votes')
-      .select('*')
-      .eq('student_id', student.id);
-
-    if (stVotes && stVotes.length > 0) {
-      const votesPayload = stVotes.map((v: any) => ({
-        target_user_id: user.uid,
-        user_uid: v.user_uid,
-        stars: Number(v.stars),
-        created_at: v.created_at || now,
-      }));
-
-      const { error: insVotesErr } = await supabase.from('users_votes').insert(votesPayload);
-      if (!insVotesErr) {
-        await supabase.from('student_votes').delete().eq('student_id', student.id);
-      }
-    }
-  } catch (migVotesErr) {
-    console.warn('Aviso al migrar student_votes a users_votes:', migVotesErr);
-  }
-
-  // 5. MIGRACIÓN: Transferir student_love_messages -> users_love_messages y sus corazones
-  try {
-    const { data: stLoveMsgs } = await supabase
-      .from('student_love_messages')
-      .select('*')
-      .eq('student_id', student.id);
-
-    if (stLoveMsgs && stLoveMsgs.length > 0) {
-      for (const msg of stLoveMsgs) {
-        const { data: insMsg, error: insMsgErr } = await supabase
-          .from('users_love_messages')
-          .insert({
-            target_user_id: user.uid,
-            user_uid: msg.user_uid,
-            author_name: msg.author_name || 'Anónimo',
-            author_avatar: msg.author_avatar || null,
-            author_gender: msg.author_gender || null,
-            content: msg.message || '',
-            hearts_count: Number(msg.hearts_count) || 0,
-            created_at: msg.created_at || now,
-          })
-          .select('id')
-          .single();
-
-        if (!insMsgErr && insMsg) {
-          const { data: msgHearts } = await supabase
-            .from('student_love_message_hearts')
-            .select('*')
-            .eq('message_id', msg.id);
-
-          if (msgHearts && msgHearts.length > 0) {
-            const heartsPayload = msgHearts.map((h: any) => ({
-              message_id: insMsg.id,
-              user_uid: h.user_uid,
-              created_at: h.created_at || now,
-            }));
-            await supabase.from('users_love_message_hearts').insert(heartsPayload);
-            await supabase.from('student_love_message_hearts').delete().eq('message_id', msg.id);
-          }
-        }
-      }
-
-      await supabase.from('student_love_messages').delete().eq('student_id', student.id);
-    }
-  } catch (migMsgErr) {
-    console.warn('Aviso al migrar student_love_messages:', migMsgErr);
-  }
-
-  // 6. MIGRACIÓN: Transferir student_daily_stats -> users_daily_stats
-  try {
-    const { data: stDaily } = await supabase
-      .from('student_daily_stats')
-      .select('*')
-      .eq('student_id', student.id);
-
-    if (stDaily && stDaily.length > 0) {
-      const dailyPayload = stDaily.map((d: any) => ({
-        target_user_id: user.uid,
-        date: d.date,
-        knows_count: d.knows_count || 0,
-        fans_count: d.fans_count || 0,
-        crushes_count: d.crushes_count || 0,
-        score: d.score || 0.0,
-        views_count: d.views_count || 0,
-      }));
-
-      const { error: insDailyErr } = await supabase.from('users_daily_stats').insert(dailyPayload);
-      if (!insDailyErr) {
-        await supabase.from('student_daily_stats').delete().eq('student_id', student.id);
-      }
-    }
-  } catch (migDailyErr) {
-    console.warn('Aviso al migrar student_daily_stats:', migDailyErr);
-  }
-
-  // 7. Calcular conteos unificados en users_actitud y users_crushes y sincronizar tabla users
-  try {
-    const { knowCount, fanCount } = await getUserActitudCounts(user.uid);
-    const crushesCount = await getUserCrushesCount(user.uid);
-
-    let updateUserQuery = supabase.from('users').update({ 
-      display_name: officialName, 
-      claimed_student_id: student.id, 
-      is_verified_student: true, 
-      institute_id: student.institute_id,
-      dni: cleanDni,
-      knows_count: knowCount,
-      fans_count: fanCount,
-      crushes_count: crushesCount,
-      updated_at: now 
-    }).eq('id', user.uid);
-
-    await Promise.allSettled([
-      updateUserQuery,
+    await Promise.all([
+      supabase.from('student_interactions').update({ student_id: student.id }).eq('student_id', user.uid),
+      supabase.from('student_votes').update({ student_id: student.id }).eq('student_id', user.uid),
+      supabase.from('student_crushes').update({ student_id: student.id }).eq('student_id', user.uid),
+      supabase.from('student_love_messages').update({ student_id: student.id }).eq('student_id', user.uid),
+      supabase.from('users').update({ 
+        display_name: officialName, 
+        claimed_student_id: student.id, 
+        is_verified_student: true, 
+        updated_at: now 
+      }).eq('firebase_uid', user.uid),
       supabase.from('user_profiles').update({
         display_name: officialName,
         claimed_student_id: student.id,
         is_verified_student: true,
-        institute_id: student.institute_id,
         dni: cleanDni,
         role_title: 'Estudiante Verificado',
         updated_at: now,
@@ -709,13 +348,6 @@ export async function claimStudentProfile(
     ]);
   } catch (err) {
     console.warn('Aviso no crítico al fusionar estadísticas de usuario en Supabase:', err);
-  }
-
-  // 8. Eliminar el perfil de la tabla students (Fuente Única de la Verdad)
-  try {
-    await supabase.from('students').delete().eq('id', student.id);
-  } catch (delErr) {
-    console.warn('Aviso al eliminar estudiante reclamado de la tabla students:', delErr);
   }
 
   // 3. Persistir en localStorage (espejo en cliente y sincronización instantánea)
@@ -829,28 +461,6 @@ export async function getStudentsByInstitute(instituteId: string): Promise<Stude
       console.warn('Aviso al cargar crushes de estudiantes:', e);
     }
 
-    // Mapear en batch a usuarios de 'users' que hayan reclamado perfiles de estudiantes
-    const claimedUsersMap: Record<string, any> = {};
-    const claimedUsersByUid: Record<string, any> = {};
-    try {
-      const { data: claimedUsers } = await supabase
-        .from('users')
-        .select('id, claimed_student_id, display_name, avatar_url, photo_url, knows_count, fans_count, crushes_count');
-
-      if (claimedUsers) {
-        claimedUsers.forEach((u: any) => {
-          if (u.claimed_student_id) {
-            claimedUsersMap[u.claimed_student_id] = u;
-          }
-          if (u.id) {
-            claimedUsersByUid[u.id] = u;
-          }
-        });
-      }
-    } catch (e) {
-      console.warn('Aviso al consultar usuarios vinculados en Supabase:', e);
-    }
-
     // Asegurar que Daniel Gustavo Castillo Ramirez esté en el listado si no viene de la BD
     const hasDaniel = activeStudents.some((s: any) => s.id?.includes('daniel.gustavo'));
     if (!hasDaniel) {
@@ -881,25 +491,6 @@ export async function getStudentsByInstitute(instituteId: string): Promise<Stude
       const ints = interactionsMap[p.id] || { knows: 0, fan: 0 };
       const expectedDni = p.dni || getExpectedStudentDni(p.id);
       const claim = isStudentClaimed(p.id);
-      const userClaim = claimedUsersMap[p.id] || 
-        (p.claimed_by_uid ? claimedUsersByUid[p.claimed_by_uid] : undefined) || 
-        (claim.uid ? claimedUsersByUid[claim.uid] : undefined);
-
-      const isClaimed = Boolean(p.is_claimed || claim.claimed || userClaim);
-      const claimedByUid = p.claimed_by_uid || claim.uid || userClaim?.id;
-      const claimedByName = userClaim?.display_name || p.claimed_by_name || claim.name;
-
-      const finalNombreCompleto = (isClaimed && (userClaim?.display_name || claimedByName))
-        ? (userClaim?.display_name || claimedByName)
-        : p.nombre_completo;
-
-      const finalNombre = (isClaimed && (userClaim?.display_name || claimedByName))
-        ? (userClaim?.display_name || claimedByName).split(' ')[0]
-        : p.nombre;
-
-      const finalAvatar = (isClaimed && userClaim && (userClaim.avatar_url || userClaim.photo_url))
-        ? (userClaim.avatar_url || userClaim.photo_url)
-        : (p.avatar_url || p.foto_url);
       
       let localCrushCount = 0;
       if (typeof window !== 'undefined') {
@@ -911,34 +502,17 @@ export async function getStudentsByInstitute(instituteId: string): Promise<Stude
 
       const totalCrushes = Math.max(crushesMap[p.id] || 0, localCrushCount);
 
-      // Si el perfil está reclamado, sus datos de interacciones y crushes se leen de las tablas de usuarios (users_actitud / users_crushes o users)
-      const finalKnows = isClaimed && userClaim && typeof userClaim.knows_count === 'number'
-        ? userClaim.knows_count
-        : (ints.knows || p.knows_count || 0);
-
-      const finalFans = isClaimed && userClaim && typeof userClaim.fans_count === 'number'
-        ? userClaim.fans_count
-        : (ints.fan || p.fans_count || 0);
-
-      const finalCrushes = isClaimed && userClaim && typeof userClaim.crushes_count === 'number'
-        ? userClaim.crushes_count
-        : (totalCrushes || p.crushes_count || 0);
-
       return {
         ...p,
-        nombre_completo: finalNombreCompleto,
-        nombre: finalNombre,
-        avatar_url: finalAvatar,
-        foto_url: finalAvatar,
         dni: expectedDni || p.dni,
-        is_claimed: isClaimed,
-        claimed_by_uid: claimedByUid,
+        is_claimed: p.is_claimed || claim.claimed,
+        claimed_by_uid: p.claimed_by_uid || claim.uid,
         claimed_at: p.claimed_at || claim.at,
-        claimed_by_name: claimedByName,
+        claimed_by_name: p.claimed_by_name || claim.name,
         views_count: typeof p.views_count === 'number' ? p.views_count : (Number(p.views_count) || 0),
-        knows_count: finalKnows,
-        fans_count: finalFans,
-        crushes_count: finalCrushes,
+        knows_count: ints.knows || p.knows_count || 0,
+        fans_count: ints.fan || p.fans_count || 0,
+        crushes_count: totalCrushes || p.crushes_count || 0,
         score: typeof p.score === 'number' ? Number(p.score) : 0.0,
         total_ratings: typeof p.total_ratings === 'number' ? p.total_ratings : 0,
       } as Student;
@@ -957,16 +531,6 @@ export async function getUserStudentInteraction(
   userUid: string
 ): Promise<{ interaction_type: 'knows' | 'fan' | null } | null> {
   try {
-    // 1. Si el estudiante está reclamado, consultar directamente users_actitud
-    const student = await getStudentById(studentId);
-    if (student?.is_claimed && student.claimed_by_uid) {
-      const status = await hasUserVotedActitud(student.claimed_by_uid, userUid);
-      if (status.fans) return { interaction_type: 'fan' };
-      if (status.knows) return { interaction_type: 'knows' };
-      return null;
-    }
-
-    // 2. Si no está reclamado, consultar student_interactions
     const { data, error } = await supabase
       .from('student_interactions')
       .select('interaction_type')
@@ -992,14 +556,6 @@ export async function getUserStudentInteraction(
  */
 export async function getStudentInteractionCounts(studentId: string): Promise<{ knows: number; fan: number }> {
   try {
-    // 1. Si el estudiante está reclamado, consultar directamente users_actitud
-    const student = await getStudentById(studentId);
-    if (student?.is_claimed && student.claimed_by_uid) {
-      const counts = await getUserActitudCounts(student.claimed_by_uid);
-      return { knows: counts.knowCount, fan: counts.fanCount };
-    }
-
-    // 2. Si no está reclamado, consultar student_interactions
     const { data, error } = await supabase
       .from('student_interactions')
       .select('interaction_type')
@@ -1105,54 +661,7 @@ export async function toggleStudentInteraction(
   actorName?: string
 ): Promise<{ success: boolean; action: 'inserted' | 'deleted' | 'updated'; current_type: 'knows' | 'fan' | null } | null> {
   try {
-    // 1. Si el estudiante está reclamado, dirigir el voto a users_actitud
-    const student = await getStudentById(studentId);
-    const claim = isStudentClaimed(studentId);
-    const targetUid = student?.claimed_by_uid || (claim.claimed ? claim.uid : undefined);
-
-    if (targetUid && targetUid === userUid) {
-      throw new Error('No puedes votar ni ser fan de tu propio perfil oficial.');
-    }
-
-    if (student?.is_claimed && student.claimed_by_uid) {
-      const attitudeType = type === 'knows' ? 'yo_te_conozco' : 'fans';
-      const result = await toggleUserActitudVote(student.claimed_by_uid, userUid, attitudeType);
-
-      if (result.error) {
-        throw new Error(result.error);
-      }
-
-      // Notificaciones en segundo plano
-      try {
-        if (type === 'knows' && result.activeVote === 'yo_te_conozco') {
-          notifyStudentSubscribers({
-            studentId,
-            studentName,
-            eventType: 'known_added',
-            actorUid: userUid,
-            actorName: actorName || 'Un estudiante',
-            totalCount: result.newCounts.knowCount
-          }).catch(() => {});
-        } else if (type === 'fan') {
-          notifyStudentSubscribers({
-            studentId,
-            studentName,
-            eventType: result.activeVote === 'fans' ? 'fan_added' : 'fan_removed',
-            actorUid: userUid,
-            actorName: actorName || 'Un estudiante',
-            totalCount: result.newCounts.fanCount
-          }).catch(() => {});
-        }
-      } catch (notifErr) {
-        console.warn('Error disparando notificación:', notifErr);
-      }
-
-      const resAction = !result.activeVote ? 'deleted' : 'inserted';
-      const currType = result.activeVote === 'yo_te_conozco' ? 'knows' : result.activeVote === 'fans' ? 'fan' : null;
-      return { success: true, action: resAction, current_type: currType };
-    }
-
-    // 2. Si no está reclamado, guardar en la tabla student_interactions
+    // Verificar si ya existe interacción
     const { data: existing, error: fetchErr } = await supabase
       .from('student_interactions')
       .select('id, interaction_type')
@@ -1237,24 +746,6 @@ export async function getTodayStudentVotes(studentId: string, userUid: string): 
     todayStart.setHours(0, 0, 0, 0);
     const todayIso = todayStart.toISOString();
 
-    // 1. Si el estudiante está reclamado, consultar users_votes
-    const student = await getStudentById(studentId);
-    if (student?.is_claimed && student.claimed_by_uid) {
-      try {
-        const { data: userVotes, error: uErr } = await supabase
-          .from('users_votes')
-          .select('stars')
-          .eq('target_user_id', student.claimed_by_uid)
-          .eq('user_uid', userUid)
-          .gte('created_at', todayIso);
-
-        if (!uErr && userVotes && userVotes.length > 0) {
-          return userVotes.map((v: any) => Number(v.stars));
-        }
-      } catch (e) {}
-    }
-
-    // 2. Si no está reclamado (o fallback), consultar student_votes
     const { data, error } = await supabase
       .from('student_votes')
       .select('stars')
@@ -1279,28 +770,6 @@ export async function getStudentRatingBreakdown(studentId: string): Promise<{ [k
   const breakdown: { [key: number]: number } = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
   
   try {
-    // 1. Si el estudiante está reclamado, consultar users_votes
-    const student = await getStudentById(studentId);
-    if (student?.is_claimed && student.claimed_by_uid) {
-      try {
-        const { data: userVotes, error: uErr } = await supabase
-          .from('users_votes')
-          .select('stars')
-          .eq('target_user_id', student.claimed_by_uid);
-
-        if (!uErr && userVotes && userVotes.length > 0) {
-          userVotes.forEach((v: any) => {
-            const s = Number(v.stars);
-            if (s >= 1 && s <= 5) {
-              breakdown[s] = (breakdown[s] || 0) + 1;
-            }
-          });
-          return breakdown;
-        }
-      } catch (e) {}
-    }
-
-    // 2. Si no está reclamado (o fallback), consultar student_votes
     const { data, error } = await supabase
       .from('student_votes')
       .select('stars')
@@ -1334,88 +803,7 @@ export async function submitStudentVote(
   stars: number
 ): Promise<{ success: boolean; new_score: number; total_ratings: number; error?: string }> {
   try {
-    const student = await getStudentById(studentId);
-    const claim = isStudentClaimed(studentId);
-    const targetUid = student?.claimed_by_uid || (claim.claimed ? claim.uid : undefined);
-
-    if (targetUid && targetUid === userUid) {
-      return {
-        success: false,
-        new_score: student?.score || 0,
-        total_ratings: student?.total_ratings || 0,
-        error: 'No puedes calificar tu propio perfil oficial verificado.'
-      };
-    }
-
-    // 1. Si el estudiante está reclamado, guardar en users_votes
-    if (student?.is_claimed && student.claimed_by_uid) {
-      let voteSavedInUsers = false;
-      try {
-        const { error: insErr } = await supabase
-          .from('users_votes')
-          .insert([
-            {
-              target_user_id: student.claimed_by_uid,
-              user_uid: userUid,
-              stars: stars,
-            }
-          ]);
-
-        if (!insErr) {
-          voteSavedInUsers = true;
-        } else {
-          console.warn('Aviso al insertar en users_votes (usando fallback student_votes):', insErr.message);
-        }
-      } catch (e) {}
-
-      // Si falló users_votes (por ejemplo, antes de ejecutar el SQL), usar student_votes
-      if (!voteSavedInUsers) {
-        await supabase
-          .from('student_votes')
-          .insert([
-            {
-              student_id: studentId,
-              user_uid: userUid,
-              stars: stars,
-            }
-          ]);
-      }
-
-      // Calcular nuevo promedio unificado
-      let allVotesData: any[] = [];
-      try {
-        const { data: uv } = await supabase
-          .from('users_votes')
-          .select('stars')
-          .eq('target_user_id', student.claimed_by_uid);
-        if (uv && uv.length > 0) allVotesData = uv;
-      } catch (e) {}
-
-      if (allVotesData.length === 0) {
-        const { data: sv } = await supabase
-          .from('student_votes')
-          .select('stars')
-          .eq('student_id', studentId);
-        if (sv && sv.length > 0) allVotesData = sv;
-      }
-
-      if (allVotesData.length > 0) {
-        const sum = allVotesData.reduce((acc, curr) => acc + Number(curr.stars), 0);
-        const newScore = parseFloat((sum / allVotesData.length).toFixed(1));
-        const totalRatings = allVotesData.length;
-
-        await Promise.allSettled([
-          supabase.from('students').update({ score: newScore, total_ratings: totalRatings }).eq('id', studentId),
-          supabase.from('users').update({ score: newScore, total_ratings: totalRatings }).eq('id', student.claimed_by_uid),
-        ]);
-
-        return { success: true, new_score: newScore, total_ratings: totalRatings };
-      }
-
-      return { success: true, new_score: stars, total_ratings: 1 };
-    }
-
-    // 2. Si no está reclamado, insertar en student_votes
+    // 1. Insertar el voto
     const { error: insertErr } = await supabase
       .from('student_votes')
       .insert([
@@ -1431,7 +819,7 @@ export async function submitStudentVote(
       return { success: false, new_score: 0, total_ratings: 0, error: insertErr.message };
     }
 
-    // Calcular nuevo promedio y total
+    // 2. Calcular nuevo promedio y total
     const { data: allVotes } = await supabase
       .from('student_votes')
       .select('stars')
@@ -1462,17 +850,6 @@ export async function submitStudentVote(
  */
 export async function getStudentCrushStatus(studentId: string, userUid: string): Promise<{ count: number; hasCrushed: boolean }> {
   try {
-    // 1. Si el estudiante está reclamado, consultar directamente users_crushes
-    const student = await getStudentById(studentId);
-    if (student?.is_claimed && student.claimed_by_uid) {
-      const [hasCrushed, count] = await Promise.all([
-        hasUserCrushed(student.claimed_by_uid, userUid),
-        getUserCrushesCount(student.claimed_by_uid)
-      ]);
-      return { count, hasCrushed };
-    }
-
-    // 2. Si no está reclamado, consultar student_crushes
     const { data, error } = await supabase
       .from('student_crushes')
       .select('id, user_uid')
@@ -1501,40 +878,6 @@ export async function toggleStudentCrush(
   actorName?: string
 ): Promise<{ success: boolean; hasCrushed: boolean; count: number; error?: string }> {
   try {
-    // 1. Si el estudiante está reclamado, dirigir a users_crushes
-    const student = await getStudentById(studentId);
-    const claim = isStudentClaimed(studentId);
-    const targetUid = student?.claimed_by_uid || (claim.claimed ? claim.uid : undefined);
-
-    if (targetUid && targetUid === userUid) {
-      const curCount = student ? (student.crushes_count || 0) : 0;
-      return { success: false, hasCrushed: false, count: curCount, error: 'No puedes marcarte a ti mismo como crush.' };
-    }
-
-    if (student?.is_claimed && student.claimed_by_uid) {
-
-      const res = await toggleUserCrush(student.claimed_by_uid, userUid);
-      
-      try {
-        notifyStudentSubscribers({
-          studentId,
-          studentName,
-          eventType: res.hasCrushed ? 'crush_added' : 'crush_removed',
-          actorUid: userUid,
-          actorName: actorName || 'Alguien anónimo',
-          totalCount: res.newCount
-        }).catch(() => {});
-      } catch (e) {}
-
-      return {
-        success: !res.error,
-        hasCrushed: res.hasCrushed,
-        count: res.newCount,
-        error: res.error
-      };
-    }
-
-    // 2. Si no está reclamado, usar la tabla student_crushes
     const { data: existing, error: checkErr } = await supabase
       .from('student_crushes')
       .select('id')
@@ -1633,60 +976,31 @@ export interface StudentLoveMessage {
  */
 export async function getStudentLoveMessages(studentId: string, currentUserUid?: string): Promise<StudentLoveMessage[]> {
   try {
-    const student = await getStudentById(studentId);
+    const { data, error } = await supabase
+      .from('student_love_messages')
+      .select('*')
+      .eq('student_id', studentId)
+      .order('created_at', { ascending: false });
+
     let messages: StudentLoveMessage[] = [];
 
-    // 1. Si el estudiante está reclamado, consultar users_love_messages
-    if (student?.is_claimed && student.claimed_by_uid) {
-      try {
-        const { data: userMsgs, error: umErr } = await supabase
-          .from('users_love_messages')
-          .select('*')
-          .eq('target_user_id', student.claimed_by_uid)
-          .order('created_at', { ascending: false });
-
-        if (!umErr && userMsgs && userMsgs.length > 0) {
-          messages = userMsgs.map((msg: any) => ({
-            id: msg.id,
-            student_id: studentId,
-            user_uid: msg.user_uid,
-            author_name: msg.author_name || 'Anónimo',
-            author_avatar: msg.author_avatar || null,
-            author_gender: msg.author_gender || null,
-            message: msg.content || msg.message || '',
-            created_at: msg.created_at,
-            hearts_count: Number(msg.hearts_count) || 0,
-          })) as StudentLoveMessage[];
-        }
-      } catch (e) {}
-    }
-
-    // 2. Si no hay mensajes de usuario o no está reclamado, consultar student_love_messages
-    if (messages.length === 0) {
-      const { data, error } = await supabase
-        .from('student_love_messages')
-        .select('*')
-        .eq('student_id', studentId)
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        if (error.code === '42P01' || error.message?.includes('does not exist')) {
-          // Fallback a localStorage si la tabla aún no se ha creado en Supabase
-          if (typeof window !== 'undefined') {
-            const local = localStorage.getItem(`student_love_messages_${studentId}`);
-            if (local) {
-              try {
-                messages = JSON.parse(local);
-              } catch (e) {}
-            }
+    if (error) {
+      if (error.code === '42P01' || error.message?.includes('does not exist')) {
+        // Fallback a localStorage si la tabla aún no se ha creado en Supabase
+        if (typeof window !== 'undefined') {
+          const local = localStorage.getItem(`student_love_messages_${studentId}`);
+          if (local) {
+            try {
+              messages = JSON.parse(local);
+            } catch (e) {}
           }
         }
-      } else if (data) {
-        messages = data.map((msg: any) => ({
-          ...msg,
-          hearts_count: Number(msg.hearts_count) || 0
-        })) as StudentLoveMessage[];
       }
+    } else if (data) {
+      messages = data.map((msg: any) => ({
+        ...msg,
+        hearts_count: Number(msg.hearts_count) || 0
+      })) as StudentLoveMessage[];
     }
 
     // Obtener los nombres reales y géneros de los autores de los mensajes
@@ -1836,32 +1150,19 @@ export async function toggleStudentLoveMessageHeart(
   studentId: string
 ): Promise<{ success: boolean; hasHearted: boolean; heartsCount: number; error?: string }> {
   try {
-    const student = await getStudentById(studentId);
-    const isClaimed = Boolean(student?.is_claimed && student?.claimed_by_uid);
-
     // 1. Consultar si el usuario ya dio corazón a este mensaje en Supabase
     let alreadyHearted = false;
     try {
-      if (isClaimed) {
-        const { data: existingHeart } = await supabase
-          .from('users_love_message_hearts')
-          .select('id')
-          .eq('message_id', messageId)
-          .eq('user_uid', userUid)
-          .maybeSingle();
+      const { data: existingHeart } = await supabase
+        .from('student_love_message_hearts')
+        .select('id')
+        .eq('message_id', messageId)
+        .eq('user_uid', userUid)
+        .maybeSingle();
 
-        alreadyHearted = !!existingHeart;
-      } else {
-        const { data: existingHeart } = await supabase
-          .from('student_love_message_hearts')
-          .select('id')
-          .eq('message_id', messageId)
-          .eq('user_uid', userUid)
-          .maybeSingle();
-
-        alreadyHearted = !!existingHeart;
-      }
+      alreadyHearted = !!existingHeart;
     } catch (e) {
+      // Si la tabla no existe aún, chequear localStorage
       if (typeof window !== 'undefined') {
         alreadyHearted = localStorage.getItem(`student_love_msg_heart_${messageId}_${userUid}`) === 'true';
       }
@@ -1873,9 +1174,8 @@ export async function toggleStudentLoveMessageHeart(
     // 2. Obtener el conteo actual del mensaje
     let currentCount = 0;
     try {
-      const msgTable = isClaimed ? 'users_love_messages' : 'student_love_messages';
       const { data: msgData } = await supabase
-        .from(msgTable)
+        .from('student_love_messages')
         .select('hearts_count')
         .eq('id', messageId)
         .maybeSingle();
@@ -1892,27 +1192,38 @@ export async function toggleStudentLoveMessageHeart(
       }
     }
 
-    newHeartsCount = alreadyHearted ? Math.max(0, currentCount - 1) : currentCount + 1;
+    if (alreadyHearted) {
+      // Quitar corazón: restar -1
+      newHeartsCount = Math.max(0, currentCount - 1);
 
-    // 3. Actualizar corazón y contador en la tabla correspondiente
+      // Eliminar de student_love_message_hearts
+      await supabase
+        .from('student_love_message_hearts')
+        .delete()
+        .eq('message_id', messageId)
+        .eq('user_uid', userUid);
+    } else {
+      // Dar corazón: sumar +1
+      newHeartsCount = currentCount + 1;
+
+      // Insertar en student_love_message_hearts
+      await supabase
+        .from('student_love_message_hearts')
+        .insert([{
+          message_id: messageId,
+          user_uid: userUid,
+          created_at: new Date().toISOString()
+        }]);
+    }
+
+    // 3. Actualizar la columna general hearts_count en student_love_messages
     try {
-      if (isClaimed) {
-        if (alreadyHearted) {
-          await supabase.from('users_love_message_hearts').delete().eq('message_id', messageId).eq('user_uid', userUid);
-        } else {
-          await supabase.from('users_love_message_hearts').insert([{ message_id: messageId, user_uid: userUid, created_at: new Date().toISOString() }]);
-        }
-        await supabase.from('users_love_messages').update({ hearts_count: newHeartsCount }).eq('id', messageId);
-      } else {
-        if (alreadyHearted) {
-          await supabase.from('student_love_message_hearts').delete().eq('message_id', messageId).eq('user_uid', userUid);
-        } else {
-          await supabase.from('student_love_message_hearts').insert([{ message_id: messageId, user_uid: userUid, created_at: new Date().toISOString() }]);
-        }
-        await supabase.from('student_love_messages').update({ hearts_count: newHeartsCount }).eq('id', messageId);
-      }
+      await supabase
+        .from('student_love_messages')
+        .update({ hearts_count: newHeartsCount })
+        .eq('id', messageId);
     } catch (upErr) {
-      console.warn('Notice updating hearts in Supabase:', upErr);
+      console.warn('Notice updating hearts_count on student_love_messages:', upErr);
     }
 
     // 4. Guardar en localStorage para respuesta instantánea local
@@ -1975,86 +1286,41 @@ export async function createStudentLoveMessage(
       return { success: false, error: 'El mensaje no debe superar los 500 caracteres.' };
     }
 
-    const student = await getStudentById(studentId);
-    const claim = isStudentClaimed(studentId);
-    const targetUid = student?.claimed_by_uid || (claim.claimed ? claim.uid : undefined);
-
-    if (targetUid && targetUid === userUid) {
-      return { success: false, error: 'No puedes enviarte mensajes de amor o confesiones a ti mismo.' };
-    }
+    const payload = {
+      student_id: studentId,
+      user_uid: userUid,
+      author_name: authorName || 'Anónimo',
+      author_avatar: authorAvatar || null,
+      message: trimmed,
+      hearts_count: 0,
+      created_at: new Date().toISOString()
+    };
 
     let createdMsg: StudentLoveMessage | null = null;
 
-    // 1. Si el estudiante está reclamado, guardar en users_love_messages
-    if (student?.is_claimed && student.claimed_by_uid) {
-      try {
-        const { data: uMsg, error: uErr } = await supabase
-          .from('users_love_messages')
-          .insert([{
-            target_user_id: student.claimed_by_uid,
-            user_uid: userUid,
-            author_name: authorName || 'Anónimo',
-            author_avatar: authorAvatar || null,
-            content: trimmed,
-            hearts_count: 0,
-            created_at: new Date().toISOString(),
-          }])
-          .select()
-          .single();
+    const { data, error } = await supabase
+      .from('student_love_messages')
+      .insert([payload])
+      .select()
+      .single();
 
-        if (!uErr && uMsg) {
-          createdMsg = {
-            id: uMsg.id,
-            student_id: studentId,
-            user_uid: uMsg.user_uid,
-            author_name: uMsg.author_name,
-            author_avatar: uMsg.author_avatar,
-            author_gender: uMsg.author_gender,
-            message: uMsg.content,
-            created_at: uMsg.created_at,
-            hearts_count: 0,
-            has_hearted: false,
-          };
-        }
-      } catch (e) {}
-    }
-
-    // 2. Si no está reclamado o falló, guardar en student_love_messages
-    if (!createdMsg) {
-      const payload = {
-        student_id: studentId,
-        user_uid: userUid,
-        author_name: authorName || 'Anónimo',
-        author_avatar: authorAvatar || null,
-        message: trimmed,
-        hearts_count: 0,
-        created_at: new Date().toISOString()
-      };
-
-      const { data, error } = await supabase
-        .from('student_love_messages')
-        .insert([payload])
-        .select()
-        .single();
-
-      if (error) {
-        console.warn('Aviso al insertar en Supabase student_love_messages:', error.message);
-        // Fallback local
-        if (typeof window !== 'undefined') {
-          const localItem: StudentLoveMessage = {
-            id: Date.now(),
-            ...payload
-          };
-          const prev = JSON.parse(localStorage.getItem(`student_love_messages_${studentId}`) || '[]');
-          const updated = [localItem, ...prev];
-          localStorage.setItem(`student_love_messages_${studentId}`, JSON.stringify(updated));
-          createdMsg = localItem;
-        } else {
-          return { success: false, error: error.message };
-        }
+    if (error) {
+      console.warn('Aviso al insertar en Supabase student_love_messages:', error.message);
+      // Fallback local
+      if (typeof window !== 'undefined') {
+        const localItem: StudentLoveMessage = {
+          id: Date.now(),
+          ...payload
+        };
+        const prev = JSON.parse(localStorage.getItem(`student_love_messages_${studentId}`) || '[]');
+        const updated = [localItem, ...prev];
+        localStorage.setItem(`student_love_messages_${studentId}`, JSON.stringify(updated));
+        createdMsg = localItem;
       } else {
-        createdMsg = { ...data, hearts_count: 0, has_hearted: false } as StudentLoveMessage;
+        return { success: false, error: error.message };
       }
+    } else {
+      createdMsg = { ...data, hearts_count: 0, has_hearted: false } as StudentLoveMessage;
     }
 
     if (createdMsg && typeof window !== 'undefined') {
@@ -2095,15 +1361,20 @@ export async function deleteStudentLoveMessage(
   studentId: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    await Promise.allSettled([
-      supabase.from('student_love_messages').delete().eq('id', messageId).eq('user_uid', userUid),
-      supabase.from('users_love_messages').delete().eq('id', messageId).eq('user_uid', userUid),
-    ]);
+    const { error } = await supabase
+      .from('student_love_messages')
+      .delete()
+      .eq('id', messageId)
+      .eq('user_uid', userUid);
 
     if (typeof window !== 'undefined') {
       const prev: StudentLoveMessage[] = JSON.parse(localStorage.getItem(`student_love_messages_${studentId}`) || '[]');
       const updated = prev.filter(m => String(m.id) !== String(messageId));
       localStorage.setItem(`student_love_messages_${studentId}`, JSON.stringify(updated));
+    }
+
+    if (error) {
+      console.warn('Error al borrar mensaje en Supabase:', error.message);
     }
 
     return { success: true };

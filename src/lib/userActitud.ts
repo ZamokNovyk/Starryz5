@@ -101,25 +101,6 @@ export async function getUserActitudVotes(
 }
 
 /**
- * Consulta simplificada si el votante ha dado Yo te conozco o Fan a un usuario
- */
-export async function hasUserVotedActitud(
-  targetUserId: string,
-  voterUid: string
-): Promise<{ knows: boolean; fans: boolean }> {
-  const { currentVote } = await getUserActitudVotes(targetUserId, voterUid);
-  return {
-    knows: currentVote === 'yo_te_conozco',
-    fans: currentVote === 'fans'
-  };
-}
-
-/**
- * Alias de compatibilidad para toggleUserActitudVote
- */
-export const toggleUserActitud = toggleUserActitudVote;
-
-/**
  * Alterna o cambia el voto de actitud (Exclusivo: 1 solo voto activo por usuario)
  * Actualiza tanto 'users_actitud' como los contadores cacheados 'knows_count' y 'fans_count' en 'users'.
  */

@@ -64,52 +64,17 @@ export async function getStudentHistoricalStats(
   let dbRows: StudentDailyStat[] = [];
 
   try {
-    // 1. Si el estudiante está reclamado, consultar de la tabla users_daily_stats
-    let targetUserId: string | undefined;
-    try {
-      const { data: u } = await supabase
-        .from('users')
-        .select('id')
-        .eq('claimed_student_id', studentId)
-        .maybeSingle();
-      if (u?.id) {
-        targetUserId = u.id;
-      }
-    } catch (uLookupErr) {}
+    const { data, error } = await supabase
+      .from('student_daily_stats')
+      .select('*')
+      .eq('student_id', studentId)
+      .order('date', { ascending: true });
 
-    if (targetUserId) {
-      try {
-        const { data: userStats, error: uStatsErr } = await supabase
-          .from('users_daily_stats')
-          .select('*')
-          .eq('target_user_id', targetUserId)
-          .order('date', { ascending: true });
-
-        if (!uStatsErr && userStats && userStats.length > 0) {
-          dbRows = userStats.map((row: any) => ({
-            ...row,
-            student_id: studentId,
-          })) as StudentDailyStat[];
-        }
-      } catch (errUserStats) {
-        console.debug('Aviso consultando users_daily_stats:', errUserStats);
-      }
-    }
-
-    // 2. Si no está reclamado o no tiene registros en users_daily_stats, consultar student_daily_stats
-    if (dbRows.length === 0) {
-      const { data, error } = await supabase
-        .from('student_daily_stats')
-        .select('*')
-        .eq('student_id', studentId)
-        .order('date', { ascending: true });
-
-      if (!error && data && data.length > 0) {
-        dbRows = data as StudentDailyStat[];
-      }
+    if (!error && data && data.length > 0) {
+      dbRows = data as StudentDailyStat[];
     }
   } catch (err) {
-    console.debug('Error consultando estadísticas diarias de estudiante:', err);
+    console.debug('Error consultando student_daily_stats:', err);
   }
 
   const dateList: string[] = [];

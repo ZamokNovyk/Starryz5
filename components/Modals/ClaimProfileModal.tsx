@@ -38,10 +38,10 @@ export default function ClaimProfileModal({
   React.useEffect(() => {
     if (isOpen) {
       setDni('');
-      setError(student.is_claimed ? 'Este perfil ya se encuentra reclamado y verificado.' : null);
+      setError(null);
       setSuccess(null);
     }
-  }, [isOpen, student.is_claimed]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -58,14 +58,12 @@ export default function ClaimProfileModal({
     }
   };
 
-  const isGoogleLinked = Boolean(user && !user.isAnonymous && user.email);
-
   const handleClaim = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    if (!user || user.isAnonymous || !user.email) {
-      setError('Solo los usuarios con una cuenta vinculada a Google pueden reclamar y verificar un perfil.');
+    if (!user) {
+      setError('Debes iniciar sesión para vincular y reclamar tu perfil.');
       return;
     }
 
@@ -181,46 +179,29 @@ export default function ClaimProfileModal({
         {/* Formulario de Reclamo */}
         {!success && (
           <>
-            {!isGoogleLinked ? (
-              <div className="text-center py-3 space-y-4">
-                <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs text-left flex items-start gap-2.5">
-                  <Lock className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
-                  <p className="leading-relaxed">
-                    {user?.isAnonymous
-                      ? 'Estás en modo anónimo. Para reclamar y certificar que eres el dueño de este perfil estudiantil, es obligatorio vincular tu cuenta con Google.'
-                      : 'Para reclamar y verificar tu identidad oficial en este perfil con tu DNI, primero debes iniciar sesión con tu cuenta de Google.'}
-                  </p>
-                </div>
+            {!user ? (
+              <div className="text-center py-4 space-y-4">
+                <p className="text-xs text-zinc-400">
+                  Para vincular tu identidad a este perfil, primero inicia sesión con tu cuenta de Google.
+                </p>
                 <button
                   type="button"
                   onClick={handleGoogleSignIn}
                   disabled={authLoading}
-                  className="w-full py-3.5 px-4 rounded-xl bg-white hover:bg-zinc-100 text-black font-extrabold text-xs uppercase tracking-wider transition flex items-center justify-center gap-2 cursor-pointer shadow-lg active:scale-98"
+                  className="w-full py-3 px-4 rounded-xl bg-white hover:bg-zinc-100 text-black font-extrabold text-xs uppercase tracking-wider transition flex items-center justify-center gap-2 cursor-pointer shadow-lg"
                 >
                   {authLoading ? (
-                    <Loader2 className="w-4 h-4 animate-spin text-black" />
+                    <Loader2 className="w-4 h-4 animate-spin" />
                   ) : (
                     <>
-                      <UserCheck className="w-4 h-4 text-black" />
-                      <span>{user?.isAnonymous ? 'Vincular con Google' : 'Iniciar Sesión con Google'}</span>
+                      <UserCheck className="w-4 h-4" />
+                      <span>Iniciar Sesión con Google</span>
                     </>
                   )}
                 </button>
               </div>
             ) : (
               <form onSubmit={handleClaim} className="space-y-4 relative z-10">
-                {/* Badge de cuenta Google vinculada */}
-                <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2 truncate">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                    <span className="text-zinc-300 truncate">
-                      Vinculando a: <strong className="text-white">{user.email}</strong>
-                    </span>
-                  </div>
-                  <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider bg-emerald-500/20 px-2 py-0.5 rounded-full flex-shrink-0">
-                    Google
-                  </span>
-                </div>
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-zinc-300 flex items-center justify-between">
                     <span className="flex items-center gap-1.5">

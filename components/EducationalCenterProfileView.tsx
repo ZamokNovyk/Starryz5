@@ -1101,17 +1101,10 @@ export default function EducationalCenterProfileView({
                         </h3>
                         {activeTab === 'Estudiantes' && (
                           p.is_claimed ? (
-                            p.rawStudent?.claimed_by_uid && user?.uid && p.rawStudent.claimed_by_uid === user.uid ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#eab308]/15 border border-[#eab308]/40 text-[#eab308] text-[10px] font-bold">
-                                <CheckCircle2 className="w-3 h-3 stroke-[3]" />
-                                Tu Perfil
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold">
-                                <CheckCircle2 className="w-3 h-3 stroke-[3]" />
-                                Verificado
-                              </span>
-                            )
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold">
+                              <CheckCircle2 className="w-3 h-3 stroke-[3]" />
+                              Verificado
+                            </span>
                           ) : (
                             <button
                               type="button"
@@ -1222,15 +1215,9 @@ export default function EducationalCenterProfileView({
                       </h3>
                       {activeTab === 'Estudiantes' && (
                         p.is_claimed ? (
-                          p.rawStudent?.claimed_by_uid && user?.uid && p.rawStudent.claimed_by_uid === user.uid ? (
-                            <span className="text-[10px] text-[#eab308] font-bold flex-shrink-0" title="Tu Perfil Verificado">
-                              ★ Tuyo
-                            </span>
-                          ) : (
-                            <span className="text-[10px] text-emerald-400 font-bold flex-shrink-0" title="Perfil Verificado">
-                              ✓ Verificado
-                            </span>
-                          )
+                          <span className="text-[10px] text-emerald-400 font-bold flex-shrink-0" title="Perfil Verificado">
+                            ✓
+                          </span>
                         ) : (
                           <button
                             type="button"

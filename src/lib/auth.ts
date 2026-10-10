@@ -113,17 +113,14 @@ export async function syncUserWithSupabase(user: AuthUser): Promise<any> {
         // Asignar el id UUID real de la base de datos
         user.uid = existing.id;
 
-        // Actualizar nombre o foto si cambiaron (si no es estudiante verificado, permitir actualizar display_name)
+        // Actualizar nombre o foto si cambiaron
         try {
-          const updatePayload: any = {
-            photo_url: user.photoURL || existing.photo_url,
-          };
-          if (!existing.is_verified_student) {
-            updatePayload.display_name = user.displayName || existing.display_name || 'Usuario';
-          }
           await supabase
             .from('users')
-            .update(updatePayload)
+            .update({
+              display_name: user.displayName || existing.display_name || 'Usuario',
+              photo_url: user.photoURL || existing.photo_url,
+            })
             .eq('id', existing.id);
         } catch (e) {}
 
@@ -261,7 +258,7 @@ export async function loginWithGoogle(): Promise<AuthUser> {
 
             const authUser: AuthUser = {
               uid: resolvedUserId,
-              displayName: existingDbUser?.is_verified_student ? existingDbUser.display_name : (existingDbUser?.display_name || displayName),
+              displayName: existingDbUser?.display_name || displayName,
               email,
               photoURL: existingDbUser?.photo_url || photoURL,
               isAnonymous: false,
@@ -363,47 +360,6 @@ export async function updateAuthUserProfile(updates: { displayName?: string; pho
     }
 
     await query;
-
-    // Sincronizar en tabla students si el usuario tiene un perfil de estudiante reclamado
-    try {
-      let targetStudentId: string | null = null;
-      if (typeof window !== 'undefined') {
-        const local = localStorage.getItem(`user_claimed_profile_${current.uid}`);
-        if (local) {
-          try { targetStudentId = JSON.parse(local)?.studentId; } catch {}
-        }
-      }
-      if (!targetStudentId) {
-        const { data: uRow } = await supabase
-          .from('users')
-          .select('claimed_student_id')
-          .or(`id.eq.${current.uid}${current.email ? `,email.eq.${current.email}` : ''}`)
-          .maybeSingle();
-        targetStudentId = uRow?.claimed_student_id;
-      }
-      if (!targetStudentId) {
-        const { data: stRow } = await supabase
-          .from('students')
-          .select('id')
-          .eq('claimed_by_uid', current.uid)
-          .maybeSingle();
-        targetStudentId = stRow?.id;
-      }
-
-      if (targetStudentId && updated.displayName) {
-        const parts = updated.displayName.trim().split(' ');
-        await supabase
-          .from('students')
-          .update({
-            nombre_completo: updated.displayName.trim(),
-            nombre: parts[0] || updated.displayName.trim(),
-            foto_url: updated.photoURL || undefined,
-          })
-          .eq('id', targetStudentId);
-      }
-    } catch (e) {
-      console.warn('Aviso sincronizando student desde updateAuthUserProfile:', e);
-    }
   } catch (err) {
     console.warn('Aviso al actualizar perfil en Supabase:', err);
   }
