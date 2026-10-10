@@ -113,14 +113,17 @@ export async function syncUserWithSupabase(user: AuthUser): Promise<any> {
         // Asignar el id UUID real de la base de datos
         user.uid = existing.id;
 
-        // Actualizar nombre o foto si cambiaron
+        // Actualizar nombre o foto si cambiaron (si no es estudiante verificado, permitir actualizar display_name)
         try {
+          const updatePayload: any = {
+            photo_url: user.photoURL || existing.photo_url,
+          };
+          if (!existing.is_verified_student) {
+            updatePayload.display_name = user.displayName || existing.display_name || 'Usuario';
+          }
           await supabase
             .from('users')
-            .update({
-              display_name: user.displayName || existing.display_name || 'Usuario',
-              photo_url: user.photoURL || existing.photo_url,
-            })
+            .update(updatePayload)
             .eq('id', existing.id);
         } catch (e) {}
 
@@ -258,7 +261,7 @@ export async function loginWithGoogle(): Promise<AuthUser> {
 
             const authUser: AuthUser = {
               uid: resolvedUserId,
-              displayName: existingDbUser?.display_name || displayName,
+              displayName: existingDbUser?.is_verified_student ? existingDbUser.display_name : (existingDbUser?.display_name || displayName),
               email,
               photoURL: existingDbUser?.photo_url || photoURL,
               isAnonymous: false,

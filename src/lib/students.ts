@@ -687,6 +687,8 @@ export async function claimStudentProfile(
       display_name: officialName, 
       claimed_student_id: student.id, 
       is_verified_student: true, 
+      institute_id: student.institute_id,
+      dni: cleanDni,
       knows_count: knowCount,
       fans_count: fanCount,
       crushes_count: crushesCount,
@@ -704,6 +706,7 @@ export async function claimStudentProfile(
         display_name: officialName,
         claimed_student_id: student.id,
         is_verified_student: true,
+        institute_id: student.institute_id,
         dni: cleanDni,
         role_title: 'Estudiante Verificado',
         updated_at: now,
@@ -711,6 +714,13 @@ export async function claimStudentProfile(
     ]);
   } catch (err) {
     console.warn('Aviso no crítico al fusionar estadísticas de usuario en Supabase:', err);
+  }
+
+  // 8. Eliminar el perfil de la tabla students (Fuente Única de la Verdad)
+  try {
+    await supabase.from('students').delete().eq('id', student.id);
+  } catch (delErr) {
+    console.warn('Aviso al eliminar estudiante reclamado de la tabla students:', delErr);
   }
 
   // 3. Persistir en localStorage (espejo en cliente y sincronización instantánea)
