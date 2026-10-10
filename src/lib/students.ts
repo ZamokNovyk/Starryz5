@@ -514,7 +514,106 @@ export async function claimStudentProfile(
     console.warn('Aviso al migrar student_crushes a users_crushes:', migErr);
   }
 
-  // 4. Calcular conteos unificados en users_actitud y users_crushes y sincronizar tabla users
+  // 4. MIGRACIÓN: Transferir student_votes -> users_votes
+  try {
+    const { data: stVotes } = await supabase
+      .from('student_votes')
+      .select('*')
+      .eq('student_id', student.id);
+
+    if (stVotes && stVotes.length > 0) {
+      const votesPayload = stVotes.map((v: any) => ({
+        target_user_id: user.uid,
+        user_uid: v.user_uid,
+        stars: Number(v.stars),
+        created_at: v.created_at || now,
+      }));
+
+      const { error: insVotesErr } = await supabase.from('users_votes').insert(votesPayload);
+      if (!insVotesErr) {
+        await supabase.from('student_votes').delete().eq('student_id', student.id);
+      }
+    }
+  } catch (migVotesErr) {
+    console.warn('Aviso al migrar student_votes a users_votes:', migVotesErr);
+  }
+
+  // 5. MIGRACIÓN: Transferir student_love_messages -> users_love_messages y sus corazones
+  try {
+    const { data: stLoveMsgs } = await supabase
+      .from('student_love_messages')
+      .select('*')
+      .eq('student_id', student.id);
+
+    if (stLoveMsgs && stLoveMsgs.length > 0) {
+      for (const msg of stLoveMsgs) {
+        const { data: insMsg, error: insMsgErr } = await supabase
+          .from('users_love_messages')
+          .insert({
+            target_user_id: user.uid,
+            user_uid: msg.user_uid,
+            author_name: msg.author_name || 'Anónimo',
+            author_avatar: msg.author_avatar || null,
+            author_gender: msg.author_gender || null,
+            content: msg.message || '',
+            hearts_count: Number(msg.hearts_count) || 0,
+            created_at: msg.created_at || now,
+          })
+          .select('id')
+          .single();
+
+        if (!insMsgErr && insMsg) {
+          const { data: msgHearts } = await supabase
+            .from('student_love_message_hearts')
+            .select('*')
+            .eq('message_id', msg.id);
+
+          if (msgHearts && msgHearts.length > 0) {
+            const heartsPayload = msgHearts.map((h: any) => ({
+              message_id: insMsg.id,
+              user_uid: h.user_uid,
+              created_at: h.created_at || now,
+            }));
+            await supabase.from('users_love_message_hearts').insert(heartsPayload);
+            await supabase.from('student_love_message_hearts').delete().eq('message_id', msg.id);
+          }
+        }
+      }
+
+      await supabase.from('student_love_messages').delete().eq('student_id', student.id);
+    }
+  } catch (migMsgErr) {
+    console.warn('Aviso al migrar student_love_messages:', migMsgErr);
+  }
+
+  // 6. MIGRACIÓN: Transferir student_daily_stats -> users_daily_stats
+  try {
+    const { data: stDaily } = await supabase
+      .from('student_daily_stats')
+      .select('*')
+      .eq('student_id', student.id);
+
+    if (stDaily && stDaily.length > 0) {
+      const dailyPayload = stDaily.map((d: any) => ({
+        target_user_id: user.uid,
+        date: d.date,
+        knows_count: d.knows_count || 0,
+        fans_count: d.fans_count || 0,
+        crushes_count: d.crushes_count || 0,
+        score: d.score || 0.0,
+        views_count: d.views_count || 0,
+      }));
+
+      const { error: insDailyErr } = await supabase.from('users_daily_stats').insert(dailyPayload);
+      if (!insDailyErr) {
+        await supabase.from('student_daily_stats').delete().eq('student_id', student.id);
+      }
+    }
+  } catch (migDailyErr) {
+    console.warn('Aviso al migrar student_daily_stats:', migDailyErr);
+  }
+
+  // 7. Calcular conteos unificados en users_actitud y users_crushes y sincronizar tabla users
   try {
     const { knowCount, fanCount } = await getUserActitudCounts(user.uid);
     const crushesCount = await getUserCrushesCount(user.uid);
@@ -535,8 +634,6 @@ export async function claimStudentProfile(
     }
 
     await Promise.allSettled([
-      supabase.from('student_votes').update({ student_id: student.id }).eq('student_id', user.uid),
-      supabase.from('student_love_messages').update({ student_id: student.id }).eq('student_id', user.uid),
       updateUserQuery,
       supabase.from('user_profiles').update({
         display_name: officialName,
@@ -1045,6 +1142,24 @@ export async function getTodayStudentVotes(studentId: string, userUid: string): 
     todayStart.setHours(0, 0, 0, 0);
     const todayIso = todayStart.toISOString();
 
+    // 1. Si el estudiante está reclamado, consultar users_votes
+    const student = await getStudentById(studentId);
+    if (student?.is_claimed && student.claimed_by_uid) {
+      try {
+        const { data: userVotes, error: uErr } = await supabase
+          .from('users_votes')
+          .select('stars')
+          .eq('target_user_id', student.claimed_by_uid)
+          .eq('user_uid', userUid)
+          .gte('created_at', todayIso);
+
+        if (!uErr && userVotes && userVotes.length > 0) {
+          return userVotes.map((v: any) => Number(v.stars));
+        }
+      } catch (e) {}
+    }
+
+    // 2. Si no está reclamado (o fallback), consultar student_votes
     const { data, error } = await supabase
       .from('student_votes')
       .select('stars')
@@ -1069,6 +1184,28 @@ export async function getStudentRatingBreakdown(studentId: string): Promise<{ [k
   const breakdown: { [key: number]: number } = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
   
   try {
+    // 1. Si el estudiante está reclamado, consultar users_votes
+    const student = await getStudentById(studentId);
+    if (student?.is_claimed && student.claimed_by_uid) {
+      try {
+        const { data: userVotes, error: uErr } = await supabase
+          .from('users_votes')
+          .select('stars')
+          .eq('target_user_id', student.claimed_by_uid);
+
+        if (!uErr && userVotes && userVotes.length > 0) {
+          userVotes.forEach((v: any) => {
+            const s = Number(v.stars);
+            if (s >= 1 && s <= 5) {
+              breakdown[s] = (breakdown[s] || 0) + 1;
+            }
+          });
+          return breakdown;
+        }
+      } catch (e) {}
+    }
+
+    // 2. Si no está reclamado (o fallback), consultar student_votes
     const { data, error } = await supabase
       .from('student_votes')
       .select('stars')
@@ -1102,7 +1239,77 @@ export async function submitStudentVote(
   stars: number
 ): Promise<{ success: boolean; new_score: number; total_ratings: number; error?: string }> {
   try {
-    // 1. Insertar el voto
+    const student = await getStudentById(studentId);
+
+    // 1. Si el estudiante está reclamado, guardar en users_votes
+    if (student?.is_claimed && student.claimed_by_uid) {
+      let voteSavedInUsers = false;
+      try {
+        const { error: insErr } = await supabase
+          .from('users_votes')
+          .insert([
+            {
+              target_user_id: student.claimed_by_uid,
+              user_uid: userUid,
+              stars: stars,
+            }
+          ]);
+
+        if (!insErr) {
+          voteSavedInUsers = true;
+        } else {
+          console.warn('Aviso al insertar en users_votes (usando fallback student_votes):', insErr.message);
+        }
+      } catch (e) {}
+
+      // Si falló users_votes (por ejemplo, antes de ejecutar el SQL), usar student_votes
+      if (!voteSavedInUsers) {
+        await supabase
+          .from('student_votes')
+          .insert([
+            {
+              student_id: studentId,
+              user_uid: userUid,
+              stars: stars,
+            }
+          ]);
+      }
+
+      // Calcular nuevo promedio unificado
+      let allVotesData: any[] = [];
+      try {
+        const { data: uv } = await supabase
+          .from('users_votes')
+          .select('stars')
+          .eq('target_user_id', student.claimed_by_uid);
+        if (uv && uv.length > 0) allVotesData = uv;
+      } catch (e) {}
+
+      if (allVotesData.length === 0) {
+        const { data: sv } = await supabase
+          .from('student_votes')
+          .select('stars')
+          .eq('student_id', studentId);
+        if (sv && sv.length > 0) allVotesData = sv;
+      }
+
+      if (allVotesData.length > 0) {
+        const sum = allVotesData.reduce((acc, curr) => acc + Number(curr.stars), 0);
+        const newScore = parseFloat((sum / allVotesData.length).toFixed(1));
+        const totalRatings = allVotesData.length;
+
+        await Promise.allSettled([
+          supabase.from('students').update({ score: newScore, total_ratings: totalRatings }).eq('id', studentId),
+          supabase.from('users').update({ score: newScore, total_ratings: totalRatings }).eq('id', student.claimed_by_uid),
+        ]);
+
+        return { success: true, new_score: newScore, total_ratings: totalRatings };
+      }
+
+      return { success: true, new_score: stars, total_ratings: 1 };
+    }
+
+    // 2. Si no está reclamado, insertar en student_votes
     const { error: insertErr } = await supabase
       .from('student_votes')
       .insert([
@@ -1118,7 +1325,7 @@ export async function submitStudentVote(
       return { success: false, new_score: 0, total_ratings: 0, error: insertErr.message };
     }
 
-    // 2. Calcular nuevo promedio y total
+    // Calcular nuevo promedio y total
     const { data: allVotes } = await supabase
       .from('student_votes')
       .select('stars')
@@ -1316,31 +1523,60 @@ export interface StudentLoveMessage {
  */
 export async function getStudentLoveMessages(studentId: string, currentUserUid?: string): Promise<StudentLoveMessage[]> {
   try {
-    const { data, error } = await supabase
-      .from('student_love_messages')
-      .select('*')
-      .eq('student_id', studentId)
-      .order('created_at', { ascending: false });
-
+    const student = await getStudentById(studentId);
     let messages: StudentLoveMessage[] = [];
 
-    if (error) {
-      if (error.code === '42P01' || error.message?.includes('does not exist')) {
-        // Fallback a localStorage si la tabla aún no se ha creado en Supabase
-        if (typeof window !== 'undefined') {
-          const local = localStorage.getItem(`student_love_messages_${studentId}`);
-          if (local) {
-            try {
-              messages = JSON.parse(local);
-            } catch (e) {}
+    // 1. Si el estudiante está reclamado, consultar users_love_messages
+    if (student?.is_claimed && student.claimed_by_uid) {
+      try {
+        const { data: userMsgs, error: umErr } = await supabase
+          .from('users_love_messages')
+          .select('*')
+          .eq('target_user_id', student.claimed_by_uid)
+          .order('created_at', { ascending: false });
+
+        if (!umErr && userMsgs && userMsgs.length > 0) {
+          messages = userMsgs.map((msg: any) => ({
+            id: msg.id,
+            student_id: studentId,
+            user_uid: msg.user_uid,
+            author_name: msg.author_name || 'Anónimo',
+            author_avatar: msg.author_avatar || null,
+            author_gender: msg.author_gender || null,
+            message: msg.content || msg.message || '',
+            created_at: msg.created_at,
+            hearts_count: Number(msg.hearts_count) || 0,
+          })) as StudentLoveMessage[];
+        }
+      } catch (e) {}
+    }
+
+    // 2. Si no hay mensajes de usuario o no está reclamado, consultar student_love_messages
+    if (messages.length === 0) {
+      const { data, error } = await supabase
+        .from('student_love_messages')
+        .select('*')
+        .eq('student_id', studentId)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        if (error.code === '42P01' || error.message?.includes('does not exist')) {
+          // Fallback a localStorage si la tabla aún no se ha creado en Supabase
+          if (typeof window !== 'undefined') {
+            const local = localStorage.getItem(`student_love_messages_${studentId}`);
+            if (local) {
+              try {
+                messages = JSON.parse(local);
+              } catch (e) {}
+            }
           }
         }
+      } else if (data) {
+        messages = data.map((msg: any) => ({
+          ...msg,
+          hearts_count: Number(msg.hearts_count) || 0
+        })) as StudentLoveMessage[];
       }
-    } else if (data) {
-      messages = data.map((msg: any) => ({
-        ...msg,
-        hearts_count: Number(msg.hearts_count) || 0
-      })) as StudentLoveMessage[];
     }
 
     // Obtener los nombres reales y géneros de los autores de los mensajes
@@ -1490,19 +1726,32 @@ export async function toggleStudentLoveMessageHeart(
   studentId: string
 ): Promise<{ success: boolean; hasHearted: boolean; heartsCount: number; error?: string }> {
   try {
+    const student = await getStudentById(studentId);
+    const isClaimed = Boolean(student?.is_claimed && student?.claimed_by_uid);
+
     // 1. Consultar si el usuario ya dio corazón a este mensaje en Supabase
     let alreadyHearted = false;
     try {
-      const { data: existingHeart } = await supabase
-        .from('student_love_message_hearts')
-        .select('id')
-        .eq('message_id', messageId)
-        .eq('user_uid', userUid)
-        .maybeSingle();
+      if (isClaimed) {
+        const { data: existingHeart } = await supabase
+          .from('users_love_message_hearts')
+          .select('id')
+          .eq('message_id', messageId)
+          .eq('user_uid', userUid)
+          .maybeSingle();
 
-      alreadyHearted = !!existingHeart;
+        alreadyHearted = !!existingHeart;
+      } else {
+        const { data: existingHeart } = await supabase
+          .from('student_love_message_hearts')
+          .select('id')
+          .eq('message_id', messageId)
+          .eq('user_uid', userUid)
+          .maybeSingle();
+
+        alreadyHearted = !!existingHeart;
+      }
     } catch (e) {
-      // Si la tabla no existe aún, chequear localStorage
       if (typeof window !== 'undefined') {
         alreadyHearted = localStorage.getItem(`student_love_msg_heart_${messageId}_${userUid}`) === 'true';
       }
@@ -1514,8 +1763,9 @@ export async function toggleStudentLoveMessageHeart(
     // 2. Obtener el conteo actual del mensaje
     let currentCount = 0;
     try {
+      const msgTable = isClaimed ? 'users_love_messages' : 'student_love_messages';
       const { data: msgData } = await supabase
-        .from('student_love_messages')
+        .from(msgTable)
         .select('hearts_count')
         .eq('id', messageId)
         .maybeSingle();
@@ -1532,38 +1782,27 @@ export async function toggleStudentLoveMessageHeart(
       }
     }
 
-    if (alreadyHearted) {
-      // Quitar corazón: restar -1
-      newHeartsCount = Math.max(0, currentCount - 1);
+    newHeartsCount = alreadyHearted ? Math.max(0, currentCount - 1) : currentCount + 1;
 
-      // Eliminar de student_love_message_hearts
-      await supabase
-        .from('student_love_message_hearts')
-        .delete()
-        .eq('message_id', messageId)
-        .eq('user_uid', userUid);
-    } else {
-      // Dar corazón: sumar +1
-      newHeartsCount = currentCount + 1;
-
-      // Insertar en student_love_message_hearts
-      await supabase
-        .from('student_love_message_hearts')
-        .insert([{
-          message_id: messageId,
-          user_uid: userUid,
-          created_at: new Date().toISOString()
-        }]);
-    }
-
-    // 3. Actualizar la columna general hearts_count en student_love_messages
+    // 3. Actualizar corazón y contador en la tabla correspondiente
     try {
-      await supabase
-        .from('student_love_messages')
-        .update({ hearts_count: newHeartsCount })
-        .eq('id', messageId);
+      if (isClaimed) {
+        if (alreadyHearted) {
+          await supabase.from('users_love_message_hearts').delete().eq('message_id', messageId).eq('user_uid', userUid);
+        } else {
+          await supabase.from('users_love_message_hearts').insert([{ message_id: messageId, user_uid: userUid, created_at: new Date().toISOString() }]);
+        }
+        await supabase.from('users_love_messages').update({ hearts_count: newHeartsCount }).eq('id', messageId);
+      } else {
+        if (alreadyHearted) {
+          await supabase.from('student_love_message_hearts').delete().eq('message_id', messageId).eq('user_uid', userUid);
+        } else {
+          await supabase.from('student_love_message_hearts').insert([{ message_id: messageId, user_uid: userUid, created_at: new Date().toISOString() }]);
+        }
+        await supabase.from('student_love_messages').update({ hearts_count: newHeartsCount }).eq('id', messageId);
+      }
     } catch (upErr) {
-      console.warn('Notice updating hearts_count on student_love_messages:', upErr);
+      console.warn('Notice updating hearts in Supabase:', upErr);
     }
 
     // 4. Guardar en localStorage para respuesta instantánea local
@@ -1626,41 +1865,79 @@ export async function createStudentLoveMessage(
       return { success: false, error: 'El mensaje no debe superar los 500 caracteres.' };
     }
 
-    const payload = {
-      student_id: studentId,
-      user_uid: userUid,
-      author_name: authorName || 'Anónimo',
-      author_avatar: authorAvatar || null,
-      message: trimmed,
-      hearts_count: 0,
-      created_at: new Date().toISOString()
-    };
-
+    const student = await getStudentById(studentId);
     let createdMsg: StudentLoveMessage | null = null;
 
-    const { data, error } = await supabase
-      .from('student_love_messages')
-      .insert([payload])
-      .select()
-      .single();
+    // 1. Si el estudiante está reclamado, guardar en users_love_messages
+    if (student?.is_claimed && student.claimed_by_uid) {
+      try {
+        const { data: uMsg, error: uErr } = await supabase
+          .from('users_love_messages')
+          .insert([{
+            target_user_id: student.claimed_by_uid,
+            user_uid: userUid,
+            author_name: authorName || 'Anónimo',
+            author_avatar: authorAvatar || null,
+            content: trimmed,
+            hearts_count: 0,
+            created_at: new Date().toISOString(),
+          }])
+          .select()
+          .single();
 
-    if (error) {
-      console.warn('Aviso al insertar en Supabase student_love_messages:', error.message);
-      // Fallback local
-      if (typeof window !== 'undefined') {
-        const localItem: StudentLoveMessage = {
-          id: Date.now(),
-          ...payload
-        };
-        const prev = JSON.parse(localStorage.getItem(`student_love_messages_${studentId}`) || '[]');
-        const updated = [localItem, ...prev];
-        localStorage.setItem(`student_love_messages_${studentId}`, JSON.stringify(updated));
-        createdMsg = localItem;
+        if (!uErr && uMsg) {
+          createdMsg = {
+            id: uMsg.id,
+            student_id: studentId,
+            user_uid: uMsg.user_uid,
+            author_name: uMsg.author_name,
+            author_avatar: uMsg.author_avatar,
+            author_gender: uMsg.author_gender,
+            message: uMsg.content,
+            created_at: uMsg.created_at,
+            hearts_count: 0,
+            has_hearted: false,
+          };
+        }
+      } catch (e) {}
+    }
+
+    // 2. Si no está reclamado o falló, guardar en student_love_messages
+    if (!createdMsg) {
+      const payload = {
+        student_id: studentId,
+        user_uid: userUid,
+        author_name: authorName || 'Anónimo',
+        author_avatar: authorAvatar || null,
+        message: trimmed,
+        hearts_count: 0,
+        created_at: new Date().toISOString()
+      };
+
+      const { data, error } = await supabase
+        .from('student_love_messages')
+        .insert([payload])
+        .select()
+        .single();
+
+      if (error) {
+        console.warn('Aviso al insertar en Supabase student_love_messages:', error.message);
+        // Fallback local
+        if (typeof window !== 'undefined') {
+          const localItem: StudentLoveMessage = {
+            id: Date.now(),
+            ...payload
+          };
+          const prev = JSON.parse(localStorage.getItem(`student_love_messages_${studentId}`) || '[]');
+          const updated = [localItem, ...prev];
+          localStorage.setItem(`student_love_messages_${studentId}`, JSON.stringify(updated));
+          createdMsg = localItem;
+        } else {
+          return { success: false, error: error.message };
+        }
       } else {
-        return { success: false, error: error.message };
+        createdMsg = { ...data, hearts_count: 0, has_hearted: false } as StudentLoveMessage;
       }
-    } else {
-      createdMsg = { ...data, hearts_count: 0, has_hearted: false } as StudentLoveMessage;
     }
 
     if (createdMsg && typeof window !== 'undefined') {
@@ -1701,20 +1978,15 @@ export async function deleteStudentLoveMessage(
   studentId: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const { error } = await supabase
-      .from('student_love_messages')
-      .delete()
-      .eq('id', messageId)
-      .eq('user_uid', userUid);
+    await Promise.allSettled([
+      supabase.from('student_love_messages').delete().eq('id', messageId).eq('user_uid', userUid),
+      supabase.from('users_love_messages').delete().eq('id', messageId).eq('user_uid', userUid),
+    ]);
 
     if (typeof window !== 'undefined') {
       const prev: StudentLoveMessage[] = JSON.parse(localStorage.getItem(`student_love_messages_${studentId}`) || '[]');
       const updated = prev.filter(m => String(m.id) !== String(messageId));
       localStorage.setItem(`student_love_messages_${studentId}`, JSON.stringify(updated));
-    }
-
-    if (error) {
-      console.warn('Error al borrar mensaje en Supabase:', error.message);
     }
 
     return { success: true };

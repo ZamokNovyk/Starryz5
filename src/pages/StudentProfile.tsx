@@ -31,6 +31,7 @@ import ClaimProfileModal from '@/components/Modals/ClaimProfileModal';
 import { 
   getStudentById, 
   Student, 
+  isStudentClaimed,
   getUserStudentInteraction, 
   getStudentInteractionCounts, 
   toggleStudentInteraction,
@@ -292,6 +293,8 @@ export default function StudentProfile({
     if (!student) return;
 
     const studentId = student.id || slug;
+    const claimInfo = isStudentClaimed(studentId);
+    const claimedUid = student.claimed_by_uid || (claimInfo.claimed ? claimInfo.uid : undefined);
 
     const refreshVotesData = async () => {
       try {
@@ -310,6 +313,46 @@ export default function StudentProfile({
         }
       } catch (err) {
         console.error('Error al refrescar votos de estudiante en tiempo real:', err);
+      }
+    };
+
+    const refreshInteractionsData = async () => {
+      try {
+        const counts = await getStudentInteractionCounts(studentId);
+        setKnowCount(counts.knows);
+        setFanCount(counts.fan);
+
+        if (user) {
+          const userInteraction = await getUserStudentInteraction(studentId, user.uid);
+          if (userInteraction) {
+            setHasVotedKnow(userInteraction.interaction_type === 'knows');
+            setHasVotedFan(userInteraction.interaction_type === 'fan');
+          } else {
+            setHasVotedKnow(false);
+            setHasVotedFan(false);
+          }
+        }
+      } catch (err) {
+        console.error('Error al refrescar interacciones de estudiante en tiempo real:', err);
+      }
+    };
+
+    const refreshCrushesData = async () => {
+      try {
+        const crushStatus = await getStudentCrushStatus(studentId, user?.uid || '');
+        setCrushCount(crushStatus.count);
+        setHasCrushed(crushStatus.hasCrushed);
+      } catch (err) {
+        console.error('Error al refrescar crushes de estudiante en tiempo real:', err);
+      }
+    };
+
+    const refreshLoveMessagesData = async () => {
+      try {
+        const msgs = await getStudentLoveMessages(studentId, user?.uid);
+        setLoveMessages(msgs);
+      } catch (err) {
+        console.error('Error al refrescar mensajes de amor en tiempo real:', err);
       }
     };
 
@@ -333,28 +376,37 @@ export default function StudentProfile({
         {
           event: '*',
           schema: 'public',
+          table: 'users_votes'
+        },
+        (payload) => {
+          if (claimedUid && (payload.eventType === 'DELETE' || (payload.new && (payload.new as any).target_user_id === claimedUid))) {
+            refreshVotesData();
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
           table: 'student_interactions'
         },
         async (payload) => {
           if (payload.eventType === 'DELETE' || (payload.new && (payload.new as any).student_id === studentId)) {
-            try {
-              const counts = await getStudentInteractionCounts(studentId);
-              setKnowCount(counts.knows);
-              setFanCount(counts.fan);
-
-              if (user) {
-                const userInteraction = await getUserStudentInteraction(studentId, user.uid);
-                if (userInteraction) {
-                  setHasVotedKnow(userInteraction.interaction_type === 'knows');
-                  setHasVotedFan(userInteraction.interaction_type === 'fan');
-                } else {
-                  setHasVotedKnow(false);
-                  setHasVotedFan(false);
-                }
-              }
-            } catch (err) {
-              console.error('Error al refrescar interacciones de estudiante en tiempo real:', err);
-            }
+            refreshInteractionsData();
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'users_actitud'
+        },
+        async (payload) => {
+          if (claimedUid && (payload.eventType === 'DELETE' || (payload.new && (payload.new as any).target_user_id === claimedUid))) {
+            refreshInteractionsData();
           }
         }
       )
@@ -367,13 +419,20 @@ export default function StudentProfile({
         },
         async (payload) => {
           if (payload.eventType === 'DELETE' || (payload.new && (payload.new as any).student_id === studentId)) {
-            try {
-              const crushStatus = await getStudentCrushStatus(studentId, user?.uid || '');
-              setCrushCount(crushStatus.count);
-              setHasCrushed(crushStatus.hasCrushed);
-            } catch (err) {
-              console.error('Error al refrescar crushes de estudiante en tiempo real:', err);
-            }
+            refreshCrushesData();
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'users_crushes'
+        },
+        async (payload) => {
+          if (claimedUid && (payload.eventType === 'DELETE' || (payload.new && (payload.new as any).target_user_id === claimedUid))) {
+            refreshCrushesData();
           }
         }
       )
@@ -386,12 +445,33 @@ export default function StudentProfile({
         },
         async (payload) => {
           if (payload.eventType === 'DELETE' || (payload.new && (payload.new as any).student_id === studentId)) {
-            try {
-              const msgs = await getStudentLoveMessages(studentId, user?.uid);
-              setLoveMessages(msgs);
-            } catch (err) {
-              console.error('Error al refrescar mensajes de amor en tiempo real:', err);
-            }
+            refreshLoveMessagesData();
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'users_love_messages'
+        },
+        async (payload) => {
+          if (claimedUid && (payload.eventType === 'DELETE' || (payload.new && (payload.new as any).target_user_id === claimedUid))) {
+            refreshLoveMessagesData();
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'users_love_message_hearts'
+        },
+        async () => {
+          if (claimedUid) {
+            refreshLoveMessagesData();
           }
         }
       )
