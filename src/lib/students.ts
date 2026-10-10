@@ -279,6 +279,10 @@ export async function claimStudentProfile(
   inputDni: string,
   user: { uid: string; email?: string | null; displayName?: string | null }
 ): Promise<{ success: boolean; student: Student; message: string }> {
+  if (!user || !user.email) {
+    throw new Error('Solo los usuarios con una cuenta vinculada a Google pueden reclamar un perfil oficial.');
+  }
+
   const cleanDni = inputDni.trim().replace(/\D/g, '');
   if (!cleanDni || cleanDni.length < 8) {
     throw new Error('El DNI debe tener 8 dígitos numéricos válidos.');
@@ -308,7 +312,7 @@ export async function claimStudentProfile(
   const officialName = student.nombre_completo || `${student.nombre} ${student.apellidos}`.trim();
   const now = new Date().toISOString();
 
-  // 1. Intentar actualizar tabla students en Supabase
+  // 1. Actualizar tabla students en Supabase
   try {
     await supabase
       .from('students')
@@ -321,22 +325,29 @@ export async function claimStudentProfile(
       })
       .eq('id', student.id);
   } catch (err) {
-    console.warn('Aviso no crítico al actualizar tabla students en Supabase:', err);
+    console.warn('Aviso al actualizar tabla students en Supabase:', err);
   }
 
   // 2. Fusionar interacciones, votos, flechazos y mensajes acumulados por el usuario
   try {
-    await Promise.all([
+    let updateUserQuery = supabase.from('users').update({ 
+      display_name: officialName, 
+      claimed_student_id: student.id, 
+      is_verified_student: true, 
+      updated_at: now 
+    });
+    if (user.email) {
+      updateUserQuery = updateUserQuery.eq('email', user.email);
+    } else {
+      updateUserQuery = updateUserQuery.eq('id', user.uid);
+    }
+
+    await Promise.allSettled([
       supabase.from('student_interactions').update({ student_id: student.id }).eq('student_id', user.uid),
       supabase.from('student_votes').update({ student_id: student.id }).eq('student_id', user.uid),
       supabase.from('student_crushes').update({ student_id: student.id }).eq('student_id', user.uid),
       supabase.from('student_love_messages').update({ student_id: student.id }).eq('student_id', user.uid),
-      supabase.from('users').update({ 
-        display_name: officialName, 
-        claimed_student_id: student.id, 
-        is_verified_student: true, 
-        updated_at: now 
-      }).eq('firebase_uid', user.uid),
+      updateUserQuery,
       supabase.from('user_profiles').update({
         display_name: officialName,
         claimed_student_id: student.id,
