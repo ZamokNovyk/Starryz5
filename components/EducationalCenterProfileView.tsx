@@ -211,8 +211,6 @@ export default function EducationalCenterProfileView({
     }
 
     const isKnownCdn = 
-      trimmed.includes('starryz5.com') ||
-      trimmed.includes('backblazeb2.com') ||
       trimmed.includes('fbcdn.net') || 
       trimmed.includes('scontent') || 
       trimmed.includes('facebook.com') || 
@@ -227,7 +225,7 @@ export default function EducationalCenterProfileView({
     const hasImageParam = trimmed.includes('format=') || trimmed.includes('fit=') || trimmed.includes('photo') || trimmed.includes('image');
 
     if (!isKnownCdn && !hasImageExt && !hasImageParam) {
-      return 'Introduce un enlace directo a una imagen (.jpg, .png, .webp) o CDN de Starryz/Facebook/Instagram/Unsplash';
+      return 'Introduce un enlace directo a una imagen (.jpg, .png, .webp) o CDN de Facebook/Instagram/Unsplash';
     }
 
     return null;
@@ -420,14 +418,6 @@ export default function EducationalCenterProfileView({
         youtube_url: editYoutube.trim(),
         twitter_url: editTwitter.trim(),
       });
-
-      if (institution) {
-        institution.image = editPhotoUrl.trim() || institution.image;
-      }
-
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('educational-centers-updated'));
-      }
 
       setIsEditingWiki(false);
       setToastMessage('Datos de la Wiki actualizados correctamente');
@@ -820,11 +810,21 @@ export default function EducationalCenterProfileView({
 
       {/* HEADER DE LA INSTITUCIÓN */}
       <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 pt-2 pb-4">
-        {/* Avatar circular con previsualización en vivo al editar */}
+        {/* Avatar circular */}
         <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-[#181818] border border-zinc-800 flex items-center justify-center text-zinc-500 text-3xl font-black shadow-lg flex-shrink-0 overflow-hidden relative">
-          {((isEditingWiki && editPhotoUrl.trim()) || centerWikiData?.profile_photo_url || institution.image) ? (
+          {centerWikiData?.profile_photo_url ? (
             <img
-              src={(isEditingWiki && editPhotoUrl.trim()) ? editPhotoUrl.trim() : (centerWikiData?.profile_photo_url || institution.image)}
+              src={centerWikiData.profile_photo_url}
+              alt={institution.name}
+              className="w-full h-full object-cover relative z-10"
+              referrerPolicy="no-referrer"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+              }}
+            />
+          ) : institution.image ? (
+            <img
+              src={institution.image}
               alt={institution.name}
               className="w-full h-full object-cover relative z-10"
               referrerPolicy="no-referrer"
@@ -1303,7 +1303,6 @@ export default function EducationalCenterProfileView({
               <p className="text-xs font-mono">Cargando datos de la Wiki...</p>
             </div>
           ) : isEditingWiki ? (
-            /* MODO EDICIÓN (SOLO ADMINS) */
             <form onSubmit={handleSaveWiki} className="bg-[#0d0d0d] border border-zinc-800/80 rounded-2xl p-6 sm:p-8 space-y-6 animate-in fade-in zoom-in-95 duration-200">
               
               {/* BLOQUE: Imagen del Instituto */}
@@ -1366,7 +1365,7 @@ export default function EducationalCenterProfileView({
                       </p>
                     ) : (
                       <p className="text-[11px] text-zinc-500">
-                        Soporta CDN de Starryz (media.starryz5.com), Backblaze B2, Facebook, Instagram, Unsplash, o cualquier enlace directo (.jpg, .png, .webp).
+                        Soporta CDN de Facebook (fbcdn/scontent), Instagram, Unsplash, o cualquier enlace directo (.jpg, .png, .webp).
                       </p>
                     )}
                   </div>
@@ -1535,14 +1534,14 @@ export default function EducationalCenterProfileView({
 
             </form>
           ) : (
-            /* MODO LECTURA (VISTA PÚBLICA) */
             <div className="bg-[#0d0d0d] border border-zinc-800/80 rounded-2xl p-6 sm:p-8 space-y-6">
               
               {/* Imagen y Banner del Instituto */}
               <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 pb-6 border-b border-zinc-800/60">
-                  {(centerWikiData?.profile_photo_url || institution.image) ? (
+                <div className="w-28 h-28 rounded-2xl bg-[#141414] border border-zinc-800/80 overflow-hidden flex items-center justify-center flex-shrink-0 shadow-lg relative">
+                  {centerWikiData?.profile_photo_url ? (
                     <img
-                      src={centerWikiData?.profile_photo_url || institution.image}
+                      src={centerWikiData.profile_photo_url}
                       alt={institution.name}
                       className="w-full h-full object-cover relative z-10"
                       referrerPolicy="no-referrer"
@@ -2358,6 +2357,7 @@ export default function EducationalCenterProfileView({
                     src={centerWikiData?.profile_photo_url || institution.image}
                     alt={institution.name}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    referrerPolicy="no-referrer"
                     onError={(e) => {
                       e.currentTarget.style.display = 'none';
                     }}
