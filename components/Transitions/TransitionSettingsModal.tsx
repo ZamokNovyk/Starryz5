@@ -50,7 +50,7 @@ export const TransitionSettingsModal: React.FC = () => {
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-base font-black text-white tracking-wide">
-                  Estudio de Transiciones PowerPoint
+                  Estudio de Transiciones
                 </h3>
                 <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 uppercase tracking-wider">
                   7 Efectos 3D

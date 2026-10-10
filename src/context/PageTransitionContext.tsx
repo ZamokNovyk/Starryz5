@@ -391,7 +391,7 @@ export const PageTransitionProvider: React.FC<{ children: React.ReactNode }> = (
         return saved as TransitionType;
       }
     } catch {}
-    return 'airplane'; // Default active: 3D Paper Airplane
+    return 'none'; // Por defecto: Sin Animación (Instantáneo)
   });
 
   const [speed, setSpeedState] = useState<TransitionSpeed>(() => {

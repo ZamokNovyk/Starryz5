@@ -43,7 +43,6 @@ import { SearchSuggestion } from '@/src/lib/search';
 import { supabase } from '@/src/lib/supabase';
 import { createConfessionComment, getDisplayAuthorName, getMyConfessionIds } from '@/src/lib/confessions';
 import { promptNotificationOnAction } from '@/src/lib/notificationHelper';
-import { formatAvatarUrl } from '@/src/lib/backblaze';
 import { usePwaTabs } from '@/src/context/PwaTabsContext';
 import { useThemeCustomizer } from '@/src/context/ThemeCustomizerContext';
 import { usePageTransition, TRANSITIONS_LIST } from '@/src/context/PageTransitionContext';
@@ -887,7 +886,7 @@ export default function Header({
                   >
                     {user.photoURL ? (
                       <img
-                        src={formatAvatarUrl(user.photoURL)}
+                        src={user.photoURL}
                         alt={user.displayName || 'Usuario'}
                         className="w-6 h-6 rounded-full object-cover"
                         referrerPolicy="no-referrer"
@@ -1001,7 +1000,7 @@ export default function Header({
                                setIsSettingsModalOpen(true);
                              }}
                              className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-bold text-zinc-300 hover:text-amber-400 hover:bg-zinc-800/60 transition-all cursor-pointer text-left group"
-                             title="Estudio de Transiciones PowerPoint (Avión, Vidrio, Cortinas, Papel Arrugado, Libro, Cubo 3D, Ave)"
+                             title="Estudio de Transiciones (Avión, Vidrio, Cortinas, Papel Arrugado, Libro, Cubo 3D, Ave)"
                            >
                              <div className="flex items-center gap-2.5">
                                <Sparkles className="w-4 h-4 text-blue-400 group-hover:scale-110 transition-transform" />
@@ -1122,7 +1121,7 @@ export default function Header({
               >
                 {user.photoURL ? (
                   <img
-                    src={formatAvatarUrl(user.photoURL)}
+                    src={user.photoURL}
                     alt={user.displayName || 'Usuario'}
                     className="w-10 h-10 rounded-full object-cover animate-in fade-in"
                     referrerPolicy="no-referrer"
