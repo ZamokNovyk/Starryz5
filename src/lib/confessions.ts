@@ -686,20 +686,20 @@ export async function getConfessionComments(confessionId: string): Promise<Confe
       try {
         const { data: usersData } = await supabase
           .from('users')
-          .select('firebase_uid, username, display_name, gender')
-          .in('firebase_uid', authorUids);
+          .select('id, username, display_name, gender')
+          .in('id', authorUids);
 
         if (usersData && Array.isArray(usersData)) {
           usersData.forEach((u: any) => {
-            if (u.firebase_uid) {
+            if (u.id) {
               const customName = (u.username || u.display_name || '').trim();
               const isGen = !customName || 
                 customName.toLowerCase() === 'anónimo' || 
                 customName.toLowerCase() === 'anonimo' || 
                 customName.toLowerCase() === 'usuario anónimo';
               
-              userProfileMap[u.firebase_uid] = {
-                name: !isGen ? customName : `user_${u.firebase_uid.substring(0, 5)}`,
+              userProfileMap[u.id] = {
+                name: !isGen ? customName : `user_${u.id.substring(0, 5)}`,
                 gender: u.gender || null,
               };
             }

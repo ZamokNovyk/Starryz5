@@ -222,11 +222,15 @@ export default function StudentProfile({
 
             // Obtener nombre de usuario real de Supabase o auth y su género
             try {
-              const { data: dbUser } = await supabase
+              let query = supabase
                 .from('users')
-                .select('display_name, username, gender, photo_url')
-                .eq('firebase_uid', user.uid)
-                .maybeSingle();
+                .select('display_name, username, gender, photo_url');
+              if (user.email) {
+                query = query.eq('email', user.email);
+              } else {
+                query = query.eq('id', user.uid);
+              }
+              const { data: dbUser } = await query.maybeSingle();
 
               let g = dbUser?.gender || null;
               if (!g && typeof window !== 'undefined') {

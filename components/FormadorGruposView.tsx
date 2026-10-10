@@ -80,11 +80,13 @@ export default function FormadorGruposView({ onBack }: FormadorGruposViewProps) 
         return;
       }
       try {
-        const { data, error } = await supabase
-          .from('users')
-          .select('role')
-          .eq('firebase_uid', user.uid)
-          .maybeSingle();
+        let query = supabase.from('users').select('role');
+        if (user.email) {
+          query = query.eq('email', user.email);
+        } else {
+          query = query.eq('id', user.uid);
+        }
+        const { data, error } = await query.maybeSingle();
         if (!error && data && data.role === 'admin') {
           setIsAdmin(true);
         } else {

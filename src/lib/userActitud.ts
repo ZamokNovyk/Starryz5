@@ -14,24 +14,13 @@ export interface UserActitudItem {
 async function syncUserTableCounts(targetUserId: string, knowCount: number, fanCount: number) {
   if (!targetUserId) return;
   try {
-    // Intentar actualizar por firebase_uid o por id
-    const { error } = await supabase
+    await supabase
       .from('users')
       .update({
         knows_count: knowCount,
         fans_count: fanCount
       })
-      .eq('firebase_uid', targetUserId);
-
-    if (error) {
-      await supabase
-        .from('users')
-        .update({
-          knows_count: knowCount,
-          fans_count: fanCount
-        })
-        .eq('id', targetUserId);
-    }
+      .eq('id', targetUserId);
   } catch (e) {
     console.warn('Aviso al sincronizar contadores en tabla users:', e);
   }
@@ -50,7 +39,7 @@ export async function getUserActitudCounts(targetUserId: string): Promise<{ know
     const { data: userData } = await supabase
       .from('users')
       .select('knows_count, fans_count')
-      .or(`firebase_uid.eq.${targetUserId},id.eq.${targetUserId}`)
+      .eq('id', targetUserId)
       .maybeSingle();
 
     if (userData && typeof userData.knows_count === 'number' && typeof userData.fans_count === 'number') {

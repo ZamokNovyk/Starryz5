@@ -105,13 +105,13 @@ export default function SearchResultsView({
                   : (u.role === 'admin' ? 'Administrador' : 'Usuario de Starryz');
 
                 usersData.push({
-                  id: `user-${u.firebase_uid || u.id}`,
+                  id: `user-${u.id}`,
                   name: displayName,
                   category: 'Estudiante' as SearchCategory,
                   typeKey: 'estudiantes' as FilterType,
                   subtitle,
                   image: u.photo_url || undefined,
-                  slug: u.firebase_uid || u.id,
+                  slug: u.id,
                   rawItem: u,
                 });
               });

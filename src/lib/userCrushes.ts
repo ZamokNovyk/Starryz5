@@ -13,17 +13,10 @@ export interface UserCrushItem {
 async function syncUserCrushesCount(targetUserId: string, count: number) {
   if (!targetUserId) return;
   try {
-    const { error } = await supabase
+    await supabase
       .from('users')
       .update({ crushes_count: count })
-      .eq('firebase_uid', targetUserId);
-
-    if (error) {
-      await supabase
-        .from('users')
-        .update({ crushes_count: count })
-        .eq('id', targetUserId);
-    }
+      .eq('id', targetUserId);
   } catch (e) {
     console.warn('Aviso al sincronizar crushes_count en tabla users:', e);
   }
@@ -41,7 +34,7 @@ export async function getUserCrushesCount(targetUserId: string): Promise<number>
     const { data: userData } = await supabase
       .from('users')
       .select('crushes_count')
-      .or(`firebase_uid.eq.${targetUserId},id.eq.${targetUserId}`)
+      .eq('id', targetUserId)
       .maybeSingle();
 
     if (userData && typeof userData.crushes_count === 'number') {

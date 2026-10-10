@@ -81,11 +81,14 @@ export default function ProfessorProfile({
       setIsAdmin(true);
       return;
     }
-    supabase
-      .from('users')
-      .select('role')
-      .eq('firebase_uid', user.uid)
-      .single()
+    let query = supabase.from('users').select('role');
+    if (user.email) {
+      query = query.eq('email', user.email);
+    } else {
+      query = query.eq('id', user.uid);
+    }
+    query
+      .maybeSingle()
       .then(({ data, error }) => {
         if (!error && data?.role === 'admin') {
           setIsAdmin(true);

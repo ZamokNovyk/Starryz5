@@ -115,10 +115,13 @@ export async function syncUserAvatarProfile(
   const cleanUrl = formatAvatarUrl(publicUrl);
 
   // 1. Actualizar en Supabase (tabla 'users')
-  const { error: sbError } = await supabase
-    .from('users')
-    .update({ photo_url: cleanUrl })
-    .eq('firebase_uid', firebaseUid);
+  let updateQuery = supabase.from('users').update({ photo_url: cleanUrl });
+  if (firebaseUid.includes('@')) {
+    updateQuery = updateQuery.eq('email', firebaseUid);
+  } else {
+    updateQuery = updateQuery.eq('id', firebaseUid);
+  }
+  const { error: sbError } = await updateQuery;
 
   if (sbError) {
     console.error('Error al actualizar photo_url en Supabase:', sbError);

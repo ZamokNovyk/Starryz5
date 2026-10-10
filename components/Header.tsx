@@ -43,6 +43,7 @@ import { SearchSuggestion } from '@/src/lib/search';
 import { supabase } from '@/src/lib/supabase';
 import { createConfessionComment, getDisplayAuthorName, getMyConfessionIds } from '@/src/lib/confessions';
 import { promptNotificationOnAction } from '@/src/lib/notificationHelper';
+import { formatAvatarUrl } from '@/src/lib/backblaze';
 import { usePwaTabs } from '@/src/context/PwaTabsContext';
 import { useThemeCustomizer } from '@/src/context/ThemeCustomizerContext';
 import { usePageTransition, TRANSITIONS_LIST } from '@/src/context/PageTransitionContext';
@@ -886,7 +887,7 @@ export default function Header({
                   >
                     {user.photoURL ? (
                       <img
-                        src={user.photoURL}
+                        src={formatAvatarUrl(user.photoURL)}
                         alt={user.displayName || 'Usuario'}
                         className="w-6 h-6 rounded-full object-cover"
                         referrerPolicy="no-referrer"
@@ -1121,7 +1122,7 @@ export default function Header({
               >
                 {user.photoURL ? (
                   <img
-                    src={user.photoURL}
+                    src={formatAvatarUrl(user.photoURL)}
                     alt={user.displayName || 'Usuario'}
                     className="w-10 h-10 rounded-full object-cover animate-in fade-in"
                     referrerPolicy="no-referrer"

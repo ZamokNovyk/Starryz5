@@ -56,6 +56,12 @@ export default function RegisteredInstitutions({
       }
     }
     loadCenters();
+
+    const handleUpdated = () => {
+      loadCenters();
+    };
+    window.addEventListener('educational-centers-updated', handleUpdated);
+    return () => window.removeEventListener('educational-centers-updated', handleUpdated);
   }, [refreshKey, propsDbCenters]);
 
   const categories = ['Todas', 'Universidad', 'Instituto', 'Colegio'];
@@ -173,6 +179,14 @@ export default function RegisteredInstitutions({
                     src={inst.image}
                     alt={inst.name}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 opacity-80 group-hover:opacity-100"
+                    onError={(e) => {
+                      const fallbacks: Record<string, string> = {
+                        'Colegio': 'https://images.unsplash.com/photo-1503676260728-1c00da094a0b?q=80&w=800&auto=format&fit=crop',
+                        'Instituto': 'https://images.unsplash.com/photo-1562774053-701939374585?q=80&w=800&auto=format&fit=crop',
+                        'Universidad': 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?q=80&w=800&auto=format&fit=crop'
+                      };
+                      e.currentTarget.src = fallbacks[inst.category] || fallbacks['Instituto'];
+                    }}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-[#0d0d0d] via-[#0d0d0d]/40 to-transparent"></div>
 

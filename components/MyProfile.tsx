@@ -70,7 +70,7 @@ import AvatarUploadModal from '@/components/Modals/AvatarUploadModal';
 
 interface SupabaseUser {
   id: string;
-  firebase_uid: string;
+  firebase_uid?: string;
   email: string | null;
   display_name: string | null;
   nombres?: string | null;
@@ -301,11 +301,13 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
       await linkWithGoogle();
       
       // Consultar de nuevo los datos de Supabase para obtener el registro actualizado
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('firebase_uid', user.uid)
-        .single();
+      let fetchQuery = supabase.from('users').select('*');
+      if (user.email) {
+        fetchQuery = fetchQuery.eq('email', user.email);
+      } else {
+        fetchQuery = fetchQuery.eq('id', user.uid);
+      }
+      const { data, error } = await fetchQuery.maybeSingle();
 
       if (error) throw error;
 
@@ -356,18 +358,42 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
         setLoading(true);
         setErrorMsg(null);
 
-        // Consultar los datos de la base de datos según el UID de Firebase
-        const { data, error } = await supabase
-          .from('users')
-          .select('*')
-          .eq('firebase_uid', targetUid)
-          .single();
-
-        if (error) {
-          throw error;
+        // Consultar los datos de la base de datos por email o por ID (UUID)
+        let query = supabase.from('users').select('*');
+        if (targetUid.includes('@')) {
+          query = query.eq('email', targetUid);
+        } else if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetUid)) {
+          query = query.eq('id', targetUid);
+        } else if (user?.email && (targetUid.startsWith('google_') || targetUid === user.uid)) {
+          query = query.eq('email', user.email);
+        } else {
+          query = query.eq('id', targetUid);
         }
 
-        if (data) {
+        const { data, error } = await query.maybeSingle();
+
+        let finalUserData = data;
+
+        // Si no se encontró en Supabase pero es el usuario en sesión activa, usar datos de sesión
+        if (!finalUserData && user && (targetUid === user.uid || targetUid.startsWith('google_') || targetUid === user.email)) {
+          finalUserData = {
+            id: user.uid,
+            email: user.email,
+            display_name: user.displayName || 'Usuario',
+            photo_url: user.photoURL,
+            created_at: new Date().toISOString(),
+            is_anonymous: user.isAnonymous,
+            linked_google_at: null,
+          } as SupabaseUser;
+        }
+
+        if (finalUserData) {
+          const data = finalUserData;
+          if (targetUid.startsWith('google_') && data.id && data.id !== targetUid) {
+            try {
+              window.history.replaceState(null, '', `/perfil/${data.id}`);
+            } catch (e) {}
+          }
           // Si el usuario reclamó un perfil de estudiante, sincronizar su nombre oficial real
           try {
             const claimedRaw = localStorage.getItem(`user_claimed_profile_${targetUid}`);
@@ -803,28 +829,39 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
     try {
       // 1. Actualizar en Supabase tabla 'users' (nombres, apellido_paterno, apellido_materno y display_name)
       try {
-        const { error: fullUpdateErr } = await supabase
-          .from('users')
-          .update({ 
-            display_name: cleanFullName,
-            nombres: cleanNombres,
-            apellido_paterno: cleanPaterno,
-            apellido_materno: cleanMaterno || null
-          })
-          .eq('firebase_uid', user.uid);
+        let updateQuery = supabase.from('users').update({ 
+          display_name: cleanFullName,
+          nombres: cleanNombres,
+          apellido_paterno: cleanPaterno,
+          apellido_materno: cleanMaterno || null
+        });
+
+        if (user.email) {
+          updateQuery = updateQuery.eq('email', user.email);
+        } else {
+          updateQuery = updateQuery.eq('id', dbUser?.id || user.uid);
+        }
+
+        const { error: fullUpdateErr } = await updateQuery;
 
         if (fullUpdateErr) {
-          // Si las columnas aún no existen en Supabase, fallback a display_name
-          await supabase
-            .from('users')
-            .update({ display_name: cleanFullName })
-            .eq('firebase_uid', user.uid);
+          // Si las columnas estructuradas aún no existen en Supabase, fallback a display_name
+          let fallbackQuery = supabase.from('users').update({ display_name: cleanFullName });
+          if (user.email) {
+            fallbackQuery = fallbackQuery.eq('email', user.email);
+          } else {
+            fallbackQuery = fallbackQuery.eq('id', dbUser?.id || user.uid);
+          }
+          await fallbackQuery;
         }
       } catch (uErr) {
-        await supabase
-          .from('users')
-          .update({ display_name: cleanFullName })
-          .eq('firebase_uid', user.uid);
+        let fallbackCatchQuery = supabase.from('users').update({ display_name: cleanFullName });
+        if (user.email) {
+          fallbackCatchQuery = fallbackCatchQuery.eq('email', user.email);
+        } else {
+          fallbackCatchQuery = fallbackCatchQuery.eq('id', dbUser?.id || user.uid);
+        }
+        await fallbackCatchQuery;
       }
 
       // Si tiene perfil oficial de estudiante vinculado, sincronizar su nombre oficial
@@ -845,10 +882,13 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
 
       // 2. Actualizar 'gender' en Supabase si la columna existe en la tabla
       try {
-        const { error: genderErr } = await supabase
-          .from('users')
-          .update({ gender: selectedGender || null })
-          .eq('firebase_uid', user.uid);
+        let genderQuery = supabase.from('users').update({ gender: selectedGender || null });
+        if (user.email) {
+          genderQuery = genderQuery.eq('email', user.email);
+        } else {
+          genderQuery = genderQuery.eq('id', dbUser?.id || user.uid);
+        }
+        const { error: genderErr } = await genderQuery;
 
         if (genderErr) {
           console.warn('Nota sobre columna gender en tabla users:', genderErr.message);
@@ -1777,16 +1817,16 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                       </div>
                     )}
 
-                    {/* UID de Firebase (Solo se muestra a uno mismo) */}
+                    {/* ID de Usuario (Solo se muestra a uno mismo) */}
                     {isOwnProfile && (
                       <div className="sm:col-span-2 space-y-2">
                         <label className="block text-[10px] font-extrabold uppercase tracking-widest text-zinc-400 flex items-center gap-1.5">
-                          <Sparkles className="w-3.5 h-3.5" /> UID Único de Firebase
+                          <Sparkles className="w-3.5 h-3.5" /> ID Único de Usuario (Supabase)
                         </label>
                         <div className="relative">
                           <input
                             type="text"
-                            value={dbUser?.firebase_uid || ''}
+                            value={dbUser?.id || user?.uid || ''}
                             disabled
                             className="w-full bg-[#121212] border border-[#ffffff0a] text-zinc-500 rounded-xl px-4 py-3 text-xs outline-none cursor-not-allowed font-mono"
                           />

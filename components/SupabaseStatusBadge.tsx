@@ -27,11 +27,13 @@ export default function SupabaseStatusBadge() {
 
       // Check profiles table in Supabase
       try {
-        const { data } = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('firebase_uid', user.uid)
-          .maybeSingle();
+        let query = supabase.from('users').select('role');
+        if (user.email) {
+          query = query.eq('email', user.email);
+        } else {
+          query = query.eq('id', user.uid);
+        }
+        const { data } = await query.maybeSingle();
 
         if (isMounted) {
           setIsAdmin(data?.role === 'admin');

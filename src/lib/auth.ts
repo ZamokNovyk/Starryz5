@@ -14,7 +14,7 @@ export const GOOGLE_CLIENT_ID = "1048861626265-cvmacbok572b21bns1eq15kkf56s0t9f.
 const STORAGE_KEY = 'starryz_auth_user';
 const TOKEN_STORAGE_KEY = 'starryz_google_token';
 
-// Lista de escuchadores para cambios de estado de autenticación (Reemplazo nativo de onAuthStateChanged)
+// Suscriptores de estado de sesión
 type AuthCallback = (user: AuthUser | null) => void;
 const listeners = new Set<AuthCallback>();
 
@@ -33,7 +33,6 @@ function notifyListeners(user: AuthUser | null) {
  */
 export function onAuthStateChanged(callback: AuthCallback): () => void {
   listeners.add(callback);
-  // Llamar inmediatamente con el estado actual guardado
   const current = getStoredUser();
   callback(current);
   return () => {
@@ -56,7 +55,7 @@ export function getStoredUser(): AuthUser | null {
 }
 
 /**
- * Objeto de compatibilidad hacia atrás para código existente que consulte `auth.currentUser`.
+ * Objeto de compatibilidad para código existente que consulte `auth.currentUser`.
  */
 export const auth = {
   get currentUser(): AuthUser | null {
@@ -65,7 +64,7 @@ export const auth = {
 };
 
 /**
- * Carga el script oficial de Google Identity Services si aún no está presente en la ventana.
+ * Carga el script oficial de Google Identity Services si aún no está en el DOM.
  */
 export function ensureGoogleScriptLoaded(): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -74,12 +73,10 @@ export function ensureGoogleScriptLoaded(): Promise<void> {
       return resolve();
     }
 
-    // Verificar si ya existe una etiqueta script
     const existing = document.querySelector('script[src*="accounts.google.com/gsi/client"]');
     if (existing) {
       existing.addEventListener('load', () => resolve());
       existing.addEventListener('error', () => reject(new Error('Fallo al cargar script de Google Identity')));
-      // En caso de que ya estuviera cargado pero el evento load haya pasado
       setTimeout(() => {
         if ((window as any).google?.accounts?.oauth2) resolve();
       }, 500);
@@ -91,69 +88,69 @@ export function ensureGoogleScriptLoaded(): Promise<void> {
     script.async = true;
     script.defer = true;
     script.onload = () => resolve();
-    script.onerror = () => reject(new Error('No se pudo cargar el script de Google Identity Services'));
+    script.onerror = () => reject(new Error('No se pudo cargar Google Identity Services'));
     document.head.appendChild(script);
   });
 }
 
 /**
- * Sincroniza y preserva el perfil del usuario en la tabla 'users' de Supabase.
- * Vincula por email para no perder perfiles, votos, o registros creados previamente.
+ * Sincroniza y busca/crea al usuario en la tabla 'users' de Supabase sin depender de firebase_uid.
+ * Utiliza 'email' o el 'id' (UUID) nativo de la tabla users.
  */
-export async function syncUserWithSupabase(user: AuthUser, googleSub?: string): Promise<any> {
-  if (!user || !user.uid) return null;
+export async function syncUserWithSupabase(user: AuthUser): Promise<any> {
+  if (!user) return null;
 
   try {
-    // 1. Si no es anónimo y tiene email, buscar si ya existe en la base de datos
     if (!user.isAnonymous && user.email) {
-      const { data: existing } = await supabase
+      // 1. Buscar si ya existe por email
+      const { data: existing, error: searchErr } = await supabase
         .from('users')
-        .select('id, firebase_uid, email, display_name, photo_url, role')
+        .select('*')
         .eq('email', user.email)
         .maybeSingle();
 
       if (existing) {
-        // Preservar el firebase_uid original existente para mantener vinculadas todas sus tablas (votos, actitud, etc.)
-        const activeUid = existing.firebase_uid || existing.id || user.uid;
-        
-        // Actualizar datos más recientes
-        await supabase
-          .from('users')
-          .update({
-            display_name: existing.display_name || user.displayName || 'Usuario',
-            photo_url: user.photoURL || existing.photo_url,
-            is_anonymous: false,
-          })
-          .eq('id', existing.id);
+        // Asignar el id UUID real de la base de datos
+        user.uid = existing.id;
+
+        // Actualizar nombre o foto si cambiaron
+        try {
+          await supabase
+            .from('users')
+            .update({
+              display_name: user.displayName || existing.display_name || 'Usuario',
+              photo_url: user.photoURL || existing.photo_url,
+            })
+            .eq('id', existing.id);
+        } catch (e) {}
 
         return existing;
       }
-    }
 
-    // 2. Si no existía, insertar nuevo usuario
-    const { data, error } = await supabase
-      .from('users')
-      .upsert(
-        {
-          firebase_uid: user.uid,
+      // 2. Si no existe, insertar nuevo usuario
+      const { data: inserted, error: insertErr } = await supabase
+        .from('users')
+        .insert({
           email: user.email,
-          display_name: user.displayName || (user.isAnonymous ? 'Usuario Anónimo' : 'Usuario'),
-          photo_url: user.photoURL,
-          is_anonymous: user.isAnonymous,
-        },
-        {
-          onConflict: 'firebase_uid',
-        }
-      )
-      .select();
+          display_name: user.displayName || 'Usuario',
+          photo_url: user.photoURL || null,
+        })
+        .select()
+        .single();
 
-    if (error) {
-      console.warn('Aviso al sincronizar usuario con Supabase:', error.message);
-      return null;
+      if (insertErr) {
+        console.warn('Aviso al insertar nuevo usuario en Supabase (posible RLS):', insertErr.message);
+        return null;
+      }
+
+      if (inserted) {
+        user.uid = inserted.id;
+        return inserted;
+      }
     }
-    return data;
+    return null;
   } catch (err: any) {
-    console.warn('Aviso de conectividad al sincronizar con Supabase:', err?.message || err);
+    console.warn('Aviso de sincronización en Supabase:', err?.message || err);
     return null;
   }
 }
@@ -196,7 +193,7 @@ export async function loginWithGoogle(): Promise<AuthUser> {
           }
 
           try {
-            // Guardar token temporal
+            // Guardar token temporal en localStorage
             localStorage.setItem(TOKEN_STORAGE_KEY, tokenResponse.access_token);
 
             // Consultar datos del perfil oficial de Google usando el token recibido
@@ -212,34 +209,60 @@ export async function loginWithGoogle(): Promise<AuthUser> {
             const email = googleProfile.email;
             const displayName = googleProfile.name || email?.split('@')[0] || 'Usuario';
             const photoURL = googleProfile.picture || null;
-            const googleSub = googleProfile.sub;
 
-            // Comprobar si este correo ya existía en la base de datos de Supabase para reutilizar su UID exacto
-            let userUid = `google_${googleSub}`;
+            // 1. Buscar si ya existe este usuario en Supabase por email
+            let resolvedUserId = '';
+            let existingDbUser: any = null;
+
             if (email) {
-              const { data: existingUser } = await supabase
+              const { data: dbUser } = await supabase
                 .from('users')
-                .select('id, firebase_uid')
+                .select('*')
                 .eq('email', email)
                 .maybeSingle();
 
-              if (existingUser?.firebase_uid) {
-                userUid = existingUser.firebase_uid;
-              } else if (existingUser?.id) {
-                userUid = existingUser.id;
+              if (dbUser?.id) {
+                resolvedUserId = dbUser.id;
+                existingDbUser = dbUser;
               }
             }
 
+            // 2. Si no existía en Supabase, insertarlo
+            if (!resolvedUserId && email) {
+              try {
+                const { data: newDbUser, error: insertErr } = await supabase
+                  .from('users')
+                  .insert({
+                    email,
+                    display_name: displayName,
+                    photo_url: photoURL,
+                  })
+                  .select()
+                  .single();
+
+                if (!insertErr && newDbUser?.id) {
+                  resolvedUserId = newDbUser.id;
+                  existingDbUser = newDbUser;
+                } else if (insertErr) {
+                  console.warn('Aviso de inserción en tabla users:', insertErr.message);
+                }
+              } catch (insertCatch) {
+                console.warn('Excepción al registrar nuevo usuario en Supabase:', insertCatch);
+              }
+            }
+
+            // Fallback si la base de datos tuvo restricción RLS
+            if (!resolvedUserId) {
+              resolvedUserId = email;
+            }
+
             const authUser: AuthUser = {
-              uid: userUid,
-              displayName,
+              uid: resolvedUserId,
+              displayName: existingDbUser?.display_name || displayName,
               email,
-              photoURL,
+              photoURL: existingDbUser?.photo_url || photoURL,
               isAnonymous: false,
             };
-
-            // Sincronizar en Supabase
-            await syncUserWithSupabase(authUser, googleSub);
 
             // Guardar sesión localmente
             localStorage.setItem(STORAGE_KEY, JSON.stringify(authUser));
@@ -264,7 +287,7 @@ export async function loginWithGoogle(): Promise<AuthUser> {
 }
 
 /**
- * Inicia sesión de manera anónima (guardado localmente en PostgreSQL sin dependencias externas).
+ * Inicia sesión anónima (almacenamiento local seguro).
  */
 export async function loginAnonymously(): Promise<AuthUser> {
   const anonUid = `anon_${Math.random().toString(36).substring(2, 11)}_${Date.now()}`;
@@ -276,8 +299,6 @@ export async function loginAnonymously(): Promise<AuthUser> {
     photoURL: null,
     isAnonymous: true,
   };
-
-  await syncUserWithSupabase(authUser);
 
   localStorage.setItem(STORAGE_KEY, JSON.stringify(authUser));
   notifyListeners(authUser);
@@ -306,31 +327,7 @@ export async function logout(): Promise<void> {
  * Vincula la cuenta anónima actual con Google OAuth Directo.
  */
 export async function linkAnonymousWithGoogle(): Promise<AuthUser> {
-  const current = getStoredUser();
-  if (!current) {
-    throw new Error('No hay una sesión activa para vincular.');
-  }
-
-  // Realizar flujo de Google OAuth
-  const googleUser = await loginWithGoogle();
-
-  // Si había una cuenta anónima previa, marcar su fecha de vinculación
-  if (current.isAnonymous && current.uid !== googleUser.uid) {
-    try {
-      const now = new Date().toISOString();
-      await supabase
-        .from('users')
-        .update({
-          is_anonymous: false,
-          linked_google_at: now,
-        })
-        .eq('firebase_uid', current.uid);
-    } catch (e) {
-      console.warn('Aviso no crítico al vincular cuenta anónima previa:', e);
-    }
-  }
-
-  return googleUser;
+  return await loginWithGoogle();
 }
 
 /**
@@ -349,15 +346,20 @@ export async function updateAuthUserProfile(updates: { displayName?: string; pho
   localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
   notifyListeners(updated);
 
-  // Sincronizar en tabla users de Supabase
+  // Sincronizar en tabla users de Supabase por id o por email
   try {
-    await supabase
-      .from('users')
-      .update({
-        display_name: updated.displayName,
-        photo_url: updated.photoURL,
-      })
-      .eq('firebase_uid', updated.uid);
+    let query = supabase.from('users').update({
+      display_name: updated.displayName,
+      photo_url: updated.photoURL,
+    });
+
+    if (current.email) {
+      query = query.eq('email', current.email);
+    } else {
+      query = query.eq('id', current.uid);
+    }
+
+    await query;
   } catch (err) {
     console.warn('Aviso al actualizar perfil en Supabase:', err);
   }
@@ -368,8 +370,7 @@ export async function updateAuthUserProfile(updates: { displayName?: string; pho
  */
 export async function checkUsernameAvailable(
   username: string,
-  currentUserId?: string,
-  currentFirebaseUid?: string
+  currentUserId?: string
 ): Promise<{ available: boolean; message: string }> {
   const clean = username.trim();
   if (!clean) {
@@ -385,28 +386,9 @@ export async function checkUsernameAvailable(
   }
 
   try {
-    const { data, error } = await supabase.rpc('check_username_available', {
-      p_username: clean,
-      p_user_id: currentUserId || null,
-      p_firebase_uid: currentFirebaseUid || null,
-    });
+    let query = supabase.from('users').select('id, display_name');
 
-    if (!error && typeof data === 'boolean') {
-      return {
-        available: data,
-        message: data ? 'Nombre disponible' : 'Este nombre ya está en uso',
-      };
-    }
-  } catch (rpcErr) {
-    console.warn('Aviso: RPC check_username_available:', rpcErr);
-  }
-
-  try {
-    let query = supabase.from('users').select('id, firebase_uid, display_name');
-
-    if (currentFirebaseUid) {
-      query = query.neq('firebase_uid', currentFirebaseUid);
-    } else if (currentUserId) {
+    if (currentUserId) {
       query = query.neq('id', currentUserId);
     }
 
