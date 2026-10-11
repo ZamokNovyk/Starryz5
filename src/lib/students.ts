@@ -332,9 +332,6 @@ export async function claimStudentProfile(
       supabase.from('users_crushes').update({ target_user_id: user.uid }).eq('target_user_id', student.id),
       supabase.from('user_love_messages').update({ target_user_id: user.uid }).eq('target_user_id', student.id),
       supabase.from('users_love_messages').update({ target_user_id: user.uid }).eq('target_user_id', student.id),
-      supabase.from('student_votes').update({ student_id: student.id }).eq('student_id', user.uid),
-      supabase.from('student_crushes').update({ student_id: student.id }).eq('student_id', user.uid),
-      supabase.from('student_love_messages').update({ student_id: student.id }).eq('student_id', user.uid),
       supabase.from('users').update({ 
         display_name: officialName, 
         claimed_student_id: student.id, 
@@ -460,16 +457,6 @@ export async function getStudentsByInstitute(instituteId: string): Promise<Stude
         crushes.forEach((c: any) => {
           crushesMap[c.target_user_id] = (crushesMap[c.target_user_id] || 0) + 1;
         });
-      } else {
-        const { data: legacyCrushes } = await supabase
-          .from('student_crushes')
-          .select('student_id')
-          .in('student_id', studentIds);
-        if (legacyCrushes) {
-          legacyCrushes.forEach((c: any) => {
-            crushesMap[c.student_id] = (crushesMap[c.student_id] || 0) + 1;
-          });
-        }
       }
     } catch (e) {
       console.warn('Aviso al cargar crushes de estudiantes:', e);
@@ -795,15 +782,7 @@ export async function getTodayStudentVotes(studentId: string, userUid: string): 
       .gte('created_at', todayIso);
 
     if (error || !data) {
-      // Fallback a student_votes si user_reseñas aún no existe o no tiene registros
-      const { data: legacyData } = await supabase
-        .from('student_votes')
-        .select('stars')
-        .eq('student_id', studentId)
-        .eq('user_uid', userUid)
-        .gte('created_at', todayIso);
-
-      return (legacyData || []).map((v: any) => Number(v.stars));
+      return [];
     }
 
     return (data || []).map((v: any) => Number(v.stars));
@@ -819,20 +798,10 @@ export async function getStudentRatingBreakdown(studentId: string): Promise<{ [k
   const breakdown: { [key: number]: number } = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
   
   try {
-    let { data, error } = await supabase
+    const { data } = await supabase
       .from('user_reseñas')
       .select('stars')
       .eq('target_user_id', studentId);
-
-    if (error || !data || data.length === 0) {
-      const fb = await supabase
-        .from('student_votes')
-        .select('stars')
-        .eq('student_id', studentId);
-      if (fb.data && fb.data.length > 0) {
-        data = fb.data;
-      }
-    }
 
     if (data) {
       data.forEach((v: any) => {
@@ -870,32 +839,14 @@ export async function submitStudentVote(
       ]);
 
     if (insertErr) {
-      console.warn('Aviso al insertar en user_reseñas, intentando student_votes:', insertErr.message);
-      // Fallback a student_votes si user_reseñas aún no existe
-      await supabase
-        .from('student_votes')
-        .insert([
-          {
-            student_id: studentId,
-            user_uid: userUid,
-            stars: stars,
-          }
-        ]);
+      console.warn('Aviso al insertar en user_reseñas:', insertErr.message);
     }
 
-    // 2. Calcular nuevo promedio y total sumando desde user_reseñas (o fallback)
-    let { data: allVotes } = await supabase
+    // 2. Calcular nuevo promedio y total sumando desde user_reseñas
+    const { data: allVotes } = await supabase
       .from('user_reseñas')
       .select('stars')
       .eq('target_user_id', studentId);
-
-    if (!allVotes || allVotes.length === 0) {
-      const fb = await supabase
-        .from('student_votes')
-        .select('stars')
-        .eq('student_id', studentId);
-      allVotes = fb.data;
-    }
 
     if (allVotes && allVotes.length > 0) {
       const sum = allVotes.reduce((acc, curr) => acc + Number(curr.stars), 0);
@@ -928,17 +879,6 @@ export async function getStudentCrushStatus(studentId: string, userUid: string):
       .eq('target_user_id', studentId);
 
     if (error || !data) {
-      // Fallback a student_crushes si users_crushes aún no tiene datos
-      const fb = await supabase
-        .from('student_crushes')
-        .select('id, user_uid')
-        .eq('student_id', studentId);
-      if (!fb.error && fb.data) {
-        return {
-          count: fb.data.length,
-          hasCrushed: fb.data.some((c: any) => c.user_uid === userUid)
-        };
-      }
       return { count: 0, hasCrushed: false };
     }
 
@@ -991,30 +931,16 @@ export async function toggleStudentCrush(
       ]);
 
       if (insErr) {
-        // Fallback a student_crushes si users_crushes falla
-        await supabase.from('student_crushes').insert([
-          {
-            student_id: studentId,
-            user_uid: userUid,
-          }
-        ]);
+        console.warn('Aviso insertando en users_crushes:', insErr.message);
       }
       hasCrushed = true;
     }
 
-    // Contar total desde users_crushes (o fallback)
-    let { data: allCrushes } = await supabase
+    // Contar total desde users_crushes
+    const { data: allCrushes } = await supabase
       .from('users_crushes')
       .select('id')
       .eq('target_user_id', studentId);
-
-    if (!allCrushes || allCrushes.length === 0) {
-      const fbCrushes = await supabase
-        .from('student_crushes')
-        .select('id')
-        .eq('student_id', studentId);
-      allCrushes = fbCrushes.data;
-    }
 
     const count = (allCrushes || []).length;
 
@@ -1115,20 +1041,6 @@ export async function getStudentLoveMessages(studentId: string, currentUserUid?:
       } catch (e) {}
     }
 
-    // Fallback de retrocompatibilidad a student_love_messages si las nuevas tablas aún están vacías
-    if (!data || data.length === 0) {
-      try {
-        const fb = await supabase
-          .from('student_love_messages')
-          .select('*')
-          .eq('student_id', studentId)
-          .order('created_at', { ascending: false });
-        if (!fb.error && fb.data) {
-          data = fb.data;
-        }
-      } catch (e) {}
-    }
-
     let messages: StudentLoveMessage[] = (data || []).map((msg: any) => ({
       ...msg,
       hearts_count: Number(msg.hearts_count) || 0
@@ -1156,16 +1068,6 @@ export async function getStudentLoveMessages(studentId: string, currentUserUid?:
 
         if (userHearts && Array.isArray(userHearts)) {
           userHearts.forEach(h => userHeartedMessageIds.add(String(h.message_id)));
-        }
-
-        // Consultar de student_love_message_hearts
-        const { data: legacyHearts } = await supabase
-          .from('student_love_message_hearts')
-          .select('message_id')
-          .eq('user_uid', currentUserUid);
-
-        if (legacyHearts && Array.isArray(legacyHearts)) {
-          legacyHearts.forEach(h => userHeartedMessageIds.add(String(h.message_id)));
         }
       } catch (hErr) {
         console.warn('Aviso cargando reacciones:', hErr);
@@ -1305,15 +1207,6 @@ export async function toggleStudentLoveMessageHeart(
         msgData = pluralRes.data;
       }
 
-      if (!msgData) {
-        const fb = await supabase
-          .from('student_love_messages')
-          .select('hearts_count')
-          .eq('id', messageId)
-          .maybeSingle();
-        msgData = fb.data;
-      }
-
       if (msgData && msgData.hearts_count !== undefined && msgData.hearts_count !== null) {
         currentCount = Number(msgData.hearts_count) || 0;
       }
@@ -1324,7 +1217,6 @@ export async function toggleStudentLoveMessageHeart(
       await Promise.allSettled([
         supabase.from('user_love_reactions').delete().eq('message_id', String(messageId)).eq('user_uid', userUid),
         supabase.from('users_love_message_hearts').delete().eq('message_id', messageId).eq('user_uid', userUid),
-        supabase.from('student_love_message_hearts').delete().eq('message_id', messageId).eq('user_uid', userUid),
       ]);
     } else {
       newHeartsCount = currentCount + 1;
@@ -1340,11 +1232,6 @@ export async function toggleStudentLoveMessageHeart(
           user_uid: userUid,
           created_at: reactionPayload.created_at
         }]),
-        supabase.from('student_love_message_hearts').insert([{
-          message_id: messageId,
-          user_uid: userUid,
-          created_at: reactionPayload.created_at
-        }])
       ]);
     }
 
@@ -1352,7 +1239,6 @@ export async function toggleStudentLoveMessageHeart(
     await Promise.allSettled([
       supabase.from('user_love_messages').update({ hearts_count: newHeartsCount }).eq('id', messageId),
       supabase.from('users_love_messages').update({ hearts_count: newHeartsCount }).eq('id', messageId),
-      supabase.from('student_love_messages').update({ hearts_count: newHeartsCount }).eq('id', messageId),
     ]);
 
     // Actualizar espejo en localStorage
@@ -1522,38 +1408,6 @@ export async function createStudentLoveMessage(
       }
     }
 
-    // 3. Fallback de retrocompatibilidad a 'student_love_messages'
-    if (!createdMsg) {
-      try {
-        const fallbackInsert = await supabase
-          .from('student_love_messages')
-          .insert([{
-            student_id: String(studentId),
-            user_uid: String(userUid),
-            author_name: anonymousAuthorName,
-            author_avatar: null,
-            message: trimmed,
-            hearts_count: 0
-          }])
-          .select()
-          .maybeSingle();
-
-        if (fallbackInsert.data && !fallbackInsert.error) {
-          createdMsg = {
-            ...fallbackInsert.data,
-            student_id: String(studentId),
-            author_gender: authorGender,
-            author_name: anonymousAuthorName,
-            author_avatar: null,
-            hearts_count: 0,
-            has_hearted: false
-          } as StudentLoveMessage;
-        } else if (fallbackInsert.error) {
-          console.warn('Fallo insert en student_love_messages:', fallbackInsert.error);
-        }
-      } catch (e) {}
-    }
-
     // Si falló en la base de datos, informar el error real si no se pudo guardar
     if (!createdMsg) {
       return { 
@@ -1608,8 +1462,6 @@ export async function deleteStudentLoveMessage(
       supabase.from('users_love_messages').delete().eq('id', messageId).eq('user_uid', userUid),
       supabase.from('user_love_reactions').delete().eq('message_id', String(messageId)),
       supabase.from('users_love_message_hearts').delete().eq('message_id', messageId),
-      supabase.from('student_love_messages').delete().eq('id', messageId).eq('user_uid', userUid),
-      supabase.from('student_love_message_hearts').delete().eq('message_id', messageId)
     ]);
 
     if (typeof window !== 'undefined') {

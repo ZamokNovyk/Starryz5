@@ -414,19 +414,17 @@ export async function deleteStudentProfile(studentId: string): Promise<boolean> 
         await Promise.allSettled([
           supabase.from('user_love_reactions').delete().in('message_id', msgIds),
           supabase.from('users_love_message_hearts').delete().in('message_id', msgIds),
-          supabase.from('student_love_message_hearts').delete().in('message_id', msgIds)
         ]);
       }
     } catch {}
 
-    // B. Tablas hijas del estudiante
+    // B. Tablas hijas del estudiante (Tablas unificadas)
     await Promise.allSettled([
-      supabase.from('user_love_messages').delete().or(`target_user_id.eq.${studentId},target_user_id.eq.${cleanedId},student_id.eq.${studentId},student_id.eq.${cleanedId}`),
-      supabase.from('users_love_messages').delete().or(`target_user_id.eq.${studentId},target_user_id.eq.${cleanedId},student_id.eq.${studentId},student_id.eq.${cleanedId}`),
-      supabase.from('student_love_messages').delete().or(`student_id.eq.${studentId},student_id.eq.${cleanedId}`),
-      supabase.from('student_votes').delete().or(`student_id.eq.${studentId},student_id.eq.${cleanedId}`),
-      supabase.from('student_interactions').delete().or(`student_id.eq.${studentId},student_id.eq.${cleanedId}`),
-      supabase.from('student_crushes').delete().or(`student_id.eq.${studentId},student_id.eq.${cleanedId}`),
+      supabase.from('users_actitud').delete().or(`target_user_id.eq.${studentId},target_user_id.eq.${cleanedId}`),
+      supabase.from('users_crushes').delete().or(`target_user_id.eq.${studentId},target_user_id.eq.${cleanedId}`),
+      supabase.from('user_reseñas').delete().or(`target_user_id.eq.${studentId},target_user_id.eq.${cleanedId}`),
+      supabase.from('user_love_messages').delete().or(`target_user_id.eq.${studentId},target_user_id.eq.${cleanedId}`),
+      supabase.from('users_love_messages').delete().or(`target_user_id.eq.${studentId},target_user_id.eq.${cleanedId}`),
       supabase.from('student_daily_stats').delete().or(`student_id.eq.${studentId},student_id.eq.${cleanedId}`),
       supabase.from('student_notification_subscriptions').delete().or(`student_id.eq.${studentId},student_id.eq.${cleanedId}`),
       supabase.from('collection_items').delete().or(`item_id.eq.${studentId},item_id.eq.${cleanedId}`),

@@ -64,52 +64,17 @@ export async function getStudentHistoricalStats(
   let dbRows: StudentDailyStat[] = [];
 
   try {
-    // 1. Si el estudiante está reclamado, consultar de la tabla users_daily_stats
-    let targetUserId: string | undefined;
-    try {
-      const { data: u } = await supabase
-        .from('users')
-        .select('id')
-        .eq('claimed_student_id', studentId)
-        .maybeSingle();
-      if (u?.id) {
-        targetUserId = u.id;
-      }
-    } catch (uLookupErr) {}
+    const { data, error } = await supabase
+      .from('student_daily_stats')
+      .select('*')
+      .eq('student_id', studentId)
+      .order('date', { ascending: true });
 
-    if (targetUserId) {
-      try {
-        const { data: userStats, error: uStatsErr } = await supabase
-          .from('users_daily_stats')
-          .select('*')
-          .eq('target_user_id', targetUserId)
-          .order('date', { ascending: true });
-
-        if (!uStatsErr && userStats && userStats.length > 0) {
-          dbRows = userStats.map((row: any) => ({
-            ...row,
-            student_id: studentId,
-          })) as StudentDailyStat[];
-        }
-      } catch (errUserStats) {
-        console.debug('Aviso consultando users_daily_stats:', errUserStats);
-      }
-    }
-
-    // 2. Si no está reclamado o no tiene registros en users_daily_stats, consultar student_daily_stats
-    if (dbRows.length === 0) {
-      const { data, error } = await supabase
-        .from('student_daily_stats')
-        .select('*')
-        .eq('student_id', studentId)
-        .order('date', { ascending: true });
-
-      if (!error && data && data.length > 0) {
-        dbRows = data as StudentDailyStat[];
-      }
+    if (!error && data && data.length > 0) {
+      dbRows = data as StudentDailyStat[];
     }
   } catch (err) {
-    console.debug('Error consultando estadísticas diarias de estudiante:', err);
+    console.debug('Error consultando student_daily_stats:', err);
   }
 
   const dateList: string[] = [];
@@ -373,23 +338,23 @@ BEGIN
         (CURRENT_TIMESTAMP AT TIME ZONE 'America/Lima')::DATE AS date,
         COALESCE((
             SELECT COUNT(*)::int 
-            FROM public.student_interactions i 
-            WHERE i.student_id = s.id AND i.interaction_type = 'knows'
+            FROM public.users_actitud a 
+            WHERE a.target_user_id = s.id AND (a.attitude_type = 'yo_te_conozco' OR a.attitude_type = 'knows')
         ), 0) AS knows_count,
         COALESCE((
             SELECT COUNT(*)::int 
-            FROM public.student_interactions i 
-            WHERE i.student_id = s.id AND i.interaction_type = 'fan'
+            FROM public.users_actitud a 
+            WHERE a.target_user_id = s.id AND (a.attitude_type = 'fans' OR a.attitude_type = 'fan')
         ), 0) AS fans_count,
         COALESCE((
             SELECT COUNT(*)::int 
-            FROM public.student_crushes c 
-            WHERE c.student_id = s.id
+            FROM public.users_crushes c 
+            WHERE c.target_user_id = s.id
         ), 0) AS crushes_count,
         COALESCE((
             SELECT ROUND(AVG(v.stars)::numeric, 2) 
-            FROM public.student_votes v 
-            WHERE v.student_id = s.id
+            FROM public.user_reseñas v 
+            WHERE v.target_user_id = s.id
         ), 0.0) AS score,
         COALESCE(s.views_count, 0) AS views_count
     FROM public.students s
