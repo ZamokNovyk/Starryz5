@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { applyUserQuery } from '../lib/supabaseHelper';
 import { 
   ShieldCheck, 
   ArrowLeft, 
@@ -45,11 +46,7 @@ export default function AdminDashboardPage({ onBack, onNavigate }: AdminDashboar
       }
       try {
         let query = supabase.from('users').select('role');
-        if (user.email) {
-          query = query.eq('email', user.email);
-        } else {
-          query = query.eq('id', user.uid);
-        }
+        query = applyUserQuery(query, user);
         const { data, error } = await query.maybeSingle();
 
         if (!error && data) {

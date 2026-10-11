@@ -320,10 +320,11 @@ export default function StudentProfile({
         {
           event: '*',
           schema: 'public',
-          table: 'student_votes'
+          table: 'user_reseñas'
         },
         (payload) => {
-          if (payload.eventType === 'DELETE' || (payload.new && (payload.new as any).student_id === studentId)) {
+          const targetId = (payload.new as any)?.target_user_id || (payload.old as any)?.target_user_id;
+          if (payload.eventType === 'DELETE' || targetId === studentId) {
             refreshVotesData();
           }
         }
@@ -333,10 +334,11 @@ export default function StudentProfile({
         {
           event: '*',
           schema: 'public',
-          table: 'student_interactions'
+          table: 'users_actitud'
         },
         async (payload) => {
-          if (payload.eventType === 'DELETE' || (payload.new && (payload.new as any).student_id === studentId)) {
+          const targetId = (payload.new as any)?.target_user_id || (payload.old as any)?.target_user_id;
+          if (payload.eventType === 'DELETE' || targetId === studentId) {
             try {
               const counts = await getStudentInteractionCounts(studentId);
               setKnowCount(counts.knows);
@@ -363,10 +365,11 @@ export default function StudentProfile({
         {
           event: '*',
           schema: 'public',
-          table: 'student_crushes'
+          table: 'users_crushes'
         },
         async (payload) => {
-          if (payload.eventType === 'DELETE' || (payload.new && (payload.new as any).student_id === studentId)) {
+          const targetId = (payload.new as any)?.target_user_id || (payload.old as any)?.target_user_id;
+          if (payload.eventType === 'DELETE' || targetId === studentId) {
             try {
               const crushStatus = await getStudentCrushStatus(studentId, user?.uid || '');
               setCrushCount(crushStatus.count);
@@ -382,10 +385,30 @@ export default function StudentProfile({
         {
           event: '*',
           schema: 'public',
-          table: 'student_love_messages'
+          table: 'user_love_messages'
         },
         async (payload) => {
-          if (payload.eventType === 'DELETE' || (payload.new && (payload.new as any).student_id === studentId)) {
+          const targetId = (payload.new as any)?.target_user_id || (payload.new as any)?.student_id || (payload.old as any)?.target_user_id || (payload.old as any)?.student_id;
+          if (payload.eventType === 'DELETE' || targetId === studentId) {
+            try {
+              const msgs = await getStudentLoveMessages(studentId, user?.uid);
+              setLoveMessages(msgs);
+            } catch (err) {
+              console.error('Error al refrescar mensajes de amor en tiempo real:', err);
+            }
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'users_love_messages'
+        },
+        async (payload) => {
+          const targetId = (payload.new as any)?.target_user_id || (payload.new as any)?.student_id || (payload.old as any)?.target_user_id || (payload.old as any)?.student_id;
+          if (payload.eventType === 'DELETE' || targetId === studentId) {
             try {
               const msgs = await getStudentLoveMessages(studentId, user?.uid);
               setLoveMessages(msgs);
@@ -561,11 +584,12 @@ export default function StudentProfile({
 
       const studentId = student.id || slug;
       const studentFullName = student.nombre_completo || `${student.nombre} ${student.apellidos}`;
+      const anonAuthorName = `Anónimo-${user.uid.substring(0, 8)}`;
       const res = await createStudentLoveMessage(
         studentId,
         user.uid,
-        currentAuthorName,
-        userAvatarUrl,
+        anonAuthorName,
+        null, // 100% Anónimo: nunca foto de perfil
         trimmed,
         studentFullName
       );
@@ -576,7 +600,8 @@ export default function StudentProfile({
         if (res.data) {
           const freshMessage: StudentLoveMessage = {
             ...res.data,
-            author_name: currentAuthorName || res.data.author_name,
+            author_name: anonAuthorName,
+            author_avatar: null,
             author_gender: currentUserGender || (user?.uid ? localStorage.getItem(`user_gender_${user.uid}`) : null) || (typeof window !== 'undefined' ? localStorage.getItem('starryz_user_gender') : null),
           };
           setLoveMessages(prev => [freshMessage, ...prev.filter(m => m.id !== res.data!.id)]);
@@ -1806,15 +1831,13 @@ export default function StudentProfile({
                 </p>
               </div>
 
-              {/* Distintivo de Autor / Nombre de Usuario */}
+              {/* Distintivo de Autor Anónimo */}
               <div className="flex items-center gap-2 px-3 py-1.5 bg-[#141414] border border-zinc-800 rounded-xl text-xs">
-                <Users className="w-3.5 h-3.5 text-pink-400" />
+                <Lock className="w-3.5 h-3.5 text-pink-400" />
                 <span className="text-zinc-400">Publicarás como:</span>
-                <div className="flex items-center gap-1.5 font-bold text-pink-300">
-                  <span>{currentAuthorName}</span>
-                  {currentAuthorName !== 'Anónimo' && (
-                    <GenderBadge gender={currentUserGender} size="sm" />
-                  )}
+                <div className="flex items-center gap-1.5 font-bold font-mono text-pink-300">
+                  <span>{user?.uid ? `Anónimo-${user.uid.substring(0, 8)}` : 'Anónimo'}</span>
+                  <GenderBadge gender={currentUserGender} size="sm" />
                 </div>
               </div>
             </div>
@@ -1888,10 +1911,9 @@ export default function StudentProfile({
                 )}
 
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
-                  <p className="text-[11px] text-zinc-500">
-                    {currentAuthorName === 'Anónimo'
-                      ? '🔒 Aparecerás como usuario "Anónimo" en el mensaje.'
-                      : `👤 Se mostrará tu nombre de usuario: "${currentAuthorName}".`}
+                  <p className="text-[11px] text-zinc-400 flex items-center gap-1.5 font-medium">
+                    <Lock className="w-3.5 h-3.5 text-pink-400" />
+                    <span>Tu identidad está 100% protegida: aparecerás como <strong className="text-pink-300 font-mono">Anónimo-{(user?.uid || '').substring(0, 8) || 'campus'}</strong> sin foto ni datos personales.</span>
                   </p>
 
                   <button
@@ -1970,26 +1992,13 @@ export default function StudentProfile({
                       minute: '2-digit'
                     });
 
-                    let displayAuthor = (msg.author_name || '').trim();
-                    const isGeneric = !displayAuthor || 
-                      displayAuthor.toLowerCase() === 'anónimo' || 
-                      displayAuthor.toLowerCase() === 'anonimo' || 
-                      displayAuthor.toLowerCase() === 'usuario anónimo';
-
-                    if (isOwnMessage) {
-                      if (currentAuthorName && currentAuthorName.toLowerCase() !== 'anónimo' && currentAuthorName.toLowerCase() !== 'anonimo') {
-                        displayAuthor = currentAuthorName;
-                      } else if (user?.uid) {
-                        displayAuthor = `user_${user.uid.substring(0, 5)}`;
-                      }
-                    } else if (isGeneric) {
-                      displayAuthor = msg.user_uid ? `user_${msg.user_uid.substring(0, 5)}` : 'Anónimo';
-                    }
+                    const uidPrefix = (msg.user_uid || '').substring(0, 8);
+                    const displayAuthor = uidPrefix ? `Anónimo-${uidPrefix}` : (msg.author_name?.startsWith('Anónimo-') ? msg.author_name : 'Anónimo');
 
                     const displayGender = msg.author_gender || (isOwnMessage ? (currentUserGender || (user?.uid ? localStorage.getItem(`user_gender_${user.uid}`) : null) || (typeof window !== 'undefined' ? localStorage.getItem('starryz_user_gender') : null)) : null);
 
                     const cardBorderClass = isOwnMessage
-                      ? 'bg-[#170a13] border-2 border-pink-500 shadow-[0_0_30px_rgba(236,72,153,0.22)] ring-1 ring-pink-500/40'
+                      ? 'bg-[#170a13] border-2 border-pink-500/80 shadow-[0_0_30px_rgba(236,72,153,0.22)] ring-1 ring-pink-500/40'
                       : 'bg-[#121212] border border-zinc-800/80 hover:border-pink-500/30';
 
                     return (
@@ -2000,25 +2009,20 @@ export default function StudentProfile({
                         {/* Cabecera del Mensaje */}
                         <div className="flex items-center justify-between gap-3">
                           <div className="flex items-center gap-3">
-                            <div className={`w-9 h-9 rounded-full flex items-center justify-center font-black text-sm shadow-md ${
-                              isOwnMessage
-                                ? 'bg-gradient-to-tr from-pink-500 to-rose-500 text-white ring-2 ring-pink-400/50'
-                                : 'bg-gradient-to-tr from-pink-600 to-rose-400 text-white'
-                            }`}>
-                              {msg.author_avatar ? (
-                                <img
-                                  src={msg.author_avatar}
-                                  alt={displayAuthor}
-                                  className="w-full h-full object-cover rounded-full"
-                                  referrerPolicy="no-referrer"
-                                />
-                              ) : (
-                                <span>{displayAuthor.charAt(0).toUpperCase()}</span>
-                              )}
+                            {/* Icono de protección anónima - NUNCA foto de perfil */}
+                            <div 
+                              className={`w-9 h-9 rounded-full flex items-center justify-center font-black text-xs shadow-md ${
+                                isOwnMessage
+                                  ? 'bg-gradient-to-tr from-pink-500 to-rose-600 text-white ring-2 ring-pink-400/50'
+                                  : 'bg-gradient-to-tr from-pink-950/80 to-zinc-900 border border-pink-500/30 text-pink-300'
+                              }`}
+                              title="Autor anónimo protegido"
+                            >
+                              <Lock className="w-4 h-4 text-pink-300" />
                             </div>
                             <div>
                               <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className={`text-xs font-bold ${isOwnMessage ? 'text-pink-400' : 'text-white'}`}>
+                                <span className={`text-xs font-bold font-mono tracking-tight ${isOwnMessage ? 'text-pink-400' : 'text-zinc-200'}`}>
                                   {displayAuthor}
                                 </span>
                                 <GenderBadge gender={displayGender} size="sm" />

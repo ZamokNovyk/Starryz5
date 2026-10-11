@@ -49,7 +49,7 @@ BEGIN
       SELECT COUNT(*) FROM public.users_crushes 
       WHERE target_user_id = target_id
     )
-  WHERE firebase_uid = target_id OR id::text = target_id;
+  WHERE id::text = target_id;
 
   RETURN NULL;
 END;
@@ -67,7 +67,7 @@ UPDATE public.users u
 SET 
   crushes_count = (
     SELECT COUNT(*) FROM public.users_crushes c 
-    WHERE (c.target_user_id = u.firebase_uid OR c.target_user_id = u.id::text)
+    WHERE c.target_user_id = u.id::text
   );
 
 -- 8. Índices de rendimiento

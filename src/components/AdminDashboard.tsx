@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { applyUserQuery } from '../lib/supabaseHelper';
 import { useAuth } from '@/src/context/AuthContext';
 import { supabase } from '@/src/lib/supabase';
 import { getAdminDashboardMetrics, AdminDashboardData } from '@/src/lib/admin';
@@ -67,11 +68,7 @@ export default function AdminDashboard({ onBack, onNavigate }: AdminDashboardPro
       try {
         setCheckingRole(true);
         let query = supabase.from('users').select('role');
-        if (user.email) {
-          query = query.eq('email', user.email);
-        } else {
-          query = query.eq('id', user.uid);
-        }
+        query = applyUserQuery(query, user);
         const { data, error } = await query.maybeSingle();
 
         if (!error && data?.role === 'admin') {

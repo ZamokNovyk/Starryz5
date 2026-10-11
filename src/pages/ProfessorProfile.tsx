@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { applyUserQuery } from '../lib/supabaseHelper';
 import { 
   ArrowLeft, 
   Share2, 
@@ -82,11 +83,7 @@ export default function ProfessorProfile({
       return;
     }
     let query = supabase.from('users').select('role');
-    if (user.email) {
-      query = query.eq('email', user.email);
-    } else {
-      query = query.eq('id', user.uid);
-    }
+    query = applyUserQuery(query, user);
     query
       .maybeSingle()
       .then(({ data, error }) => {

@@ -69,6 +69,7 @@ export default function HeroSection({
           placeholder="Buscar usuarios por nombre..."
           onSearch={handleSearch}
           onSelectSuggestion={handleSelectSuggestion}
+          showLeftIcon={false}
           inputClassName="px-6 py-4 sm:py-5 text-base sm:text-lg border border-zinc-800 focus-within:border-[#eab308]"
         />
       </div>

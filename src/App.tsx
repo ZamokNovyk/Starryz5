@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { applyUserQuery } from './lib/supabaseHelper';
 import Header from '@/components/Header';
 import HeroSection from '@/components/HeroSection';
 import RegisteredInstitutions from '@/components/RegisteredInstitutions';
@@ -102,11 +103,7 @@ export default function App() {
       }
       try {
         let query = supabase.from('users').select('role');
-        if (user.email) {
-          query = query.eq('email', user.email);
-        } else {
-          query = query.eq('id', user.uid);
-        }
+        query = applyUserQuery(query, user);
         const { data, error } = await query.maybeSingle();
         if (!error && data) {
           setUserRole(data.role);

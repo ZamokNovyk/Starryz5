@@ -25,7 +25,7 @@ BEGIN
       SELECT COUNT(*) FROM public.users_actitud 
       WHERE target_user_id = target_id AND attitude_type = 'fans'
     )
-  WHERE firebase_uid = target_id OR id::text = target_id;
+  WHERE id::text = target_id;
 
   RETURN NULL;
 END;
@@ -43,9 +43,9 @@ UPDATE public.users u
 SET 
   knows_count = (
     SELECT COUNT(*) FROM public.users_actitud a 
-    WHERE (a.target_user_id = u.firebase_uid OR a.target_user_id = u.id::text) AND a.attitude_type = 'yo_te_conozco'
+    WHERE a.target_user_id = u.id::text AND a.attitude_type = 'yo_te_conozco'
   ),
   fans_count = (
     SELECT COUNT(*) FROM public.users_actitud a 
-    WHERE (a.target_user_id = u.firebase_uid OR a.target_user_id = u.id::text) AND a.attitude_type = 'fans'
+    WHERE a.target_user_id = u.id::text AND a.attitude_type = 'fans'
   );

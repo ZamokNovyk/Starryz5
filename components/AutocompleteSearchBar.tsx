@@ -19,6 +19,7 @@ interface AutocompleteSearchBarProps {
   autoFocus?: boolean;
   className?: string;
   inputClassName?: string;
+  showLeftIcon?: boolean;
   onSearch: (query: string) => void;
   onSelectSuggestion?: (suggestion: SearchSuggestion) => void;
   onClose?: () => void;
@@ -30,6 +31,7 @@ export default function AutocompleteSearchBar({
   autoFocus = false,
   className = '',
   inputClassName = '',
+  showLeftIcon = true,
   onSearch,
   onSelectSuggestion,
   onClose
@@ -206,10 +208,12 @@ export default function AutocompleteSearchBar({
         <div className={`relative flex items-center w-full bg-[#141414] border border-zinc-800 hover:border-[#eab308]/50 focus-within:border-[#eab308] focus-within:ring-2 focus-within:ring-[#eab308]/20 rounded-full px-3.5 py-2 transition-all group ${inputClassName}`}>
           
           {/* Icono de búsqueda o spinner */}
-          {isLoading ? (
-            <Loader2 className="w-4 h-4 text-[#eab308] animate-spin flex-shrink-0 mr-2.5" />
-          ) : (
-            <Search className="w-4 h-4 text-zinc-400 group-focus-within:text-[#eab308] transition-colors flex-shrink-0 mr-2.5" />
+          {showLeftIcon && (
+            isLoading ? (
+              <Loader2 className="w-4 h-4 text-[#eab308] animate-spin flex-shrink-0 mr-2.5" />
+            ) : (
+              <Search className="w-4 h-4 text-zinc-400 group-focus-within:text-[#eab308] transition-colors flex-shrink-0 mr-2.5" />
+            )
           )}
 
           <input

@@ -403,20 +403,26 @@ export async function deleteStudentProfile(studentId: string): Promise<boolean> 
     }
 
     // 2. Eliminación directa en orden para respetar claves foráneas
-    // A. Corazones de mensajes de amor
+    // A. Corazones y reacciones de mensajes de amor
     try {
       const { data: messages } = await supabase
-        .from('student_love_messages')
+        .from('user_love_messages')
         .select('id')
-        .or(`student_id.eq.${studentId},student_id.eq.${cleanedId}`);
+        .or(`target_user_id.eq.${studentId},target_user_id.eq.${cleanedId},student_id.eq.${studentId},student_id.eq.${cleanedId}`);
       if (messages && messages.length > 0) {
-        const msgIds = messages.map(m => m.id);
-        await supabase.from('student_love_message_hearts').delete().in('message_id', msgIds);
+        const msgIds = messages.map(m => String(m.id));
+        await Promise.allSettled([
+          supabase.from('user_love_reactions').delete().in('message_id', msgIds),
+          supabase.from('users_love_message_hearts').delete().in('message_id', msgIds),
+          supabase.from('student_love_message_hearts').delete().in('message_id', msgIds)
+        ]);
       }
     } catch {}
 
     // B. Tablas hijas del estudiante
     await Promise.allSettled([
+      supabase.from('user_love_messages').delete().or(`target_user_id.eq.${studentId},target_user_id.eq.${cleanedId},student_id.eq.${studentId},student_id.eq.${cleanedId}`),
+      supabase.from('users_love_messages').delete().or(`target_user_id.eq.${studentId},target_user_id.eq.${cleanedId},student_id.eq.${studentId},student_id.eq.${cleanedId}`),
       supabase.from('student_love_messages').delete().or(`student_id.eq.${studentId},student_id.eq.${cleanedId}`),
       supabase.from('student_votes').delete().or(`student_id.eq.${studentId},student_id.eq.${cleanedId}`),
       supabase.from('student_interactions').delete().or(`student_id.eq.${studentId},student_id.eq.${cleanedId}`),

@@ -67,6 +67,7 @@ import { getAdminDashboardMetrics, AdminDashboardData } from '@/src/lib/admin';
 import ProfessorNotificationModal from '@/components/Modals/ProfessorNotificationModal';
 import StudentNotificationModal from '@/components/Modals/StudentNotificationModal';
 import AvatarUploadModal from '@/components/Modals/AvatarUploadModal';
+import GenderBadge from '@/components/GenderBadge';
 
 interface SupabaseUser {
   id: string;
@@ -1503,9 +1504,14 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                           className="p-4 rounded-xl bg-[#0f0f0f] border border-zinc-800/60 space-y-2 shadow-sm"
                         >
                           <div className="flex items-center justify-between text-xs">
-                            <span className="font-bold text-pink-400 flex items-center gap-1.5">
+                            <span className="font-bold text-pink-400 flex items-center gap-1.5 font-mono">
                               <span>💌</span>
-                              <span>{msg.author_name || 'Alguien del campus'}</span>
+                              <span>
+                                {msg.user_uid
+                                  ? `Anónimo-${msg.user_uid.substring(0, 8)}`
+                                  : (msg.author_name?.startsWith('Anónimo-') ? msg.author_name : 'Anónimo')}
+                              </span>
+                              <GenderBadge gender={msg.author_gender} size="sm" />
                             </span>
                             <span className="text-[10px] text-zinc-500 font-mono">
                               {msg.created_at ? new Date(msg.created_at).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }) : ''}

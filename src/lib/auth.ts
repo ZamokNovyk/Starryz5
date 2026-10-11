@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { applyUserQuery } from './supabaseHelper';
 
 export interface AuthUser {
   uid: string;
@@ -353,11 +354,7 @@ export async function updateAuthUserProfile(updates: { displayName?: string; pho
       photo_url: updated.photoURL,
     });
 
-    if (current.email) {
-      query = query.eq('email', current.email);
-    } else {
-      query = query.eq('id', current.uid);
-    }
+    query = applyUserQuery(query, current);
 
     await query;
   } catch (err) {
