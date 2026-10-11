@@ -13,6 +13,11 @@ export interface Student {
   crushes_count?: number;
   score?: number;
   total_ratings?: number;
+  stars_1?: number;
+  stars_2?: number;
+  stars_3?: number;
+  stars_4?: number;
+  stars_5?: number;
   views_count?: number;
   avatar_url?: string;
   height_cm?: number;
@@ -792,24 +797,68 @@ export async function getTodayStudentVotes(studentId: string, userUid: string): 
 }
 
 /**
- * Obtiene la distribución de calificaciones (conteo de estrellas 1 a 5) de un estudiante desde 'user_reseñas'.
+ * Obtiene la distribución de calificaciones (conteo de estrellas 1 a 5) de un estudiante.
+ * Intenta leer primero directamente de las columnas cacheadas stars_1..stars_5 en 'students'.
+ * Si son 0 o aún no se han calculado, consulta 'user_reseñas'.
  */
 export async function getStudentRatingBreakdown(studentId: string): Promise<{ [key: number]: number }> {
   const breakdown: { [key: number]: number } = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
   
   try {
+    // 1. Intentar consultar directamente las columnas de estrellas en la tabla 'students'
+    const { data: studentData } = await supabase
+      .from('students')
+      .select('stars_1, stars_2, stars_3, stars_4, stars_5')
+      .eq('id', studentId)
+      .maybeSingle();
+
+    if (
+      studentData &&
+      (typeof studentData.stars_1 === 'number' ||
+       typeof studentData.stars_2 === 'number' ||
+       typeof studentData.stars_3 === 'number' ||
+       typeof studentData.stars_4 === 'number' ||
+       typeof studentData.stars_5 === 'number')
+    ) {
+      const s1 = Number(studentData.stars_1) || 0;
+      const s2 = Number(studentData.stars_2) || 0;
+      const s3 = Number(studentData.stars_3) || 0;
+      const s4 = Number(studentData.stars_4) || 0;
+      const s5 = Number(studentData.stars_5) || 0;
+
+      // Si existe al menos una estrella registrada en las columnas cacheadas, devolver de inmediato
+      if (s1 > 0 || s2 > 0 || s3 > 0 || s4 > 0 || s5 > 0) {
+        return { 1: s1, 2: s2, 3: s3, 4: s4, 5: s5 };
+      }
+    }
+
+    // 2. Si las columnas están en 0 o aún no sincronizadas, calcular desde 'user_reseñas'
     const { data } = await supabase
       .from('user_reseñas')
       .select('stars')
       .eq('target_user_id', studentId);
 
-    if (data) {
+    if (data && data.length > 0) {
       data.forEach((v: any) => {
-        const s = Number(v.stars);
+        const s = Math.round(Number(v.stars));
         if (s >= 1 && s <= 5) {
           breakdown[s] = (breakdown[s] || 0) + 1;
         }
       });
+
+      // Sincronizar en segundo plano la fila del estudiante en 'students'
+      supabase
+        .from('students')
+        .update({
+          stars_1: breakdown[1],
+          stars_2: breakdown[2],
+          stars_3: breakdown[3],
+          stars_4: breakdown[4],
+          stars_5: breakdown[5],
+        })
+        .eq('id', studentId)
+        .then(() => {})
+        .catch(() => {});
     }
 
     return breakdown;
@@ -819,7 +868,8 @@ export async function getStudentRatingBreakdown(studentId: string): Promise<{ [k
 }
 
 /**
- * Registra una calificación por estrellas para un estudiante en la tabla 'user_reseñas'.
+ * Registra una calificación por estrellas para un estudiante en la tabla 'user_reseñas',
+ * y actualiza de inmediato el promedio 'score', el 'total_ratings' y las 5 columnas 'stars_1' .. 'stars_5' en 'students'.
  */
 export async function submitStudentVote(
   studentId: string,
@@ -842,7 +892,7 @@ export async function submitStudentVote(
       console.warn('Aviso al insertar en user_reseñas:', insertErr.message);
     }
 
-    // 2. Calcular nuevo promedio y total sumando desde user_reseñas
+    // 2. Calcular nuevo promedio, total y desglose por cada estrella desde user_reseñas
     const { data: allVotes } = await supabase
       .from('user_reseñas')
       .select('stars')
@@ -853,13 +903,41 @@ export async function submitStudentVote(
       const newScore = parseFloat((sum / allVotes.length).toFixed(1));
       const totalRatings = allVotes.length;
 
+      const stars1 = allVotes.filter(v => Math.round(Number(v.stars)) === 1).length;
+      const stars2 = allVotes.filter(v => Math.round(Number(v.stars)) === 2).length;
+      const stars3 = allVotes.filter(v => Math.round(Number(v.stars)) === 3).length;
+      const stars4 = allVotes.filter(v => Math.round(Number(v.stars)) === 4).length;
+      const stars5 = allVotes.filter(v => Math.round(Number(v.stars)) === 5).length;
+
       await supabase
         .from('students')
-        .update({ score: newScore, total_ratings: totalRatings })
+        .update({
+          score: newScore,
+          total_ratings: totalRatings,
+          stars_1: stars1,
+          stars_2: stars2,
+          stars_3: stars3,
+          stars_4: stars4,
+          stars_5: stars5,
+        })
         .eq('id', studentId);
 
       return { success: true, new_score: newScore, total_ratings: totalRatings };
     }
+
+    const singleStar = Math.round(stars);
+    await supabase
+      .from('students')
+      .update({
+        score: stars,
+        total_ratings: 1,
+        stars_1: singleStar === 1 ? 1 : 0,
+        stars_2: singleStar === 2 ? 1 : 0,
+        stars_3: singleStar === 3 ? 1 : 0,
+        stars_4: singleStar === 4 ? 1 : 0,
+        stars_5: singleStar === 5 ? 1 : 0,
+      })
+      .eq('id', studentId);
 
     return { success: true, new_score: stars, total_ratings: 1 };
   } catch (err: any) {

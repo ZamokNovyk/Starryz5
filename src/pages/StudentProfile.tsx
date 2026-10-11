@@ -334,6 +334,20 @@ export default function StudentProfile({
         {
           event: '*',
           schema: 'public',
+          table: 'students'
+        },
+        (payload) => {
+          const rowId = (payload.new as any)?.id || (payload.old as any)?.id;
+          if (rowId === studentId) {
+            refreshVotesData();
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
           table: 'users_actitud'
         },
         async (payload) => {
