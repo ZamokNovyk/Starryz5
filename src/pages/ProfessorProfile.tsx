@@ -777,12 +777,11 @@ export default function ProfessorProfile({
         <div className="flex items-center gap-2">
           {/* Badge de Visualizaciones */}
           <div 
-            onClick={() => setActiveTab('Estadística')}
-            title="Visualizaciones totales del perfil (Clic para ver estadísticas)"
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#12131a] border border-zinc-800 hover:border-purple-500/50 hover:bg-purple-500/10 text-zinc-300 hover:text-purple-300 transition-all cursor-pointer shadow-md group select-none"
+            title="Visualizaciones totales del perfil"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#12131a] border border-zinc-800 text-zinc-300 shadow-md select-none"
           >
-            <Eye className="w-3.5 h-3.5 text-purple-400 group-hover:scale-110 transition-transform" />
-            <span className="text-xs font-black tracking-tight text-white group-hover:text-purple-200">
+            <Eye className="w-3.5 h-3.5 text-purple-400" />
+            <span className="text-xs font-black tracking-tight text-white">
               {viewsCount.toLocaleString()}
             </span>
             <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider hidden sm:inline">
@@ -973,8 +972,7 @@ export default function ProfessorProfile({
         <div className="flex items-center gap-1.5 min-w-max">
           {[
             { id: 'Reseñas' as TabType, label: 'Reseñas', icon: Star, color: '#eab308' },
-            ...(isAdmin ? [{ id: 'Crushes' as TabType, label: 'Crushes', icon: Heart, color: '#f43f5e' }] : []),
-            { id: 'Estadística' as TabType, label: 'Estadística', icon: BarChart3, color: '#06b6d4' }
+            ...(isAdmin ? [{ id: 'Crushes' as TabType, label: 'Crushes', icon: Heart, color: '#f43f5e' }] : [])
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
