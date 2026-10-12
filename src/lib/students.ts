@@ -184,44 +184,21 @@ export async function createStudent(data: CreateStudentData, firebaseUid: string
 }
 
 /**
- * Carga la información del perfil del estudiante por su ID / slug.
+ * Carga la información del perfil del estudiante por su ID, slug o UUID de usuario unificado.
  */
-export async function getStudentById(slug: string): Promise<Student | null> {
-  const cleanSlug = slug.toLowerCase().trim();
+export async function getStudentById(slugOrUid: string): Promise<Student | null> {
+  const cleanId = (slugOrUid || '').trim();
+  const cleanSlug = cleanId.toLowerCase();
+
   try {
+    // 1. Buscar en la tabla students por su slug o ID original
     const { data, error } = await supabase
       .from('students')
       .select('*')
       .eq('id', cleanSlug)
       .maybeSingle();
 
-    if (error) {
-      if (error.code === 'PGRST116' || error.message?.includes('does not exist') || error.code === '42P01') {
-        // Fallback para Daniel Gustavo Castillo Ramirez si no está aún en Supabase
-        if (cleanSlug.includes('daniel.gustavo') || cleanSlug.includes('daniel-gustavo')) {
-          const claim = isStudentClaimed('daniel.gustavo.castillo.ramirez');
-          return {
-            id: 'daniel.gustavo.castillo.ramirez',
-            nombre: 'Daniel Gustavo',
-            apellidos: 'Castillo Ramirez',
-            nombre_completo: 'Daniel Gustavo Castillo Ramirez',
-            institute_id: 'instituto-pedagogico',
-            created_by: 'admin',
-            score: 4.3,
-            total_ratings: 3,
-            knows_count: 1,
-            fans_count: 1,
-            crushes_count: 2,
-            views_count: 37,
-            dni: '60036463',
-            is_claimed: claim.claimed,
-            claimed_by_uid: claim.uid,
-            claimed_at: claim.at,
-            claimed_by_name: claim.name,
-          };
-        }
-        return null;
-      }
+    if (error && error.code !== 'PGRST116' && !error.message?.includes('does not exist')) {
       console.warn('Aviso al obtener perfil de estudiante por ID:', error.message || error);
     }
 
@@ -232,17 +209,74 @@ export async function getStudentById(slug: string): Promise<Student | null> {
         return null;
       }
 
+      // Si el estudiante ya está reclamado, verificar si hay un usuario de Google vinculado
+      // con nombre o foto actualizada para mostrar siempre los datos más frescos
+      let latestName = data.nombre_completo;
+      let latestAvatar = data.avatar_url;
+      if (data.claimed_by_uid) {
+        try {
+          const { data: linkedUser } = await supabase
+            .from('users')
+            .select('display_name, photo_url')
+            .eq('id', data.claimed_by_uid)
+            .maybeSingle();
+          if (linkedUser?.display_name) latestName = linkedUser.display_name;
+          if (linkedUser?.photo_url) latestAvatar = linkedUser.photo_url;
+        } catch (e) {}
+      }
+
       const claim = isStudentClaimed(data.id);
       const expectedDni = data.dni || getExpectedStudentDni(data.id);
 
       return {
         ...data,
+        nombre_completo: latestName || data.nombre_completo,
+        avatar_url: latestAvatar || data.avatar_url,
         dni: expectedDni || data.dni,
         is_claimed: data.is_claimed || claim.claimed,
         claimed_by_uid: data.claimed_by_uid || claim.uid,
         claimed_at: data.claimed_at || claim.at,
         claimed_by_name: data.claimed_by_name || claim.name,
       } as Student;
+    }
+
+    // 2. Si no se encontró en students (por ejemplo, si el registro fue borrado tras el reclamo o el link fue por UUID de usuario)
+    try {
+      const { data: userData } = await supabase
+        .from('users')
+        .select('*')
+        .or(`id.eq.${cleanId},claimed_student_id.eq.${cleanSlug}`)
+        .limit(1)
+        .maybeSingle();
+
+      if (userData && (userData.claimed_student_id || userData.institute_id)) {
+        const fullName = userData.display_name || 'Estudiante';
+        const parts = fullName.trim().split(' ');
+        const firstName = parts[0] || fullName;
+        const lastName = parts.slice(1).join(' ') || '';
+
+        return {
+          id: userData.id,
+          nombre: firstName,
+          apellidos: lastName,
+          nombre_completo: fullName,
+          institute_id: userData.institute_id || '',
+          created_by: 'user',
+          score: typeof userData.score === 'number' ? Number(userData.score) : 0.0,
+          total_ratings: typeof userData.total_ratings === 'number' ? userData.total_ratings : 0,
+          knows_count: typeof userData.knows_count === 'number' ? userData.knows_count : 0,
+          fans_count: typeof userData.fans_count === 'number' ? userData.fans_count : 0,
+          crushes_count: typeof userData.crushes_count === 'number' ? userData.crushes_count : 0,
+          views_count: typeof userData.views_count === 'number' ? Number(userData.views_count) : 0,
+          avatar_url: userData.photo_url || userData.avatar_url || '',
+          dni: userData.dni || '',
+          is_claimed: true,
+          claimed_by_uid: userData.id,
+          claimed_by_name: fullName,
+        } as Student;
+      }
+    } catch (uErr) {
+      console.debug('Aviso consultando usuario vinculado en getStudentById:', uErr);
     }
 
     // Fallback garantizado para Daniel Gustavo Castillo Ramirez
@@ -322,31 +356,52 @@ export async function claimStudentProfile(
         is_claimed: true,
         claimed_by_uid: user.uid,
         claimed_at: now,
-        claimed_by_name: user.displayName || user.email || 'Usuario',
+        claimed_by_name: user.displayName || user.email || officialName,
       })
       .eq('id', student.id);
   } catch (err) {
     console.warn('Aviso no crítico al actualizar tabla students en Supabase:', err);
   }
 
-  // 2. Fusionar interacciones, votos, flechazos y mensajes acumulados por el usuario
+  // 2. Fusionar interacciones, votos, flechazos, institute_id y métricas acumuladas en la tabla users
   try {
+    const userUpdatePayload: any = {
+      display_name: officialName,
+      claimed_student_id: student.id,
+      is_verified_student: true,
+      institute_id: student.institute_id || null,
+      dni: cleanDni,
+      updated_at: now,
+    };
+
+    // Copiar métricas iniciales del estudiante si están disponibles
+    if (typeof student.fans_count === 'number') userUpdatePayload.fans_count = student.fans_count;
+    if (typeof student.knows_count === 'number') userUpdatePayload.knows_count = student.knows_count;
+    if (typeof student.crushes_count === 'number') userUpdatePayload.crushes_count = student.crushes_count;
+    if (typeof student.score === 'number' && student.score > 0) userUpdatePayload.score = student.score;
+    if (typeof student.total_ratings === 'number') userUpdatePayload.total_ratings = student.total_ratings;
+    if (typeof student.views_count === 'number') userUpdatePayload.views_count = student.views_count;
+    if (student.avatar_url) userUpdatePayload.photo_url = student.avatar_url;
+
     await Promise.all([
+      // Reasignar tablas de interacción desde el slug de estudiante al UUID del usuario
       supabase.from('users_actitud').update({ target_user_id: user.uid }).eq('target_user_id', student.id),
       supabase.from('user_reseñas').update({ target_user_id: user.uid }).eq('target_user_id', student.id),
       supabase.from('users_crushes').update({ target_user_id: user.uid }).eq('target_user_id', student.id),
       supabase.from('user_love_messages').update({ target_user_id: user.uid }).eq('target_user_id', student.id),
       supabase.from('users_love_messages').update({ target_user_id: user.uid }).eq('target_user_id', student.id),
-      supabase.from('users').update({ 
-        display_name: officialName, 
-        claimed_student_id: student.id, 
-        is_verified_student: true, 
-        updated_at: now 
-      }).eq('firebase_uid', user.uid),
+      
+      // Actualizar users tanto por UUID primario como por email o firebase_uid
+      supabase.from('users').update(userUpdatePayload).eq('id', user.uid),
+      user.email ? supabase.from('users').update(userUpdatePayload).eq('email', user.email) : Promise.resolve(),
+      supabase.from('users').update(userUpdatePayload).eq('firebase_uid', user.uid),
+
+      // Actualizar perfil complementario en user_profiles si existe
       supabase.from('user_profiles').update({
         display_name: officialName,
         claimed_student_id: student.id,
         is_verified_student: true,
+        institute_id: student.institute_id || null,
         dni: cleanDni,
         role_title: 'Estudiante Verificado',
         updated_at: now,
@@ -365,12 +420,14 @@ export async function claimStudentProfile(
         uid: user.uid,
         at: now,
         name: officialName,
+        institute_id: student.institute_id || '',
       }));
       localStorage.setItem(`user_claimed_profile_${user.uid}`, JSON.stringify({
         studentId: student.id,
         studentName: officialName,
         dni: cleanDni,
         claimedAt: now,
+        institute_id: student.institute_id || '',
       }));
     } catch (e) {}
   }
@@ -393,28 +450,114 @@ export async function claimStudentProfile(
 
 /**
  * Obtiene los estudiantes asignados a un instituto / campus específico con sus conteos reales.
+ * Realiza una consulta unificada: primero intenta la vista 'institute_students_view',
+ * y si no existe aún, consulta en paralelo la tabla 'students' y la tabla 'users' (con institute_id).
  */
 export async function getStudentsByInstitute(instituteId: string): Promise<Student[]> {
   try {
-    const { data: students, error } = await supabase
-      .from('students')
-      .select('*')
-      .eq('institute_id', instituteId);
+    const cleanInstId = (instituteId || '').toLowerCase().trim();
+    let unifiedList: any[] = [];
+    let usedView = false;
 
-    if (error) {
-      if (error.code === 'P0001' || error.code === '42P01' || error.message?.includes('does not exist')) {
-        return [];
+    // 1. Intentar consultar desde la vista unificada oficial en Supabase
+    try {
+      const { data: viewData, error: viewError } = await supabase
+        .from('institute_students_view')
+        .select('*')
+        .ilike('institute_id', cleanInstId);
+
+      if (!viewError && Array.isArray(viewData) && viewData.length > 0) {
+        unifiedList = viewData.map((row: any) => ({
+          id: row.id,
+          nombre: row.nombre || row.nombre_completo || 'Estudiante',
+          apellidos: row.apellidos || '',
+          nombre_completo: row.nombre_completo || `${row.nombre || ''} ${row.apellidos || ''}`.trim(),
+          institute_id: row.institute_id || cleanInstId,
+          created_by: 'institute',
+          score: typeof row.score === 'number' ? Number(row.score) : 0.0,
+          total_ratings: typeof row.total_ratings === 'number' ? row.total_ratings : 0,
+          knows_count: typeof row.knows_count === 'number' ? row.knows_count : 0,
+          fans_count: typeof row.fans_count === 'number' ? row.fans_count : 0,
+          crushes_count: typeof row.crushes_count === 'number' ? row.crushes_count : 0,
+          views_count: typeof row.views_count === 'number' ? Number(row.views_count) : 0,
+          avatar_url: row.avatar_url || '',
+          dni: row.dni || '',
+          is_claimed: Boolean(row.is_claimed),
+          claimed_by_uid: row.user_uuid || row.claimed_by_uid || null,
+        }));
+        usedView = true;
       }
-      console.warn('Aviso al obtener estudiantes por instituto:', error.message || error);
+    } catch (vErr) {
+      // Si la vista aún no está creada en Supabase, pasamos al fallback integrado
+      usedView = false;
+    }
+
+    // 2. Si la vista no arrojó resultados o aún no existe en Supabase, consultar students + users (con institute_id)
+    if (!usedView || unifiedList.length === 0) {
+      const [studentsRes, usersRes] = await Promise.all([
+        supabase
+          .from('students')
+          .select('*')
+          .eq('institute_id', instituteId),
+        supabase
+          .from('users')
+          .select('*')
+          .ilike('institute_id', cleanInstId)
+      ]);
+
+      const baseStudents = studentsRes.data || [];
+      const claimedUsers = usersRes.data || [];
+
+      // Mapear usuarios reales de Google que tienen institute_id asignado
+      const usersAsStudents = claimedUsers.map((u: any) => {
+        const fullName = u.display_name || u.nombre_completo || 'Estudiante';
+        const parts = fullName.trim().split(' ');
+        const firstName = parts[0] || fullName;
+        const lastName = parts.slice(1).join(' ') || '';
+
+        return {
+          id: u.id, // Su UUID unificado de usuario
+          claimed_student_id: u.claimed_student_id || null,
+          nombre: firstName,
+          apellidos: lastName,
+          nombre_completo: fullName,
+          institute_id: u.institute_id || cleanInstId,
+          created_by: 'user',
+          score: typeof u.score === 'number' ? Number(u.score) : 0.0,
+          total_ratings: typeof u.total_ratings === 'number' ? u.total_ratings : 0,
+          knows_count: typeof u.knows_count === 'number' ? u.knows_count : 0,
+          fans_count: typeof u.fans_count === 'number' ? u.fans_count : 0,
+          crushes_count: typeof u.crushes_count === 'number' ? u.crushes_count : 0,
+          views_count: typeof u.views_count === 'number' ? Number(u.views_count) : 0,
+          avatar_url: u.photo_url || u.avatar_url || '',
+          dni: u.dni || '',
+          is_claimed: true,
+          claimed_by_uid: u.id,
+          claimed_by_name: fullName,
+        };
+      });
+
+      // Crear conjunto de IDs o slugs que ya están reclamados por usuarios reales para evitar duplicar
+      const claimedStudentIds = new Set<string>();
+      claimedUsers.forEach((u: any) => {
+        if (u.claimed_student_id) claimedStudentIds.add(u.claimed_student_id);
+      });
+
+      // Filtrar de students los que ya están representados por una cuenta de usuario
+      const unclamedOrDirectStudents = baseStudents.filter((s: any) => {
+        if (s.id && claimedStudentIds.has(s.id)) return false;
+        return true;
+      });
+
+      unifiedList = [...usersAsStudents, ...unclamedOrDirectStudents];
+    }
+
+    if (!unifiedList || unifiedList.length === 0) {
       return [];
     }
 
-    if (!students || students.length === 0) {
-      return [];
-    }
-
-    // Filtrar perfiles que hayan sido expulsados por moderación comunitaria
-    const activeStudents = students.filter((s: any) => {
+    // Filtrar perfiles expulsados por moderación comunitaria
+    const activeStudents = unifiedList.filter((s: any) => {
       const bio = s.biography || '';
       const name = s.nombre_completo || s.nombre || '';
       return !bio.includes('__EXPELLED_BY_COMMUNITY__') && !name.includes('[EXPULSADO');
@@ -426,7 +569,7 @@ export async function getStudentsByInstitute(instituteId: string): Promise<Stude
 
     const studentIds = activeStudents.map((p: any) => p.id);
 
-    // Obtener interacciones (knows / fan) en batch para todos los estudiantes desde users_actitud
+    // Obtener interacciones (knows / fan) en batch para todos los IDs
     const interactionsMap: Record<string, { knows: number; fan: number }> = {};
     try {
       const { data: interactions } = await supabase
@@ -447,7 +590,7 @@ export async function getStudentsByInstitute(instituteId: string): Promise<Stude
         });
       }
     } catch (e) {
-      console.warn('Aviso al cargar interacciones de estudiantes desde users_actitud:', e);
+      console.warn('Aviso al cargar interacciones desde users_actitud:', e);
     }
 
     // Obtener crushes en batch desde users_crushes
@@ -467,9 +610,9 @@ export async function getStudentsByInstitute(instituteId: string): Promise<Stude
       console.warn('Aviso al cargar crushes de estudiantes:', e);
     }
 
-    // Asegurar que Daniel Gustavo Castillo Ramirez esté en el listado si no viene de la BD
+    // Fallback de demostración garantizado para Daniel Gustavo Castillo Ramirez si no está en el listado
     const hasDaniel = activeStudents.some((s: any) => s.id?.includes('daniel.gustavo'));
-    if (!hasDaniel) {
+    if (!hasDaniel && (cleanInstId.includes('pedagogico') || cleanInstId === 'instituto-pedagogico')) {
       const claim = isStudentClaimed('daniel.gustavo.castillo.ramirez');
       activeStudents.unshift({
         id: 'daniel.gustavo.castillo.ramirez',
@@ -516,9 +659,9 @@ export async function getStudentsByInstitute(instituteId: string): Promise<Stude
         claimed_at: p.claimed_at || claim.at,
         claimed_by_name: p.claimed_by_name || claim.name,
         views_count: typeof p.views_count === 'number' ? p.views_count : (Number(p.views_count) || 0),
-        knows_count: ints.knows || p.knows_count || 0,
-        fans_count: ints.fan || p.fans_count || 0,
-        crushes_count: totalCrushes || p.crushes_count || 0,
+        knows_count: Math.max(ints.knows, p.knows_count || 0),
+        fans_count: Math.max(ints.fan, p.fans_count || 0),
+        crushes_count: Math.max(totalCrushes, p.crushes_count || 0),
         score: typeof p.score === 'number' ? Number(p.score) : 0.0,
         total_ratings: typeof p.total_ratings === 'number' ? p.total_ratings : 0,
       } as Student;
