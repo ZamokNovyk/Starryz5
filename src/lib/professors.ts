@@ -123,10 +123,33 @@ export async function getProfessorById(slug: string): Promise<Professor | null> 
  */
 export async function getProfessorsByInstitute(instituteId: string): Promise<Professor[]> {
   try {
+    const rawInstId = (instituteId || '').trim();
+    const cleanInstId = rawInstId.toLowerCase();
+    const instIdsToQuery = new Set<string>();
+    if (rawInstId) instIdsToQuery.add(rawInstId);
+    if (cleanInstId) instIdsToQuery.add(cleanInstId);
+
+    try {
+      const { data: centerData } = await supabase
+        .from('educational_centers')
+        .select('id, name')
+        .or(`id.eq.${rawInstId},name.ilike.%${cleanInstId.replace(/-/g, '%')}%`)
+        .limit(1)
+        .maybeSingle();
+
+      if (centerData?.id) {
+        instIdsToQuery.add(centerData.id);
+        instIdsToQuery.add(centerData.id.toLowerCase());
+      }
+    } catch (e) {}
+
+    const idList = Array.from(instIdsToQuery);
+    const orFilter = idList.map(id => `institute_id.eq.${id}`).join(',');
+
     const { data: profs, error } = await supabase
       .from('professors')
       .select('*')
-      .eq('institute_id', instituteId);
+      .or(orFilter);
 
     if (error) {
       if (error.code === 'P0001' || error.message?.includes('does not exist')) {

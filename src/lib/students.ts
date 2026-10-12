@@ -4,6 +4,9 @@ export interface Student {
   id: string; // generated slug e.g. "carlos.mendoza.ramirez"
   nombre: string;
   apellidos: string;
+  nombres?: string;
+  apellido_paterno?: string;
+  apellido_materno?: string;
   nombre_completo: string;
   institute_id: string;
   created_by: string;
@@ -37,8 +40,11 @@ export interface Student {
 }
 
 export interface CreateStudentData {
-  nombre: string;
-  apellidos: string;
+  nombre?: string;
+  apellidos?: string;
+  nombres?: string;
+  apellido_paterno?: string;
+  apellido_materno?: string;
   instituteId: string;
   dni?: string;
 }
@@ -94,21 +100,33 @@ export function isStudentClaimed(studentIdOrSlug: string): { claimed: boolean; u
  * Inserta un nuevo estudiante en la tabla 'students' de Supabase (solo administradores).
  */
 export async function createStudent(data: CreateStudentData, firebaseUid: string): Promise<Student> {
-  const { nombre, apellidos, instituteId, dni } = data;
-  if (!nombre.trim() || !apellidos.trim()) {
-    throw new Error('Nombres y apellidos son requeridos.');
+  const nombresVal = (data.nombres || data.nombre || '').trim();
+  const apellidoPaternoVal = (data.apellido_paterno || '').trim();
+  const apellidoMaternoVal = (data.apellido_materno || '').trim();
+
+  // Si envió apellidos juntos
+  let apellidosVal = (data.apellidos || '').trim();
+  if (!apellidosVal && (apellidoPaternoVal || apellidoMaternoVal)) {
+    apellidosVal = `${apellidoPaternoVal} ${apellidoMaternoVal}`.trim();
   }
 
-  const slugId = toSlug(nombre, apellidos);
-  const nombreCompleto = `${nombre.trim()} ${apellidos.trim()}`;
-  const cleanDni = (dni || '').trim().replace(/\D/g, '');
+  if (!nombresVal || (!apellidosVal && !apellidoPaternoVal)) {
+    throw new Error('Nombres y al menos el apellido paterno son requeridos.');
+  }
+
+  const slugId = toSlug(nombresVal, apellidosVal || apellidoPaternoVal);
+  const nombreCompleto = `${nombresVal} ${apellidosVal || apellidoPaternoVal}`.trim();
+  const cleanDni = (data.dni || '').trim().replace(/\D/g, '');
 
   const insertPayload: any = {
     id: slugId,
-    nombre: nombre.trim(),
-    apellidos: apellidos.trim(),
+    nombre: nombresVal,
+    apellidos: apellidosVal,
+    nombres: nombresVal,
+    apellido_paterno: apellidoPaternoVal || apellidosVal.split(' ')[0] || '',
+    apellido_materno: apellidoMaternoVal || apellidosVal.split(' ').slice(1).join(' ') || null,
     nombre_completo: nombreCompleto,
-    institute_id: instituteId,
+    institute_id: data.instituteId,
     created_by: firebaseUid,
   };
 
@@ -125,61 +143,79 @@ export async function createStudent(data: CreateStudentData, firebaseUid: string
   let insertError: any = null;
 
   try {
-    const { data, error } = await supabase
+    const { data: resData, error } = await supabase
       .from('students')
       .insert([insertPayload])
-      .select('id, nombre, apellidos, nombre_completo, institute_id, created_by')
+      .select('*')
       .single();
     
     if (error) {
       insertError = error;
     } else {
-      inserted = data;
+      inserted = resData;
     }
   } catch (err) {
     insertError = err;
   }
 
+  // Fallbacks si las nuevas columnas no existen en la tabla o hay error de caché en PostgREST
   if (insertError) {
-    console.error('Error al insertar estudiante en tabla students de Supabase:', insertError);
+    console.warn('Reintentando inserción con payload estándar:', insertError.message || insertError);
     
-    // Si la tabla no tiene la columna dni, o hay error de caché de esquema de dni, reintentar sin dni
-    const errString = JSON.stringify(insertError);
-    if (
-      insertError.message?.includes('dni') || 
-      insertError.code === 'PGRST204' || 
-      errString.includes('dni') ||
-      errString.includes('PGRST204')
-    ) {
-      const backupPayload = { ...insertPayload };
-      delete backupPayload.dni;
-      
-      const retry = await supabase
+    // Intento 2: Solo columnas legacy nombre, apellidos, nombre_completo, dni
+    const fallbackPayload1: any = {
+      id: slugId,
+      nombre: nombresVal,
+      apellidos: apellidosVal,
+      nombre_completo: nombreCompleto,
+      institute_id: data.instituteId,
+      created_by: firebaseUid,
+    };
+    if (cleanDni) fallbackPayload1.dni = cleanDni;
+
+    const retry1 = await supabase
+      .from('students')
+      .insert([fallbackPayload1])
+      .select('*')
+      .single();
+
+    if (!retry1.error && retry1.data) {
+      inserted = retry1.data;
+      insertError = null;
+    } else {
+      // Intento 3: Sin columna dni por si no existe
+      const fallbackPayload2 = { ...fallbackPayload1 };
+      delete fallbackPayload2.dni;
+
+      const retry2 = await supabase
         .from('students')
-        .insert([backupPayload])
-        .select('id, nombre, apellidos, nombre_completo, institute_id, created_by')
+        .insert([fallbackPayload2])
+        .select('*')
         .single();
-        
-      if (!retry.error) {
-        return {
-          ...retry.data,
-          dni: cleanDni
-        } as Student;
+
+      if (!retry2.error && retry2.data) {
+        inserted = retry2.data;
+        insertError = null;
       } else {
-        insertError = retry.error;
+        insertError = retry2.error || retry1.error;
       }
     }
+  }
 
+  if (insertError) {
+    console.error('Error al insertar estudiante en tabla students de Supabase:', insertError);
     if (insertError.code === '42P01' || insertError.message?.includes('relation "students" does not exist') || insertError.message?.includes('public.students')) {
       throw new Error('La tabla "students" aún no ha sido creada en Supabase. Por favor, crea las tablas de estudiantes en el editor SQL de Supabase.');
     }
-    
     throw new Error(insertError.message || 'No se pudo guardar el estudiante en la base de datos.');
   }
 
   return {
     ...inserted,
-    dni: cleanDni
+    nombres: nombresVal,
+    apellido_paterno: apellidoPaternoVal,
+    apellido_materno: apellidoMaternoVal,
+    dni: cleanDni || inserted?.dni,
   } as Student;
 }
 
@@ -459,20 +495,53 @@ export async function getStudentsByInstitute(instituteId: string): Promise<Stude
     let unifiedList: any[] = [];
     let usedView = false;
 
-    // 1. Intentar consultar desde la vista unificada oficial en Supabase
+    // Obtener todas las variantes de ID del instituto (UUID real, slug y nombre)
+    const rawInstId = (instituteId || '').trim();
+    const instIdsToQuery = new Set<string>();
+    if (rawInstId) instIdsToQuery.add(rawInstId);
+    if (cleanInstId) instIdsToQuery.add(cleanInstId);
+
+    // Intentar resolver el UUID real del centro educativo si nos pasaron un slug o nombre
     try {
-      const { data: viewData, error: viewError } = await supabase
-        .from('institute_students_view')
-        .select('*')
-        .ilike('institute_id', cleanInstId);
+      const { data: centerData } = await supabase
+        .from('educational_centers')
+        .select('id, name')
+        .or(`id.eq.${rawInstId},name.ilike.%${cleanInstId.replace(/-/g, '%')}%`)
+        .limit(1)
+        .maybeSingle();
+
+      if (centerData?.id) {
+        instIdsToQuery.add(centerData.id);
+        instIdsToQuery.add(centerData.id.toLowerCase());
+      }
+    } catch (cErr) {
+      // Ignorar fallo de búsqueda de centro
+    }
+
+    const idList = Array.from(instIdsToQuery);
+
+    // 1. Intentar consultar desde la vista unificada oficial en Supabase si existe
+    try {
+      let query = supabase.from('institute_students_view').select('*');
+      if (idList.length === 1) {
+        query = query.or(`institute_id.eq.${idList[0]},institute_id.ilike.${idList[0]}`);
+      } else {
+        const orFilter = idList.map(id => `institute_id.eq.${id}`).join(',');
+        query = query.or(orFilter);
+      }
+
+      const { data: viewData, error: viewError } = await query;
 
       if (!viewError && Array.isArray(viewData) && viewData.length > 0) {
         unifiedList = viewData.map((row: any) => ({
           id: row.id,
-          nombre: row.nombre || row.nombre_completo || 'Estudiante',
-          apellidos: row.apellidos || '',
-          nombre_completo: row.nombre_completo || `${row.nombre || ''} ${row.apellidos || ''}`.trim(),
-          institute_id: row.institute_id || cleanInstId,
+          nombre: row.nombre || row.nombres || row.nombre_completo || 'Estudiante',
+          apellidos: row.apellidos || `${row.apellido_paterno || ''} ${row.apellido_materno || ''}`.trim() || '',
+          nombres: row.nombres || row.nombre || '',
+          apellido_paterno: row.apellido_paterno || '',
+          apellido_materno: row.apellido_materno || '',
+          nombre_completo: row.nombre_completo || `${row.nombres || row.nombre || ''} ${row.apellido_paterno || ''} ${row.apellido_materno || ''}`.trim(),
+          institute_id: row.institute_id || rawInstId,
           created_by: 'institute',
           score: typeof row.score === 'number' ? Number(row.score) : 0.0,
           total_ratings: typeof row.total_ratings === 'number' ? row.total_ratings : 0,
@@ -488,24 +557,39 @@ export async function getStudentsByInstitute(instituteId: string): Promise<Stude
         usedView = true;
       }
     } catch (vErr) {
-      // Si la vista aún no está creada en Supabase, pasamos al fallback integrado
       usedView = false;
     }
 
-    // 2. Si la vista no arrojó resultados o aún no existe en Supabase, consultar students + users (con institute_id)
+    // 2. Si la vista no arrojó resultados o aún no existe en Supabase, consultar students + users directamente
     if (!usedView || unifiedList.length === 0) {
+      const orFilter = idList.map(id => `institute_id.eq.${id}`).join(',');
+
       const [studentsRes, usersRes] = await Promise.all([
         supabase
           .from('students')
           .select('*')
-          .eq('institute_id', instituteId),
+          .or(orFilter),
         supabase
           .from('users')
           .select('*')
-          .ilike('institute_id', cleanInstId)
+          .or(orFilter)
       ]);
 
-      const baseStudents = studentsRes.data || [];
+      const baseStudents = (studentsRes.data || []).map((s: any) => {
+        const nombres = s.nombres || s.nombre || '';
+        const apellidos = s.apellidos || `${s.apellido_paterno || ''} ${s.apellido_materno || ''}`.trim() || '';
+        const nombreCompleto = s.nombre_completo || `${nombres} ${apellidos}`.trim() || 'Estudiante';
+        return {
+          ...s,
+          nombre: nombres,
+          apellidos: apellidos,
+          nombres: nombres,
+          apellido_paterno: s.apellido_paterno || '',
+          apellido_materno: s.apellido_materno || '',
+          nombre_completo: nombreCompleto,
+        };
+      });
+
       const claimedUsers = usersRes.data || [];
 
       // Mapear usuarios reales de Google que tienen institute_id asignado
@@ -520,8 +604,11 @@ export async function getStudentsByInstitute(instituteId: string): Promise<Stude
           claimed_student_id: u.claimed_student_id || null,
           nombre: firstName,
           apellidos: lastName,
+          nombres: firstName,
+          apellido_paterno: parts[1] || '',
+          apellido_materno: parts[2] || '',
           nombre_completo: fullName,
-          institute_id: u.institute_id || cleanInstId,
+          institute_id: u.institute_id || rawInstId,
           created_by: 'user',
           score: typeof u.score === 'number' ? Number(u.score) : 0.0,
           total_ratings: typeof u.total_ratings === 'number' ? u.total_ratings : 0,
@@ -611,7 +698,11 @@ export async function getStudentsByInstitute(instituteId: string): Promise<Stude
     }
 
     // Fallback de demostración garantizado para Daniel Gustavo Castillo Ramirez si no está en el listado
-    const hasDaniel = activeStudents.some((s: any) => s.id?.includes('daniel.gustavo'));
+    const hasDaniel = activeStudents.some((s: any) => 
+      s.id?.includes('daniel.gustavo') || 
+      (s.dni && s.dni === '60036463') || 
+      (s.nombre_completo && s.nombre_completo.toLowerCase().includes('daniel gustavo castillo'))
+    );
     if (!hasDaniel && (cleanInstId.includes('pedagogico') || cleanInstId === 'instituto-pedagogico')) {
       const claim = isStudentClaimed('daniel.gustavo.castillo.ramirez');
       activeStudents.unshift({
@@ -635,8 +726,19 @@ export async function getStudentsByInstitute(instituteId: string): Promise<Stude
       });
     }
 
+    // Deduplicar estudiantes por ID único final
+    const seenIds = new Set<string>();
+    const deduplicatedStudents = activeStudents.filter((item: any) => {
+      const idKey = String(item.id || '').trim();
+      if (!idKey || seenIds.has(idKey)) {
+        return false;
+      }
+      seenIds.add(idKey);
+      return true;
+    });
+
     // Mapear con datos reales
-    return activeStudents.map((p: any) => {
+    return deduplicatedStudents.map((p: any) => {
       const ints = interactionsMap[p.id] || { knows: 0, fan: 0 };
       const expectedDni = p.dni || getExpectedStudentDni(p.id);
       const claim = isStudentClaimed(p.id);

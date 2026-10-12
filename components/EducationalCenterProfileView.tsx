@@ -693,8 +693,23 @@ export default function EducationalCenterProfileView({
   // Selected list based on active tab
   const currentMemberList = activeTab === 'Estudiantes' ? mappedStudents : mappedProfessors;
 
+  // Deduplicar miembros por ID de forma estricta para evitar claves duplicadas
+  const seenMemberIds = new Set<string>();
+  const uniqueMemberList: MemberItem[] = [];
+  for (const item of currentMemberList) {
+    const rawId = String(item.id || '').trim();
+    const effectiveId = rawId || `${item.name}-${uniqueMemberList.length}`;
+    if (!seenMemberIds.has(effectiveId)) {
+      seenMemberIds.add(effectiveId);
+      uniqueMemberList.push({
+        ...item,
+        id: effectiveId,
+      });
+    }
+  }
+
   // Filter list with searchTerm
-  const filteredMembers = currentMemberList.filter((p) =>
+  const filteredMembers = uniqueMemberList.filter((p) =>
     p.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -1056,9 +1071,9 @@ export default function EducationalCenterProfileView({
           ) : viewMode === 'list' ? (
             /* VISTA DE LISTA (Idéntico a imagen 2 y 3) */
             <div className="space-y-3">
-              {rankedMembers.map((p) => (
+              {rankedMembers.map((p, idx) => (
                 <div
-                  key={p.id}
+                  key={`${p.role}-${p.id}-${idx}`}
                   onClick={() => {
                     if (activeTab === 'Estudiantes') {
                       if (onSelectStudent) {
@@ -1170,9 +1185,9 @@ export default function EducationalCenterProfileView({
           ) : (
             /* VISTA DE MOSAICO (Idéntico a imagen 5) */
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3.5 sm:gap-4">
-              {rankedMembers.map((p) => (
+              {rankedMembers.map((p, idx) => (
                 <div
-                  key={p.id}
+                  key={`${p.role}-${p.id}-${idx}`}
                   onClick={() => {
                     if (activeTab === 'Estudiantes') {
                       if (onSelectStudent) {

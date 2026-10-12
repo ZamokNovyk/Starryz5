@@ -26,6 +26,8 @@ export default function AddMemberModal({
   const { user } = useAuth();
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
+  const [apellidoPaterno, setApellidoPaterno] = useState('');
+  const [apellidoMaterno, setApellidoMaterno] = useState('');
   const [dni, setDni] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,6 +46,8 @@ export default function AddMemberModal({
       setSuccess(false);
       setFirstName('');
       setLastName('');
+      setApellidoPaterno('');
+      setApellidoMaterno('');
       setDni('');
     }
   }, [isOpen, isStudent]);
@@ -59,9 +63,16 @@ export default function AddMemberModal({
       return;
     }
 
-    if (!firstName.trim() || !lastName.trim()) {
-      setError('Por favor, ingresa los nombres y apellidos completos.');
-      return;
+    if (isStudent) {
+      if (!firstName.trim() || !apellidoPaterno.trim()) {
+        setError('Por favor, ingresa los nombres y el apellido paterno del estudiante.');
+        return;
+      }
+    } else {
+      if (!firstName.trim() || !lastName.trim()) {
+        setError('Por favor, ingresa los nombres y apellidos completos del profesor.');
+        return;
+      }
     }
 
     const cleanDni = dni.trim().replace(/\D/g, '');
@@ -74,10 +85,13 @@ export default function AddMemberModal({
       setSubmitting(true);
       
       if (isStudent) {
-        // Guarda en la tabla 'students' de Supabase con DNI
+        // Guarda en la tabla 'students' de Supabase con nombres, apellido_paterno y apellido_materno
         await createStudent({
+          nombres: firstName.trim(),
+          apellido_paterno: apellidoPaterno.trim(),
+          apellido_materno: apellidoMaterno.trim(),
           nombre: firstName.trim(),
-          apellidos: lastName.trim(),
+          apellidos: `${apellidoPaterno.trim()} ${apellidoMaterno.trim()}`.trim(),
           instituteId,
           dni: cleanDni,
         }, user.uid);
@@ -96,6 +110,8 @@ export default function AddMemberModal({
         setSuccess(false);
         setFirstName('');
         setLastName('');
+        setApellidoPaterno('');
+        setApellidoMaterno('');
         setDni('');
         onSuccess();
         onClose();
@@ -187,36 +203,87 @@ export default function AddMemberModal({
               </div>
             )}
 
-            {/* Inputs Nombres y Apellidos */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="block text-xs font-bold text-zinc-300 uppercase tracking-wider">
-                  Nombres
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={firstName}
-                  onChange={(e) => setFirstName(e.target.value)}
-                  placeholder="Ej: Daniel Gustavo"
-                  className="w-full bg-[#111111] border border-[#ffffff10] rounded-xl px-4 py-3 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-[#eab308]/40 transition-colors"
-                />
-              </div>
+            {isStudent ? (
+              /* Formularios con 3 separaciones: NOMBRES, APELLIDO PATERNO y APELLIDO MATERNO */
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-zinc-300 uppercase tracking-wider">
+                    Nombres
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    placeholder="Ej: Daniel Gustavo"
+                    className="w-full bg-[#111111] border border-[#ffffff10] rounded-xl px-4 py-3 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-[#eab308]/40 transition-colors"
+                  />
+                </div>
 
-              <div className="space-y-2">
-                <label className="block text-xs font-bold text-zinc-300 uppercase tracking-wider">
-                  Apellidos
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={lastName}
-                  onChange={(e) => setLastName(e.target.value)}
-                  placeholder="Ej: Castillo Ramirez"
-                  className="w-full bg-[#111111] border border-[#ffffff10] rounded-xl px-4 py-3 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-[#eab308]/40 transition-colors"
-                />
+                <div className="grid grid-cols-2 gap-3.5">
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-zinc-300 uppercase tracking-wider">
+                      Apellido Paterno
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={apellidoPaterno}
+                      onChange={(e) => setApellidoPaterno(e.target.value)}
+                      placeholder="Ej: Castillo"
+                      className="w-full bg-[#111111] border border-[#ffffff10] rounded-xl px-4 py-3 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-[#eab308]/40 transition-colors"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-bold text-zinc-300 uppercase tracking-wider">
+                        Apellido Materno
+                      </label>
+                      <span className="text-[10px] text-zinc-500 font-medium">Opcional</span>
+                    </div>
+                    <input
+                      type="text"
+                      value={apellidoMaterno}
+                      onChange={(e) => setApellidoMaterno(e.target.value)}
+                      placeholder="Ej: Ramirez"
+                      className="w-full bg-[#111111] border border-[#ffffff10] rounded-xl px-4 py-3 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-[#eab308]/40 transition-colors"
+                    />
+                  </div>
+                </div>
               </div>
-            </div>
+            ) : (
+              /* Inputs Nombres y Apellidos para Profesores */
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="block text-xs font-bold text-zinc-300 uppercase tracking-wider">
+                    Nombres
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    placeholder="Ej: Manuel"
+                    className="w-full bg-[#111111] border border-[#ffffff10] rounded-xl px-4 py-3 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-[#eab308]/40 transition-colors"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="block text-xs font-bold text-zinc-300 uppercase tracking-wider">
+                    Apellidos
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    placeholder="Ej: Gonzalez Silva"
+                    className="w-full bg-[#111111] border border-[#ffffff10] rounded-xl px-4 py-3 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-[#eab308]/40 transition-colors"
+                  />
+                </div>
+              </div>
+            )}
 
             {/* Input DNI para Estudiantes */}
             {isStudent && (
